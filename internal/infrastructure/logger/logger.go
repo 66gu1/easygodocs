@@ -22,3 +22,13 @@ func Error(ctx context.Context, err error) *zerolog.Event {
 
 	return l.Error().Err(err)
 }
+
+func Warn(ctx context.Context, err error) *zerolog.Event {
+	l := zerolog.Ctx(ctx)
+	resp := l.Warn()
+	if err != nil {
+		return resp.Err(err)
+	}
+
+	return resp
+}

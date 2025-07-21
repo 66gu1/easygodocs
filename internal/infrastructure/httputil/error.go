@@ -28,7 +28,7 @@ func returnError(ctx context.Context, w http.ResponseWriter, status int, message
 
 func ReturnError(ctx context.Context, w http.ResponseWriter, err error) {
 	var appErr *apperror.Error
-	if !errors.As(err, &appErr) || appErr.Code == apperror.InternalError {
+	if !errors.As(err, &appErr) {
 		returnInternalError(ctx, w)
 		return
 	}
@@ -44,10 +44,10 @@ func ReturnError(ctx context.Context, w http.ResponseWriter, err error) {
 
 func getCode(err *apperror.Error) int {
 	switch err.Code {
-	case apperror.InternalError:
-		return http.StatusInternalServerError
 	case apperror.BadRequest:
 		return http.StatusBadRequest
+	case apperror.NotFound:
+		return http.StatusNotFound
 	}
 
 	return 0

@@ -9,8 +9,8 @@ type Error struct {
 type code int
 
 const (
-	InternalError code = 1
-	BadRequest    code = 2
+	BadRequest code = 1
+	NotFound   code = 2
 )
 
 type logLevel int

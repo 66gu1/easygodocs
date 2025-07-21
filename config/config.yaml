@@ -1,0 +1,4 @@
+app_name: EasyGoDocs
+port: 8080
+log_level: debug
+database_dsn: "host=localhost user=postgres dbname=easy_go_docs port=5432 sslmode=disable"

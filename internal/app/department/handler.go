@@ -107,12 +107,12 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
+		logger.Warn(ctx, err).Str("id", idStr).Msg("department.Handler.Delete")
 		err = &apperror.Error{
 			Message:  "invalid department ID",
 			Code:     apperror.BadRequest,
 			LogLevel: apperror.LogLevelWarn,
 		}
-		logger.Error(ctx, err).Msg("department.Handler.Delete")
 		httputil.ReturnError(ctx, w, err)
 		return
 	}
