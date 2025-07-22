@@ -48,6 +48,10 @@ func getCode(err *apperror.Error) int {
 		return http.StatusBadRequest
 	case apperror.NotFound:
 		return http.StatusNotFound
+	case apperror.Unauthorized:
+		return http.StatusUnauthorized
+	case apperror.Forbidden:
+		return http.StatusForbidden
 	}
 
 	return 0

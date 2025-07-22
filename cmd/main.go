@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/66gu1/easygodocs/internal/app/article"
 	"github.com/66gu1/easygodocs/internal/app/department"
+	"github.com/66gu1/easygodocs/internal/infrastructure/auth"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
@@ -39,6 +40,12 @@ func main() {
 		panic(err)
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal().Msg("JWT_SECRET environment variable not set")
+	}
+	authService := auth.New(jwtSecret)
+
 	// --- set up chi router
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -52,29 +59,33 @@ func main() {
 	departmentService.SetArticleService(articleService)
 
 	departmentHandler := department.NewHandler(departmentService)
-	// --- department routes
-	r.Route("/departments", func(r chi.Router) {
-		r.Get("/", departmentHandler.GetDepartmentTree) // GET    /departments
-		r.Post("/", departmentHandler.Create)           // POST   /departments
+	articleHandler := article.NewHandler(articleService)
 
-		r.Route("/{id}", func(r chi.Router) {
-			r.Put("/", departmentHandler.Update)    // PUT    /departments/{id}
-			r.Delete("/", departmentHandler.Delete) // DELETE /departments/{id}
+	r.Group(func(p chi.Router) {
+		p.Use(authService.AuthMiddleware)
+		// --- department routes
+		p.Route("/departments", func(r chi.Router) {
+			p.Get("/", departmentHandler.GetDepartmentTree) // GET    /departments
+			p.Post("/", departmentHandler.Create)           // POST   /departments
+
+			p.Route("/{id}", func(r chi.Router) {
+				p.Put("/", departmentHandler.Update)    // PUT    /departments/{id}
+				p.Delete("/", departmentHandler.Delete) // DELETE /departments/{id}
+			})
 		})
-	})
 
-	artcleHandler := article.NewHandler(articleService)
-	// --- article routes
-	r.Route("/articles", func(r chi.Router) {
-		r.Post("/", artcleHandler.Create) // POST   /articles
-		r.Post("/draft", artcleHandler.CreateDraft)
+		// --- article routes
+		p.Route("/articles", func(r chi.Router) {
+			p.Post("/", articleHandler.Create) // POST   /articles
+			p.Post("/draft", articleHandler.CreateDraft)
 
-		r.Route("/{id}", func(r chi.Router) {
-			r.Get("/", artcleHandler.Get)                          // GET    /articles/{id}
-			r.Put("/", artcleHandler.Update)                       // PUT    /articles/{id}
-			r.Delete("/", artcleHandler.Delete)                    // DELETE /articles/{id}
-			r.Get("/versions", artcleHandler.GetVersionsList)      // GET    /articles/{id}/versions
-			r.Get("/versions/{version}", artcleHandler.GetVersion) // GET    /articles/{id}/versions/{version}
+			p.Route("/{id}", func(r chi.Router) {
+				p.Get("/", articleHandler.Get)                          // GET    /articles/{id}
+				p.Put("/", articleHandler.Update)                       // PUT    /articles/{id}
+				p.Delete("/", articleHandler.Delete)                    // DELETE /articles/{id}
+				p.Get("/versions", articleHandler.GetVersionsList)      // GET    /articles/{id}/versions
+				p.Get("/versions/{version}", articleHandler.GetVersion) // GET    /articles/{id}/versions/{version}
+			})
 		})
 	})
 

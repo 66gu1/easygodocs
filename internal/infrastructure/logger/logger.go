@@ -4,23 +4,28 @@ import (
 	"context"
 	"errors"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperror"
+	"github.com/66gu1/easygodocs/internal/infrastructure/contextutil"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
 
 func Error(ctx context.Context, err error) *zerolog.Event {
 	l := zerolog.Ctx(ctx)
-	if err == nil {
-		return l.Error()
+
+	var (
+		appErr *apperror.Error
+		event  = l.Error()
+	)
+
+	if errors.As(err, &appErr) && appErr.LogLevel == apperror.LogLevelWarn {
+		event = l.Warn()
 	}
 
-	var appErr *apperror.Error
-	if errors.As(err, &appErr) {
-		if appErr.LogLevel == apperror.LogLevelWarn {
-			return l.Warn().Err(err)
-		}
+	if currentUser, ok := contextutil.GetFromContext[uuid.UUID](ctx, contextutil.ContextKeyUserID); ok {
+		event = event.Str("current_user_id", currentUser.String())
 	}
 
-	return l.Error().Err(err)
+	return event.Err(err)
 }
 
 func Warn(ctx context.Context, err error) *zerolog.Event {

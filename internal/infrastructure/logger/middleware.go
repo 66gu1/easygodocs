@@ -1,4 +1,4 @@
-package middleware
+package logger
 
 import (
 	"github.com/go-chi/chi/v5/middleware"
