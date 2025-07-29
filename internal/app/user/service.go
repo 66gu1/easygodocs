@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/66gu1/easygodocs/internal/app/user/dto"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperror"
 	"github.com/66gu1/easygodocs/internal/infrastructure/auth"
 	"github.com/66gu1/easygodocs/internal/infrastructure/contextutil"
@@ -17,40 +18,58 @@ import (
 	"time"
 )
 
+var (
+	ErrInvalidPasswordOrEmail = &apperror.Error{
+		Message:  "invalid password or email",
+		Code:     apperror.Unauthorized,
+		LogLevel: apperror.LogLevelWarn,
+	}
+	ErrUserNotFound = &apperror.Error{
+		Message:  "user not found",
+		Code:     apperror.NotFound,
+		LogLevel: apperror.LogLevelWarn,
+	}
+	ErrSessionNotFound = &apperror.Error{
+		Message:  "session not found",
+		Code:     apperror.NotFound,
+		LogLevel: apperror.LogLevelWarn,
+	}
+	ErrRoleNotFound = &apperror.Error{
+		Message:  "role not found",
+		Code:     apperror.NotFound,
+		LogLevel: apperror.LogLevelWarn,
+	}
+)
+
 type UserService struct {
 	repo Repository
 	cfg  *Config
 }
 
 type Config struct {
-	MinPasswordLength int
-	MaxPasswordLength int
-	MaxEmailLength    int
-	MaxNameLength     int
-
 	SessionTTLMinutes     int
 	AccessTokenTTLMinutes int
 	JWTSecret             string
 }
 
 type Repository interface {
-	CreateUser(ctx context.Context, req CreateUserReq) error
-	GetUser(ctx context.Context, id uuid.UUID) (User, error)
-	GetUserByEmail(ctx context.Context, email string) (User, error)
-	GetAllUsers(ctx context.Context) ([]User, error)
-	UpdateUser(ctx context.Context, req UpdateUserReq) error
+	CreateUser(ctx context.Context, req dto.CreateUserReq) error
+	GetUser(ctx context.Context, id uuid.UUID) (dto.User, error)
+	GetUserByEmail(ctx context.Context, email string) (dto.User, error)
+	GetAllUsers(ctx context.Context) ([]dto.User, error)
+	UpdateUser(ctx context.Context, req dto.UpdateUserReq) error
 	DeleteUser(ctx context.Context, id uuid.UUID) error
-	CreateSession(ctx context.Context, req Session) error
-	GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Session, error)
-	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error)
-	GetSessionByRefreshToken(ctx context.Context, refreshToken string) (Session, error)
+	CreateSession(ctx context.Context, req dto.Session) error
+	GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]dto.Session, error)
+	GetSessionByID(ctx context.Context, id uuid.UUID) (dto.Session, error)
+	GetSessionByRefreshToken(ctx context.Context, refreshToken string) (dto.Session, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error
 	DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error
 	UpdateRefreshToken(ctx context.Context, req updateTokenReq) error
-	AddUserRole(ctx context.Context, role UserRole) error
-	GetUserRoles(ctx context.Context, userID uuid.UUID) ([]UserRole, error)
-	DeleteUserRole(ctx context.Context, role UserRole) error
-	GetAccessScopeByUserAndRole(ctx context.Context, userID uuid.UUID, role role) ([]uuid.UUID, []uuid.UUID, error)
+	AddUserRole(ctx context.Context, role dto.UserRole) error
+	GetUserRoles(ctx context.Context, userID uuid.UUID) ([]dto.UserRole, error)
+	DeleteUserRole(ctx context.Context, role dto.UserRole) error
+	GetPermissionsByUserAndRole(ctx context.Context, userID uuid.UUID, role auth.Role) (dto.Permissions, error)
 }
 
 func NewService(repo Repository, cfg Config) *UserService {
@@ -60,7 +79,7 @@ func NewService(repo Repository, cfg Config) *UserService {
 	}
 }
 
-func (s *UserService) CreateUser(ctx context.Context, req CreateUserReq) error {
+func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserReq) error {
 	_, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err == nil {
 		err = &apperror.Error{
@@ -94,28 +113,28 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserReq) error {
 	err = s.repo.CreateUser(ctx, req)
 	if err != nil {
 		logger.Error(ctx, err).Interface("request", req).Msg("UserService.CreateUser")
-		return fmt.Errorf("UserService.CreateUser.repo.CreateUser: %w", err)
+		return fmt.Errorf("UserService.CreateUser.tx.CreateUser: %w", err)
 	}
 
 	return nil
 }
 
-func (s *UserService) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
+func (s *UserService) GetUser(ctx context.Context, id uuid.UUID) (dto.User, error) {
 	err := s.CheckSelfOrAdmin(ctx, id)
 	if err != nil {
 		logger.Error(ctx, err).Str("user_id", id.String()).Msg("UserService.GetUser.IsAdmin")
-		return User{}, fmt.Errorf("UserService.GetUser: %w", err)
+		return dto.User{}, fmt.Errorf("UserService.GetUser: %w", err)
 	}
 
 	user, err := s.repo.GetUser(ctx, id)
 	if err != nil {
 		logger.Error(ctx, err).Str("id", id.String()).Msg("UserService.GetUser")
-		return User{}, fmt.Errorf("UserService.GetUser.repo.GetUser: %w", err)
+		return dto.User{}, fmt.Errorf("UserService.GetUser.tx.GetUser: %w", err)
 	}
 	return user, nil
 }
 
-func (s *UserService) GetAllUsers(ctx context.Context) ([]User, error) {
+func (s *UserService) GetAllUsers(ctx context.Context) ([]dto.User, error) {
 	err := s.CheckIsAdmin(ctx)
 	if err != nil {
 		logger.Error(ctx, err).Msg("UserService.GetAllUsers.CheckIsAdmin")
@@ -129,7 +148,7 @@ func (s *UserService) GetAllUsers(ctx context.Context) ([]User, error) {
 	return users, nil
 }
 
-func (s *UserService) UpdateUser(ctx context.Context, req UpdateUserReq) error {
+func (s *UserService) UpdateUser(ctx context.Context, req dto.UpdateUserReq) error {
 	err := s.CheckSelfOrAdmin(ctx, req.ID)
 	if err != nil {
 		logger.Error(ctx, err).Str("user_id", req.ID.String()).Msg("UserService.UpdateUser.IsAdmin")
@@ -141,7 +160,7 @@ func (s *UserService) UpdateUser(ctx context.Context, req UpdateUserReq) error {
 	err = s.repo.UpdateUser(ctx, req)
 	if err != nil {
 		logger.Error(ctx, err).Interface("request", req).Msg("UserService.UpdateUser")
-		return fmt.Errorf("UserService.UpdateUser.repo.UpdateUser: %w", err)
+		return fmt.Errorf("UserService.UpdateUser.tx.UpdateUser: %w", err)
 	}
 	return nil
 }
@@ -156,12 +175,12 @@ func (s *UserService) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	err = s.repo.DeleteUser(ctx, id)
 	if err != nil {
 		logger.Error(ctx, err).Str("id", id.String()).Msg("UserService.DeleteUser")
-		return fmt.Errorf("UserService.DeleteUser.repo.DeleteUser: %w", err)
+		return fmt.Errorf("UserService.DeleteUser.tx.DeleteUser: %w", err)
 	}
 	return nil
 }
 
-func (s *UserService) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Session, error) {
+func (s *UserService) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]dto.Session, error) {
 	err := s.CheckSelfOrAdmin(ctx, userID)
 	if err != nil {
 		logger.Error(ctx, err).Str("user_id", userID.String()).Msg("UserService.GetSessionsByUserID.IsAdmin")
@@ -171,7 +190,7 @@ func (s *UserService) GetSessionsByUserID(ctx context.Context, userID uuid.UUID)
 	sessions, err := s.repo.GetSessionsByUserID(ctx, userID)
 	if err != nil {
 		logger.Error(ctx, err).Str("user_id", userID.String()).
-			Msg("UserService.GetSessionsByUserID.repo.GetSessionsByUserID")
+			Msg("UserService.GetSessionsByUserID.tx.GetSessionsByUserID")
 		return nil, fmt.Errorf("UserService.GetSessionsByUserID: %w", err)
 	}
 	return sessions, nil
@@ -188,7 +207,7 @@ func (s *UserService) DeleteSession(ctx context.Context, id uuid.UUID) error {
 			}
 		}
 		logger.Error(ctx, err).Str("id", id.String()).Msg("UserService.DeleteSession.GetSessionByID")
-		return fmt.Errorf("UserService.DeleteSession.repo.GetSessionByID: %w", err)
+		return fmt.Errorf("UserService.DeleteSession.tx.GetSessionByID: %w", err)
 	}
 	err = s.CheckSelfOrAdmin(ctx, session.UserID)
 	if err != nil {
@@ -199,7 +218,7 @@ func (s *UserService) DeleteSession(ctx context.Context, id uuid.UUID) error {
 	err = s.repo.DeleteSession(ctx, id)
 	if err != nil {
 		logger.Error(ctx, err).Str("id", id.String()).Msg("UserService.DeleteSession")
-		return fmt.Errorf("UserService.DeleteSession.repo.DeleteSession: %w", err)
+		return fmt.Errorf("UserService.DeleteSession.tx.DeleteSession: %w", err)
 	}
 	return nil
 }
@@ -214,13 +233,13 @@ func (s *UserService) DeleteSessionsByUserID(ctx context.Context, userID uuid.UU
 	err = s.repo.DeleteSessionsByUserID(ctx, userID)
 	if err != nil {
 		logger.Error(ctx, err).Str("user_id", userID.String()).
-			Msg("UserService.DeleteSessionsByUserID.repo.DeleteSessionsByUserID")
+			Msg("UserService.DeleteSessionsByUserID.tx.DeleteSessionsByUserID")
 		return fmt.Errorf("UserService.DeleteSessionsByUserID: %w", err)
 	}
 	return nil
 }
 
-func (s *UserService) AddUserRole(ctx context.Context, role UserRole) error {
+func (s *UserService) AddUserRole(ctx context.Context, role dto.UserRole) error {
 	err := s.CheckIsAdmin(ctx)
 	if err != nil {
 		logger.Error(ctx, err).Str("role", role.Role.String()).Msg("UserService.AddUserRole.CheckIsAdmin")
@@ -230,27 +249,27 @@ func (s *UserService) AddUserRole(ctx context.Context, role UserRole) error {
 	err = s.repo.AddUserRole(ctx, role)
 	if err != nil {
 		logger.Error(ctx, err).Interface("role", role).Msg("UserService.AddUserRole")
-		return fmt.Errorf("UserService.AddUserRole.repo.AddUserRole: %w", err)
+		return fmt.Errorf("UserService.AddUserRole.tx.AddUserRole: %w", err)
 	}
 	return nil
 }
 
-func (s *UserService) DeleteUserRole(ctx context.Context, role UserRole) error {
+func (s *UserService) DeleteUserRole(ctx context.Context, role dto.UserRole) error {
 	err := s.CheckIsAdmin(ctx)
 	if err != nil {
-		logger.Error(ctx, err).Str("role", role.Role.String()).Msg("UserService.DeleteUserRole.CheckIsAdmin")
+		logger.Error(ctx, err).Interface("role", role).Msg("UserService.DeleteUserRole.CheckIsAdmin")
 		return fmt.Errorf("UserService.DeleteUserRole: %w", err)
 	}
 
 	err = s.repo.DeleteUserRole(ctx, role)
 	if err != nil {
 		logger.Error(ctx, err).Interface("role", role).Msg("UserService.DeleteUserRole")
-		return fmt.Errorf("UserService.DeleteUserRole.repo.DeleteUserRole: %w", err)
+		return fmt.Errorf("UserService.DeleteUserRole.tx.DeleteUserRole: %w", err)
 	}
 	return nil
 }
 
-func (s *UserService) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]UserRole, error) {
+func (s *UserService) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]dto.UserRole, error) {
 	err := s.CheckSelfOrAdmin(ctx, userID)
 	if err != nil {
 		logger.Error(ctx, err).Str("user_id", userID.String()).Msg("UserService.GetUserRoles.CheckIsAdmin")
@@ -260,7 +279,7 @@ func (s *UserService) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]Use
 	roles, err := s.repo.GetUserRoles(ctx, userID)
 	if err != nil {
 		logger.Error(ctx, err).Str("user_id", userID.String()).Msg("UserService.GetUserRoles")
-		return nil, fmt.Errorf("UserService.GetUserRoles.repo.GetUserRoles: %w", err)
+		return nil, fmt.Errorf("UserService.GetUserRoles.tx.GetUserRoles: %w", err)
 	}
 	return roles, nil
 }
@@ -276,7 +295,7 @@ func (s *UserService) RefreshTokens(ctx context.Context, refreshToken string) (s
 			}
 		}
 		logger.Error(ctx, err).Str("refresh_token", refreshToken).Msg("UserService.RefreshTokens.GetSessionByRefreshToken")
-		return "", "", fmt.Errorf("UserService.RefreshTokens.repo.GetSessionByRefreshToken: %w", err)
+		return "", "", fmt.Errorf("UserService.RefreshTokens.tx.GetSessionByRefreshToken: %w", err)
 	}
 
 	now := time.Now().UTC()
@@ -293,7 +312,7 @@ func (s *UserService) RefreshTokens(ctx context.Context, refreshToken string) (s
 	})
 	if err != nil {
 		logger.Error(ctx, err).Str("session_id", session.ID.String()).Msg("UserService.RefreshTokens.UpdateRefreshToken")
-		return "", "", fmt.Errorf("UserService.RefreshTokens.repo.UpdateRefreshToken: %w", err)
+		return "", "", fmt.Errorf("UserService.RefreshTokens.tx.UpdateRefreshToken: %w", err)
 	}
 
 	accessToken, err := s.generateAccessToken(session.UserID, session.ID, now)
@@ -306,45 +325,37 @@ func (s *UserService) RefreshTokens(ctx context.Context, refreshToken string) (s
 
 }
 
-func (s *UserService) Login(ctx context.Context, email, password, userAgent string) (string, string, error) {
-	user, err := s.repo.GetUserByEmail(ctx, email)
+func (s *UserService) Login(ctx context.Context, req dto.LoginReq) (string, string, error) {
+	user, err := s.repo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
-			err = &apperror.Error{
-				Message:  "user not found",
-				Code:     apperror.BadRequest,
-				LogLevel: apperror.LogLevelWarn,
-			}
+			err = ErrInvalidPasswordOrEmail
 		}
-		logger.Error(ctx, err).Str("email", email).Msg("UserService.Login.GetUserByEmail")
+		logger.Error(ctx, err).Str("email", req.Email).Msg("UserService.Login.GetUserByEmail")
 		return "", "", fmt.Errorf("UserService.Login.GetUserByEmail: %w", err)
 	}
 
-	if !checkPassword(password, user.PasswordHash) {
-		err = &apperror.Error{
-			Message:  "invalid password",
-			Code:     apperror.Unauthorized,
-			LogLevel: apperror.LogLevelWarn,
-		}
-		logger.Error(ctx, err).Str("email", email).Msg("UserService.Login: invalid password")
-		return "", "", fmt.Errorf("UserService.Login.checkPassword: %w", err)
+	if !checkPassword(req.Password, user.PasswordHash) {
+		err = ErrInvalidPasswordOrEmail
+		logger.Error(ctx, err).Str("email", req.Email).Msg("UserService.Login: invalid password")
+		return "", "", fmt.Errorf("UserService.Login.checkPassword: %w", apperror.ErrUnauthorized)
 	}
 
 	sessionID, err := uuid.NewV7()
 	if err != nil {
-		logger.Error(ctx, err).Str("email", email).Msg("UserService.Login: failed to generate session UUID")
+		logger.Error(ctx, err).Str("email", req.Email).Msg("UserService.Login: failed to generate session UUID")
 		return "", "", fmt.Errorf("UserService.Login.uuid.NewV7(): %w", err)
 	}
 	refreshToken, err := generateRefreshToken()
 	if err != nil {
-		logger.Error(ctx, err).Str("email", email).Msg("UserService.Login: failed to generate refresh token")
+		logger.Error(ctx, err).Str("email", req.Email).Msg("UserService.Login: failed to generate refresh token")
 		return "", "", fmt.Errorf("UserService.Login.generateRefreshToken: %w", err)
 	}
 	now := time.Now().UTC()
-	session := Session{
+	session := dto.Session{
 		ID:           sessionID,
 		UserID:       user.ID,
-		UserAgent:    userAgent,
+		UserAgent:    req.UserAgent,
 		RefreshToken: refreshToken,
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(time.Duration(s.cfg.SessionTTLMinutes) * time.Minute),
@@ -352,14 +363,14 @@ func (s *UserService) Login(ctx context.Context, email, password, userAgent stri
 
 	err = s.repo.CreateSession(ctx, session)
 	if err != nil {
-		logger.Error(ctx, err).Str("email", email).Interface("request", session).
+		logger.Error(ctx, err).Str("email", req.Email).Interface("request", session).
 			Msg("UserService.Login.CreateSession")
-		return "", "", fmt.Errorf("UserService.Login.repo.CreateSession: %w", err)
+		return "", "", fmt.Errorf("UserService.Login.tx.CreateSession: %w", err)
 	}
 
 	accessToken, err := s.generateAccessToken(user.ID, sessionID, now)
 	if err != nil {
-		logger.Error(ctx, err).Str("email", email).Msg("UserService.Login.generateAccessToken")
+		logger.Error(ctx, err).Str("email", req.Email).Msg("UserService.Login.generateAccessToken")
 		return "", "", fmt.Errorf("UserService.Login.generateAccessToken: %w", err)
 	}
 
@@ -399,29 +410,31 @@ func (s *UserService) CheckIsAdmin(ctx context.Context) error {
 	return nil
 }
 
-func (s *UserService) GetAccessScopeByUserAndRole(ctx context.Context, role role) (departmentIDs []uuid.UUID, articleIDs []uuid.UUID, isAdmin bool, err error) {
+func (s *UserService) GetPermissionsByUserAndRole(ctx context.Context, role auth.Role) (dto.Permissions, error) {
 	currentUserID, ok := contextutil.GetFromContext[uuid.UUID](ctx, contextutil.ContextKeyUserID)
 	if !ok {
-		return nil, nil, false, fmt.Errorf("UserService.GetAccessScopeByUserAndRole: failed to get user ID from context")
+		return dto.Permissions{}, fmt.Errorf("UserService.GetAccessScopeByUserAndRole: failed to get user ID from context")
 	}
 
-	isAdmin, err = s.checkAdminRights(ctx, currentUserID)
+	isAdmin, err := s.checkAdminRights(ctx, currentUserID)
 	if err != nil {
 		logger.Error(ctx, err).Str("user_id", currentUserID.String()).Msg("UserService.GetAccessScopeByUserAndRole.checkAdminRights")
-		return nil, nil, false, fmt.Errorf("UserService.GetAccessScopeByUserAndRole: %w", err)
+		return dto.Permissions{}, fmt.Errorf("UserService.GetAccessScopeByUserAndRole: %w", err)
 	}
 	if isAdmin {
-		return nil, nil, true, nil
+		return dto.Permissions{
+			All: true,
+		}, nil
 	}
 
-	departmentIDs, articleIDs, err = s.repo.GetAccessScopeByUserAndRole(ctx, currentUserID, role)
+	permissions, err := s.repo.GetPermissionsByUserAndRole(ctx, currentUserID, role)
 	if err != nil {
 		logger.Error(ctx, err).Str("user_id", currentUserID.String()).Str("role", role.String()).
 			Msg("UserService.GetAccessScopeByUserAndRole.GetAccessScopeByUserAndRole")
-		return nil, nil, false, fmt.Errorf("UserService.GetAccessScopeByUserAndRole: %w", err)
+		return dto.Permissions{}, fmt.Errorf("UserService.GetAccessScopeByUserAndRole: %w", err)
 	}
 
-	return departmentIDs, articleIDs, false, nil
+	return permissions, nil
 }
 
 func (s *UserService) checkAdminRights(ctx context.Context, userID uuid.UUID) (bool, error) {
@@ -431,7 +444,7 @@ func (s *UserService) checkAdminRights(ctx context.Context, userID uuid.UUID) (b
 	}
 
 	for _, role := range roles {
-		if role.Role == RoleAdmin {
+		if role.Role == auth.RoleAdmin {
 			return true, nil
 		}
 	}

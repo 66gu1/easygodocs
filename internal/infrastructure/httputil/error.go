@@ -14,9 +14,13 @@ func returnInternalError(ctx context.Context, w http.ResponseWriter) {
 }
 
 func returnError(ctx context.Context, w http.ResponseWriter, status int, message string) {
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
+	if status != 0 {
+		w.WriteHeader(status)
+	}
 
 	err := json.NewEncoder(w).Encode(map[string]string{
 		"error": message,

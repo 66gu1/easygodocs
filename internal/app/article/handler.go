@@ -3,6 +3,7 @@ package article
 import (
 	"context"
 	"encoding/json"
+	"github.com/66gu1/easygodocs/internal/app/article/dto"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperror"
 	"github.com/66gu1/easygodocs/internal/infrastructure/httputil"
 	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
@@ -26,12 +27,12 @@ type Handler struct {
 
 //go:generate minimock -i github.com/66gu1/easygodocs/internal/app/article.Service -o ./mock -s _mock.go
 type Service interface {
-	Get(ctx context.Context, id uuid.UUID) (Article, error)
-	GetVersion(ctx context.Context, id uuid.UUID, version int) (Article, error)
-	GetVersionsList(ctx context.Context, id uuid.UUID) ([]Article, error)
-	Create(ctx context.Context, req CreateArticleReq) (uuid.UUID, error)
-	CreateDraft(ctx context.Context, req CreateArticleReq) (uuid.UUID, error)
-	Update(ctx context.Context, req UpdateArticleReq) error
+	Get(ctx context.Context, id uuid.UUID) (dto.Article, error)
+	GetVersion(ctx context.Context, id uuid.UUID, version int) (dto.Article, error)
+	GetVersionsList(ctx context.Context, id uuid.UUID) ([]dto.Article, error)
+	Create(ctx context.Context, req dto.CreateArticleReq) (uuid.UUID, error)
+	CreateDraft(ctx context.Context, req dto.CreateArticleReq) (uuid.UUID, error)
+	Update(ctx context.Context, req dto.UpdateArticleReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -46,7 +47,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).Str("id", idStr).Msg("article.Handler.Get: invalid article ID format")
-		httputil.ReturnError(ctx, w, ErrInvalidID)
+		httputil.ReturnError(ctx, w, apperror.ErrBadRequest)
 		return
 	}
 
@@ -74,7 +75,7 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).Str("id", idStr).Msg("article.Handler.GetVersion: invalid article ID format")
-		httputil.ReturnError(ctx, w, ErrInvalidID)
+		httputil.ReturnError(ctx, w, apperror.ErrBadRequest)
 		return
 	}
 
@@ -82,11 +83,7 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	version, err := strconv.Atoi(versionStr)
 	if err != nil {
 		logger.Warn(ctx, err).Str("version", versionStr).Msg("article.Handler.GetVersion: invalid version format")
-		httputil.ReturnError(ctx, w, &apperror.Error{
-			Message:  "invalid version number",
-			Code:     apperror.BadRequest,
-			LogLevel: apperror.LogLevelWarn,
-		})
+		httputil.ReturnError(ctx, w, apperror.ErrBadRequest)
 		return
 	}
 
@@ -114,7 +111,7 @@ func (h *Handler) GetVersionsList(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).Str("id", idStr).Msg("article.Handler.GetVersionsList: invalid article ID format")
-		httputil.ReturnError(ctx, w, ErrInvalidID)
+		httputil.ReturnError(ctx, w, apperror.ErrBadRequest)
 		return
 	}
 
@@ -138,10 +135,10 @@ func (h *Handler) GetVersionsList(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var req CreateArticleReq
+	var req dto.CreateArticleReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.Error(ctx, err).Msg("article.Handler.Create: request JSON decode failed")
-		httputil.ReturnError(ctx, w, err)
+		httputil.ReturnError(ctx, w, apperror.ErrBadRequest)
 		return
 	}
 
@@ -157,22 +154,16 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	err = json.NewEncoder(w).Encode(map[string]string{"id": id.String()})
-	if err != nil {
-		logger.Error(ctx, err).Msg("article.Handler.Create: response JSON encode failed")
-		httputil.ReturnError(ctx, w, err)
-		return
-	}
+	httputil.WriteJSON(ctx, w, http.StatusCreated, map[string]string{"id": id.String()})
 }
 
 func (h *Handler) CreateDraft(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var req CreateArticleReq
+	var req dto.CreateArticleReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.Error(ctx, err).Msg("article.Handler.CreateDraft: request JSON decode failed")
-		httputil.ReturnError(ctx, w, err)
+		httputil.ReturnError(ctx, w, apperror.ErrBadRequest)
 		return
 	}
 
@@ -188,22 +179,16 @@ func (h *Handler) CreateDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	err = json.NewEncoder(w).Encode(map[string]string{"id": id.String()})
-	if err != nil {
-		logger.Error(ctx, err).Msg("article.Handler.CreateDraft: response JSON encode failed")
-		httputil.ReturnError(ctx, w, err)
-		return
-	}
+	httputil.WriteJSON(ctx, w, http.StatusCreated, map[string]string{"id": id.String()})
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var req UpdateArticleReq
+	var req dto.UpdateArticleReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.Error(ctx, err).Msg("article.Handler.Update: request JSON decode failed")
-		httputil.ReturnError(ctx, w, err)
+		httputil.ReturnError(ctx, w, apperror.ErrBadRequest)
 		return
 	}
 
@@ -228,7 +213,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).Str("id", idStr).Msg("article.Handler.Delete: invalid article ID format")
-		httputil.ReturnError(ctx, w, ErrInvalidID)
+		httputil.ReturnError(ctx, w, apperror.ErrBadRequest)
 		return
 	}
 

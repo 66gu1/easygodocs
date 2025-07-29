@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/66gu1/easygodocs/internal/app/article/dto"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperror"
-	"github.com/66gu1/easygodocs/internal/infrastructure/db"
+	"github.com/66gu1/easygodocs/internal/infrastructure/appslices"
+	"github.com/66gu1/easygodocs/internal/infrastructure/tx"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"time"
@@ -27,7 +29,7 @@ func NewRepository(db *gorm.DB) *gormRepo {
 	return &gormRepo{db: db}
 }
 
-func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (Article, error) {
+func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (dto.Article, error) {
 	var model articleModel
 
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&model).Error
@@ -35,18 +37,13 @@ func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (Article, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = errArticleNotFound
 		}
-		return Article{}, fmt.Errorf("gormRepo.Get: %w", err)
+		return dto.Article{}, fmt.Errorf("gormRepo.Get: %w", err)
 	}
 
-	dto, err := model.toDTO()
-	if err != nil {
-		return Article{}, fmt.Errorf("gormRepo.Get: %w", err)
-	}
-
-	return dto, nil
+	return model.toDTO(), nil
 }
 
-func (r *gormRepo) GetVersion(ctx context.Context, id uuid.UUID, version int) (Article, error) {
+func (r *gormRepo) GetVersion(ctx context.Context, id uuid.UUID, version int) (dto.Article, error) {
 	var model articleVersion
 
 	err := r.db.WithContext(ctx).Where("article_id = ? AND version = ?", id, version).First(&model).Error
@@ -54,18 +51,13 @@ func (r *gormRepo) GetVersion(ctx context.Context, id uuid.UUID, version int) (A
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = errArticleNotFound
 		}
-		return Article{}, fmt.Errorf("gormRepo.GetVersion: %w", err)
+		return dto.Article{}, fmt.Errorf("gormRepo.GetVersion: %w", err)
 	}
 
-	dto, err := model.toDTO()
-	if err != nil {
-		return Article{}, fmt.Errorf("gormRepo.GetVersion: %w", err)
-	}
-
-	return dto, nil
+	return model.toDTO(), nil
 }
 
-func (r *gormRepo) GetVersionsList(ctx context.Context, id uuid.UUID) ([]Article, error) {
+func (r *gormRepo) GetVersionsList(ctx context.Context, id uuid.UUID) ([]dto.Article, error) {
 	var models []articleVersion
 
 	err := r.db.WithContext(ctx).Where("article_id = ?", id).Order("version DESC").Find(&models).Error
@@ -73,34 +65,24 @@ func (r *gormRepo) GetVersionsList(ctx context.Context, id uuid.UUID) ([]Article
 		return nil, fmt.Errorf("gormRepo.GetVersionsList: %w", err)
 	}
 
-	dtos := make([]Article, len(models))
-	for i, model := range models {
-		dto, err := model.toDTO()
-		if err != nil {
-			return nil, fmt.Errorf("gormRepo.GetVersionsList: %w", err)
-		}
-		dtos[i] = dto
-	}
-
+	dtos := appslices.Map(models, func(v articleVersion) dto.Article { return v.toDTO() })
 	return dtos, nil
 }
 
-func (r *gormRepo) CreateDraft(ctx context.Context, req CreateArticleReq) error {
-	pt, err := parentTypeToModel(req.ParentType)
-	if err != nil {
-		return fmt.Errorf("gormRepo.CreateDraft: %w", err)
-	}
-	model := &articleModel{
-		ID:         req.id,
-		Name:       req.Name,
-		Content:    req.Content,
-		ParentType: pt,
-		ParentID:   req.ParentID,
-		CreatedBy:  req.userID,
-		UpdatedBy:  req.userID,
+func (r *gormRepo) CreateDraft(ctx context.Context, tx tx.Transaction, req dto.CreateArticleReq) error {
+	if tx == nil {
+		return fmt.Errorf("gormRepo.CreateDraft: transaction is nil")
 	}
 
-	err = r.db.WithContext(ctx).Create(model).Error
+	model := &articleModel{
+		ID:        req.ID,
+		Name:      req.Name,
+		Content:   req.Content,
+		CreatedBy: req.UserID,
+		UpdatedBy: req.UserID,
+	}
+
+	err := tx.GetDB(ctx).Create(model).Error
 	if err != nil {
 		return fmt.Errorf("gormRepo.Create: %w", err)
 	}
@@ -108,68 +90,55 @@ func (r *gormRepo) CreateDraft(ctx context.Context, req CreateArticleReq) error 
 	return nil
 }
 
-func (r *gormRepo) Create(ctx context.Context, req CreateArticleReq) error {
-	pt, err := parentTypeToModel(req.ParentType)
-	if err != nil {
-		return fmt.Errorf("gormRepo.Create: %w", err)
+func (r *gormRepo) Create(ctx context.Context, tx tx.Transaction, req dto.CreateArticleReq) error {
+	if tx == nil {
+		return fmt.Errorf("gormRepo.Create: transaction is nil")
 	}
 	now := time.Now().UTC()
 	version := 1
 	model := &articleModel{
-		ID:             req.id,
+		ID:             req.ID,
 		Name:           req.Name,
 		Content:        req.Content,
-		ParentType:     pt,
-		ParentID:       req.ParentID,
-		CreatedBy:      req.userID,
-		UpdatedBy:      req.userID,
+		CreatedBy:      req.UserID,
+		UpdatedBy:      req.UserID,
 		CurrentVersion: &version,
 	}
 	model.CreatedAt = now
 	model.UpdatedAt = now
 
 	versionModel := articleVersion{
-		ArticleID:  req.id,
-		Name:       req.Name,
-		Content:    req.Content,
-		ParentType: pt,
-		ParentID:   req.ParentID,
-		CreatedBy:  req.userID,
-		CreatedAt:  now,
-		Version:    version,
+		ArticleID: req.ID,
+		Name:      req.Name,
+		Content:   req.Content,
+		CreatedBy: req.UserID,
+		CreatedAt: now,
+		Version:   version,
+	}
+	if req.Parent != nil {
+		versionModel.ParentID = &req.Parent.ID
+		versionModel.ParentType = &req.Parent.Type
 	}
 
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&model).Error; err != nil {
-			return fmt.Errorf("transaction.article.Create: %w", err)
-		}
-		if err := tx.Create(&versionModel).Error; err != nil {
-			return fmt.Errorf("transaction.articleVersion.Create: %w", err)
-		}
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("gormRepo.Create: %w", err)
+	if err := tx.GetDB(ctx).Create(&model).Error; err != nil {
+		return fmt.Errorf("gormRepo.article.Create: %w", err)
+	}
+	if err := tx.GetDB(ctx).Create(&versionModel).Error; err != nil {
+		return fmt.Errorf("gormRepo.articleVersion.Create: %w", err)
 	}
 
 	return nil
 }
 
-func (r *gormRepo) Update(ctx context.Context, req UpdateArticleReq) error {
-	pt, err := parentTypeToModel(req.ParentType)
-	if err != nil {
-		return fmt.Errorf("gormRepo.Update: %w", err)
-	}
-
+func (r *gormRepo) Update(ctx context.Context, req dto.UpdateArticleReq) error {
 	var model articleModel
 	now := time.Now().UTC()
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("id = ?", req.ID).First(&model).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				err = errArticleNotFound
 			}
-			return fmt.Errorf("transaction.First: %w", err)
+			return fmt.Errorf("tx.First: %w", err)
 		}
 
 		version := 1
@@ -179,29 +148,29 @@ func (r *gormRepo) Update(ctx context.Context, req UpdateArticleReq) error {
 
 		model.Name = req.Name
 		model.Content = req.Content
-		model.ParentType = pt
-		model.ParentID = req.ParentID
-		model.UpdatedBy = req.userID
+		model.UpdatedBy = req.UserID
 		model.CurrentVersion = &version
 		model.UpdatedAt = now
 
 		if err := tx.Save(&model).Error; err != nil {
-			return fmt.Errorf("transaction.article.Save: %w", err)
+			return fmt.Errorf("tx.article.Save: %w", err)
 		}
 
 		versionModel := articleVersion{
-			ArticleID:  model.ID,
-			Name:       model.Name,
-			Content:    model.Content,
-			ParentType: model.ParentType,
-			ParentID:   model.ParentID,
-			CreatedBy:  model.UpdatedBy,
-			CreatedAt:  now,
-			Version:    version,
+			ArticleID: model.ID,
+			Name:      model.Name,
+			Content:   model.Content,
+			CreatedBy: model.UpdatedBy,
+			CreatedAt: now,
+			Version:   version,
+		}
+		if req.Parent != nil {
+			versionModel.ParentID = &req.Parent.ID
+			versionModel.ParentType = &req.Parent.Type
 		}
 
 		if err := tx.Create(&versionModel).Error; err != nil {
-			return fmt.Errorf("transaction.articleVersion.Create: %w", err)
+			return fmt.Errorf("tx.articleVersion.Create: %w", err)
 		}
 
 		return nil
@@ -214,70 +183,13 @@ func (r *gormRepo) Update(ctx context.Context, req UpdateArticleReq) error {
 	return nil
 }
 
-func (r *gormRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	err := r.db.WithContext(ctx).Exec(db.GetRecursiveDeleteQuery(db.ArticleTableName), id, time.Now().UTC()).Error
+func (r *gormRepo) Delete(ctx context.Context, tx tx.Transaction, ids []uuid.UUID) error {
+	if tx == nil {
+		return fmt.Errorf("gormRepo.Delete: transaction is nil")
+	}
+	err := tx.GetDB(ctx).Where("id = ANY($1)", ids).Delete(&articleModel{}).Error
 	if err != nil {
 		return fmt.Errorf("gormRepo.Delete: %w", err)
-	}
-
-	return nil
-}
-
-func (r *gormRepo) GetAllArticleNodes(ctx context.Context) ([]ArticleNode, error) {
-	var models []articleNode
-	err := r.db.WithContext(ctx).Find(&models).Error
-	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetAllArticleNodes: %w", err)
-	}
-
-	dtos, err := toArticleNodes(models)
-	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetAllArticleNodes: %w", err)
-	}
-
-	return dtos, nil
-}
-
-func (r *gormRepo) GetPermittedArticleNodes(ctx context.Context, permitted []uuid.UUID) ([]ArticleNode, error) {
-	if len(permitted) == 0 {
-		return nil, nil
-	}
-
-	var models []articleNode
-
-	err := r.db.WithContext(ctx).Raw(db.GetRecursiveFetcherQuery(db.ArticleTableName), permitted).Scan(&models).Error
-	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetPermittedArticleNodes.Exec: %w", err)
-	}
-
-	dtos, err := toArticleNodes(models)
-	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetPermittedArticleNodes: %w", err)
-	}
-
-	return dtos, nil
-}
-
-func (r *gormRepo) ValidateParent(ctx context.Context, id uuid.UUID, parentID uuid.UUID) error {
-	if id == uuid.Nil {
-		return fmt.Errorf("id cannot be empty")
-	}
-
-	query, err := db.GetRecursiveValidateParentQuery(db.ArticleTableName)
-	if err != nil {
-		return fmt.Errorf("gormRepo.ValidateParent: %w", err)
-	}
-
-	var status string
-	err = r.db.WithContext(ctx).Raw(query, parentID, id).
-		Scan(&status).Error
-	if err != nil {
-		return fmt.Errorf("gormRepo.ValidateParent:: %w", err)
-	}
-
-	err = db.GetValidateParentErrorByStatus(status)
-	if err != nil {
-		return fmt.Errorf("gormRepo.ValidateParent: %w", err)
 	}
 
 	return nil

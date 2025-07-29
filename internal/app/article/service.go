@@ -3,58 +3,101 @@ package article
 import (
 	"context"
 	"fmt"
+	"github.com/66gu1/easygodocs/internal/app/article/dto"
+	hierarchy "github.com/66gu1/easygodocs/internal/app/hierarchy/dto"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperror"
+	"github.com/66gu1/easygodocs/internal/infrastructure/auth"
 	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
+	"github.com/66gu1/easygodocs/internal/infrastructure/tx"
 	"github.com/google/uuid"
 )
 
 type ArticleService struct {
-	repo              Repository
-	departmentService DepartmentService
+	repo             Repository
+	hierarchyService HierarchyService
+	userService      UserService
+	tx   tx.Transaction
 }
 
 type Repository interface {
-	Get(ctx context.Context, id uuid.UUID) (Article, error)
-	Create(ctx context.Context, req CreateArticleReq) error
-	CreateDraft(ctx context.Context, req CreateArticleReq) error
-	Update(ctx context.Context, req UpdateArticleReq) error
-	Delete(ctx context.Context, id uuid.UUID) error
-	GetAllArticleNodes(ctx context.Context) ([]ArticleNode, error)
-	GetPermittedArticleNodes(ctx context.Context, permitted []uuid.UUID) ([]ArticleNode, error)
-	ValidateParent(ctx context.Context, id uuid.UUID, parentID uuid.UUID) error
-	GetVersion(ctx context.Context, id uuid.UUID, version int) (Article, error)
-	GetVersionsList(ctx context.Context, id uuid.UUID) ([]Article, error)
+	Get(ctx context.Context, id uuid.UUID) (dto.Article, error)
+	Create(ctx context.Context, tx tx.Transaction, req dto.CreateArticleReq) error
+	CreateDraft(ctx context.Context, tx tx.Transaction, req dto.CreateArticleReq) error
+	Update(ctx context.Context, req dto.UpdateArticleReq) error
+	Delete(ctx context.Context, tx tx.Transaction, ids []uuid.UUID) error
+	GetVersion(ctx context.Context, id uuid.UUID, version int) (dto.Article, error)
+	GetVersionsList(ctx context.Context, id uuid.UUID) ([]dto.Article, error)
 }
 
-type DepartmentService interface {
-	Exists(ctx context.Context, id uuid.UUID) (bool, error)
+type HierarchyService interface {
+	CheckPermission(ctx context.Context, checkPermissionReq hierarchy.CheckPermissionRequest) error
 }
 
-func NewService(repo Repository, departmentService DepartmentService) *ArticleService {
-	return &ArticleService{repo: repo, departmentService: departmentService}
+type UserService interface {
+	CheckIsAdmin(ctx context.Context) error
 }
 
-func (s *ArticleService) Get(ctx context.Context, id uuid.UUID) (Article, error) {
+func NewService(repo Repository, hierarchy HierarchyService) *ArticleService {
+	return &ArticleService{repo: repo, hierarchyService: hierarchy}
+}
+
+func (s *ArticleService) Get(ctx context.Context, id uuid.UUID) (dto.Article, error) {
+	err := s.hierarchyService.CheckPermission(ctx, hierarchy.CheckPermissionRequest{
+		Entity: hierarchy.Entity{
+			ID:   id,
+			Type: hierarchy.EntityTypeArticle,
+		},
+		Role: auth.RoleRead,
+	})
+	if err != nil {
+		logger.Error(ctx, err).Str("id", id.String()).Msg("ArticleService.Get.CheckPermission")
+		return dto.Article{}, fmt.Errorf("ArticleService.Get.CheckPermission: %w", err)
+	}
+
 	article, err := s.repo.Get(ctx, id)
 	if err != nil {
 		logger.Error(ctx, err).Str("id", id.String()).Msg("ArticleService.Get")
-		return Article{}, fmt.Errorf("ArticleService.Get: %w", err)
+		return dto.Article{}, fmt.Errorf("ArticleService.Get: %w", err)
 	}
 
 	return article, nil
 }
 
-func (s *ArticleService) GetVersion(ctx context.Context, id uuid.UUID, version int) (Article, error) {
+func (s *ArticleService) GetVersion(ctx context.Context, id uuid.UUID, version int) (dto.Article, error) {
+	err := s.hierarchyService.CheckPermission(ctx, hierarchy.CheckPermissionRequest{
+		Entity: hierarchy.Entity{
+			ID:   id,
+			Type: hierarchy.EntityTypeArticle,
+		},
+		Role: auth.RoleRead,
+	})
+	if err != nil {
+		logger.Error(ctx, err).Str("id", id.String()).Int("version", version).Msg("ArticleService.GetVersion.CheckPermission")
+		return dto.Article{}, fmt.Errorf("ArticleService.GetVersion.CheckPermission: %w", err)
+	}
+
 	article, err := s.repo.GetVersion(ctx, id, version)
 	if err != nil {
 		logger.Error(ctx, err).Str("id", id.String()).Int("version", version).Msg("ArticleService.GetVersion")
-		return Article{}, fmt.Errorf("ArticleService.GetVersion: %w", err)
+		return dto.Article{}, fmt.Errorf("ArticleService.GetVersion: %w", err)
 	}
 
 	return article, nil
 }
 
-func (s *ArticleService) GetVersionsList(ctx context.Context, id uuid.UUID) ([]Article, error) {
+func (s *ArticleService) GetVersionsList(ctx context.Context, id uuid.UUID) ([]dto.Article, error) {
+	err := s.hierarchyService.CheckPermission(ctx, hierarchy.CheckPermissionRequest{
+		Entity: hierarchy.Entity{
+			ID:   id,
+			Type: hierarchy.EntityTypeArticle,
+		},
+		Role: auth.RoleRead,
+	})
+	if err != nil {
+		logger.Error(ctx, err).Str("id", id.String()).Msg("ArticleService.GetVersionsList.CheckPermission")
+		return nil, fmt.Errorf("ArticleService.GetVersionsList.CheckPermission: %w", err)
+	}
+
 	articles, err := s.repo.GetVersionsList(ctx, id)
 	if err != nil {
 		logger.Error(ctx, err).Str("id", id.String()).Msg("ArticleService.GetVersionsList")
@@ -64,62 +107,88 @@ func (s *ArticleService) GetVersionsList(ctx context.Context, id uuid.UUID) ([]A
 	return articles, nil
 }
 
-func (s *ArticleService) Create(ctx context.Context, req CreateArticleReq) (uuid.UUID, error) {
+func (s *ArticleService) Create(ctx context.Context, req dto.CreateArticleReq) (uuid.UUID, error) {
+	if req.Parent == nil {
+		err := s.userService.CheckIsAdmin(ctx)
+		if err != nil {
+			logger.Error(ctx, err).Msg("ArticleService.Create.CheckIsAdmin")
+			return uuid.Nil, fmt.Errorf("ArticleService.Create: %w", err)
+		}
+	} else {
+		err := s.hierarchyService.CheckPermission(ctx, hierarchy.CheckPermissionRequest{
+			Entity: hierarchy.Entity{
+				ID:   req.Parent.ID,
+				Type: req.Parent.Type,
+			},
+			Role: auth.RoleWrite,
+		})
+		if err != nil {
+			logger.Error(ctx, err).Interface("create_article_request", req).Str("id", req.ID.String()).
+				Str("user_id", req.UserID.String()).Msg("ArticleService.Create.CheckPermission")
+			return uuid.Nil, fmt.Errorf("ArticleService.Create.CheckPermission: %w", err)
+		}
+	}
+
+
+	}
 	id, err := uuid.NewV7()
 	if err != nil {
 		logger.Error(ctx, err).Msg("ArticleService.Create.uuid.NewV7")
 		return uuid.Nil, fmt.Errorf("ArticleService.Create.uuidV7: %w", err)
 	}
-	req.id = id
+	req.ID = id
 	// todo add userID to request
 
 	err = s.validateParent(ctx, req.ParentType, req.ParentID, id)
 	if err != nil {
-		logger.Error(ctx, err).Interface("create_article_request", req).Str("id", req.id.String()).
-			Str("user_id", req.userID.String()).Msg("ArticleService.Create.validateParent")
+		logger.Error(ctx, err).Interface("create_article_request", req).Str("id", req.ID.String()).
+			Str("user_id", req.UserID.String()).Msg("ArticleService.Create.validateParent")
 		return uuid.Nil, fmt.Errorf("ArticleService.Create: %w", err)
 	}
+	err = s.tx.Transaction(func(tx repo.Tx) error {
+		if err = s.repo.Create(ctx, req); err != nil {
+			logger.Error(ctx, err).Interface("create_article_request", req).Str("id", req.ID.String()).
+				Str("user_id", req.UserID.String()).Msg("ArticleService.Create")
+			return fmt.Errorf("ArticleService.Create: %w", err)
+		}
 
-	if err = s.repo.Create(ctx, req); err != nil {
-		logger.Error(ctx, err).Interface("create_article_request", req).Str("id", req.id.String()).
-			Str("user_id", req.userID.String()).Msg("ArticleService.Create")
-		return uuid.Nil, fmt.Errorf("ArticleService.Create: %w", err)
-	}
+		return nil
+	})
 
 	return id, nil
 }
 
-func (s *ArticleService) CreateDraft(ctx context.Context, req CreateArticleReq) (uuid.UUID, error) {
+func (s *ArticleService) CreateDraft(ctx context.Context, req dto.CreateArticleReq) (uuid.UUID, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
 		logger.Error(ctx, err).Msg("ArticleService.CreateDraft.uuid.NewV7")
 		return uuid.Nil, fmt.Errorf("ArticleService.CreateDraft.uuidV7: %w", err)
 	}
-	req.id = id
+	req.ID = id
 	//todo add userID to request
 
 	err = s.validateParent(ctx, req.ParentType, req.ParentID, id)
 	if err != nil {
-		logger.Error(ctx, err).Interface("create_article_request", req).Str("id", req.id.String()).
-			Str("user_id", req.userID.String()).Msg("ArticleService.CreateDraft.validateParent")
+		logger.Error(ctx, err).Interface("create_article_request", req).Str("id", req.ID.String()).
+			Str("user_id", req.UserID.String()).Msg("ArticleService.CreateDraft.validateParent")
 		return uuid.Nil, fmt.Errorf("ArticleService.CreateDraft: %w", err)
 	}
 
 	if err = s.repo.CreateDraft(ctx, req); err != nil {
-		logger.Error(ctx, err).Interface("create_article_request", req).Str("id", req.id.String()).
-			Str("user_id", req.userID.String()).Msg("ArticleService.CreateDraft")
+		logger.Error(ctx, err).Interface("create_article_request", req).Str("id", req.ID.String()).
+			Str("user_id", req.UserID.String()).Msg("ArticleService.CreateDraft")
 		return uuid.Nil, fmt.Errorf("ArticleService.CreateDraft: %w", err)
 	}
 
 	return id, nil
 }
 
-func (s *ArticleService) Update(ctx context.Context, req UpdateArticleReq) error {
+func (s *ArticleService) Update(ctx context.Context, req dto.UpdateArticleReq) error {
 	//todo add userID to request
 	err := s.validateParent(ctx, req.ParentType, req.ParentID, req.ID)
 	if err != nil {
 		logger.Error(ctx, err).Interface("update_article_request", req).
-			Str("user_id", req.userID.String()).Msg("ArticleService.Update.validateParent")
+			Str("user_id", req.UserID.String()).Msg("ArticleService.Update.validateParent")
 		return fmt.Errorf("ArticleService.Update: %w", err)
 	}
 
@@ -132,17 +201,17 @@ func (s *ArticleService) Update(ctx context.Context, req UpdateArticleReq) error
 	return nil
 }
 
-func (s *ArticleService) Delete(ctx context.Context, id uuid.UUID) error {
-	err := s.repo.Delete(ctx, id)
+func (s *ArticleService) Delete(ctx context.Context, ids []uuid.UUID) error {
+	err := s.repo.Delete(ctx, ids)
 	if err != nil {
-		logger.Error(ctx, err).Str("id", id.String()).Msg("ArticleService.Delete")
+		logger.Error(ctx, err).Interface("ids", ids).Msg("ArticleService.Delete")
 		return fmt.Errorf("ArticleService.Delete: %w", err)
 	}
 
 	return nil
 }
 
-func (s *ArticleService) GetPermittedArticleNodes(ctx context.Context) ([]ArticleNode, error) {
+func (s *ArticleService) GetPermittedArticleNodes(ctx context.Context) ([]dto.ArticleNode, error) {
 	//todo add permission check
 
 	articles, err := s.repo.GetAllArticleNodes(ctx)
@@ -154,9 +223,9 @@ func (s *ArticleService) GetPermittedArticleNodes(ctx context.Context) ([]Articl
 	return articles, nil
 }
 
-func (s *ArticleService) validateParent(ctx context.Context, pType parentType, pID uuid.UUID, id uuid.UUID) error {
+func (s *ArticleService) validateParent(ctx context.Context, pType dto.parentType, pID uuid.UUID, id uuid.UUID) error {
 	switch pType {
-	case ParentTypeDepartment:
+	case dto.ParentTypeDepartment:
 		exists, err := s.departmentService.Exists(ctx, pID)
 		if err != nil {
 			return fmt.Errorf("ArticleService.validateParent: %w", err)
@@ -169,7 +238,7 @@ func (s *ArticleService) validateParent(ctx context.Context, pType parentType, p
 				LogLevel: apperror.LogLevelWarn,
 			}
 		}
-	case ParentTypeArticle:
+	case dto.ParentTypeArticle:
 		err := s.repo.ValidateParent(ctx, id, pID)
 		if err != nil {
 			return fmt.Errorf("ArticleService.validateParent: %w", err)

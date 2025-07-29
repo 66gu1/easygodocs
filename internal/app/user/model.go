@@ -1,6 +1,9 @@
 package user
 
 import (
+	hierarchy "github.com/66gu1/easygodocs/internal/app/hierarchy/dto"
+	"github.com/66gu1/easygodocs/internal/app/user/dto"
+	"github.com/66gu1/easygodocs/internal/infrastructure/auth"
 	"github.com/66gu1/easygodocs/internal/infrastructure/db"
 	"github.com/google/uuid"
 	"time"
@@ -14,13 +17,13 @@ type user struct {
 	Name         string    `json:"name"`
 }
 
-func (u *user) toDTO() User {
+func (u *user) toDTO() dto.User {
 	var deletedAt *time.Time
 	if u.DeletedAt.Valid {
 		deletedAt = &u.DeletedAt.Time
 	}
 
-	return User{
+	return dto.User{
 		ID:           u.ID,
 		Email:        u.Email,
 		Name:         u.Name,
@@ -48,8 +51,8 @@ type session struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-func (s *session) toDTO() Session {
-	return Session{
+func (s *session) toDTO() dto.Session {
+	return dto.Session{
 		ID:           s.ID,
 		UserID:       s.UserID,
 		UserAgent:    s.UserAgent,
@@ -60,29 +63,45 @@ func (s *session) toDTO() Session {
 }
 
 type userRole struct {
-	UserID       uuid.UUID  `json:"user_id"`
-	Role         role       `json:"role"`
-	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
-	ArticleID    *uuid.UUID `json:"article_id,omitempty"`
+	UserID     uuid.UUID             `json:"user_id"`
+	Role       auth.Role             `json:"role"`
+	EntityID   *uuid.UUID            `json:"entity_id,omitempty"`
+	EntityType *hierarchy.EntityType `json:"entity_type"`
 }
 
-func (u *userRole) toDTO() UserRole {
-	return UserRole{
-		UserID:       u.UserID,
-		Role:         u.Role,
-		DepartmentID: u.DepartmentID,
-		ArticleID:    u.ArticleID,
+func (u *userRole) toDTO() dto.UserRole {
+	dto := dto.UserRole{
+		UserID: u.UserID,
+		Role:   u.Role,
 	}
+	if u.EntityID != nil && u.EntityType != nil {
+		dto.Entity.ID = *u.EntityID
+		dto.Entity.Type = *u.EntityType
+	}
+
+	return dto
 }
 
-func (u *userRole) fromDTO(dto UserRole) {
-	u.UserID = dto.UserID
-	u.Role = dto.Role
-	u.DepartmentID = dto.DepartmentID
-	u.ArticleID = dto.ArticleID
+func userRoleFromDTO(dto dto.UserRole) userRole {
+	model := userRole{
+		UserID: dto.UserID,
+		Role:   dto.Role,
+	}
+	if dto.Entity != nil {
+		model.EntityID = &dto.Entity.ID
+		model.EntityType = &dto.Entity.Type
+	}
+
+	return model
 }
 
 type accessScope struct {
-	DepartmentID *uuid.UUID
-	ArticleID    *uuid.UUID
+	EntityID   uuid.UUID            `json:"entity_id,omitempty"`
+	EntityType hierarchy.EntityType `json:"entity_type"`
+}
+
+type updateTokenReq struct {
+	ID           uuid.UUID `json:"id"`
+	RefreshToken string    `json:"refresh_token"`
+	ExpiresAt    time.Time `json:"expires_at"`
 }

@@ -1,5 +1,28 @@
 package apperror
 
+var (
+	ErrBadRequest = &Error{
+		Message:  "bad request",
+		Code:     BadRequest,
+		LogLevel: LogLevelWarn,
+	}
+	ErrNotFound = &Error{
+		Message:  "not found",
+		Code:     NotFound,
+		LogLevel: LogLevelWarn,
+	}
+	ErrUnauthorized = &Error{
+		Message:  "unauthorized",
+		Code:     Unauthorized,
+		LogLevel: LogLevelWarn,
+	}
+	ErrForbidden = &Error{
+		Message:  "forbidden",
+		Code:     Forbidden,
+		LogLevel: LogLevelWarn,
+	}
+)
+
 // Error is used for all application-level errors that should be shown to the user (e.g. 400, 401, 403).
 // For internal server errors (500), use fmt.Errorf and handle them separately to avoid exposing internal details to the client.
 type Error struct {

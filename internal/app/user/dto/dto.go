@@ -1,57 +1,13 @@
-package user
+package dto
 
 import (
-	"fmt"
-	"github.com/66gu1/easygodocs/internal/infrastructure/apperror"
+	hierarchy "github.com/66gu1/easygodocs/internal/app/hierarchy/dto"
+	"github.com/66gu1/easygodocs/internal/infrastructure/auth"
 	"github.com/google/uuid"
+
 	"net/mail"
 	"time"
 )
-
-var (
-	ErrInvalidEmail = &apperror.Error{
-		Message:  "invalid email address",
-		Code:     apperror.BadRequest,
-		LogLevel: apperror.LogLevelWarn,
-	}
-	ErrNameEmpty = &apperror.Error{
-		Message:  "name cannot be empty",
-		Code:     apperror.BadRequest,
-		LogLevel: apperror.LogLevelWarn,
-	}
-)
-
-func newErrNameTooLong(maxLength int) *apperror.Error {
-	return &apperror.Error{
-		Message:  fmt.Sprintf("name cannot be longer than %d characters", maxLength),
-		Code:     apperror.BadRequest,
-		LogLevel: apperror.LogLevelWarn,
-	}
-}
-
-func newErrEmailTooLong(maxLength int) *apperror.Error {
-	return &apperror.Error{
-		Message:  fmt.Sprintf("email cannot be longer than %d characters", maxLength),
-		Code:     apperror.BadRequest,
-		LogLevel: apperror.LogLevelWarn,
-	}
-}
-
-func newErrPasswordTooShort(minLength int) *apperror.Error {
-	return &apperror.Error{
-		Message:  fmt.Sprintf("password must be at least %d characters long", minLength),
-		Code:     apperror.BadRequest,
-		LogLevel: apperror.LogLevelWarn,
-	}
-}
-
-func newErrPasswordTooLong(maxLength int) *apperror.Error {
-	return &apperror.Error{
-		Message:  fmt.Sprintf("password cannot be longer than %d characters", maxLength),
-		Code:     apperror.BadRequest,
-		LogLevel: apperror.LogLevelWarn,
-	}
-}
 
 type User struct {
 	ID           uuid.UUID  `json:"id"`
@@ -73,10 +29,9 @@ type Session struct {
 }
 
 type UserRole struct {
-	UserID       uuid.UUID  `json:"user_id"`
-	Role         role       `json:"role"`
-	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
-	ArticleID    *uuid.UUID `json:"article_id,omitempty"`
+	UserID uuid.UUID         `json:"user_id"`
+	Role   auth.Role         `json:"role"`
+	Entity *hierarchy.Entity `json:"entity"`
 }
 
 type CreateUserReq struct {
@@ -159,13 +114,30 @@ func (req *ChangePasswordReq) Validate(maxPasswordLength, minPasswordLength int)
 
 type CheckUserRoleReq struct {
 	UserID       uuid.UUID  `json:"user_id"`
-	Role         role       `json:"role"`
+	Role         auth.Role  `json:"role"`
 	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
 	ArticleID    *uuid.UUID `json:"article_id,omitempty"`
 }
 
-type updateTokenReq struct {
-	ID           uuid.UUID `json:"id"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresAt    time.Time `json:"expires_at"`
+type LoginReq struct {
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	UserAgent string `json:"-"`
+}
+
+func (req *LoginReq) Validate() error {
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		return ErrInvalidEmail
+	}
+	if len(req.Password) == 0 {
+		return ErrPasswordEmpty
+	}
+
+	return nil
+}
+
+type Permissions struct {
+	ArticleIDs    []uuid.UUID `json:"article_ids"`
+	DepartmentIDs []uuid.UUID `json:"department_ids"`
+	All           bool        `json:"all"`
 }

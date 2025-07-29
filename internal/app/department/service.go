@@ -3,7 +3,7 @@ package department
 import (
 	"context"
 	"fmt"
-	"github.com/66gu1/easygodocs/internal/app/article"
+	"github.com/66gu1/easygodocs/internal/app/article/dto"
 	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -30,7 +30,7 @@ type Repository interface {
 }
 
 type ArticleService interface {
-	GetPermittedArticleNodes(ctx context.Context) ([]article.ArticleNode, error)
+	GetPermittedArticleNodes(ctx context.Context) ([]dto.ArticleNode, error)
 }
 
 func NewService(repo Repository, articleService ArticleService) *DepartmentService {

@@ -179,7 +179,7 @@ func TestDepartmentService_GetDepartmentTree(t *testing.T) {
 			wantTree: nil,
 		},
 		{
-			name: "repo error",
+			name: "tx error",
 			setup: func(repo *mock.RepositoryMock) {
 				repo.ListMock.Times(1).Expect(ctx).Return(nil, expErr)
 			},
@@ -303,7 +303,7 @@ func TestDepartmentService_Delete(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "repo error",
+			name: "tx error",
 			setup: func(repo *mock.RepositoryMock) {
 				repo.DeleteMock.Times(1).Expect(ctx, id).Return(expErr)
 			},

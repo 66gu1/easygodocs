@@ -4,9 +4,9 @@ CREATE TABLE user_roles
 (
     user_id       UUID NOT NULL,
     role          TEXT NOT NULL,
-    department_id UUID, -- nullable; if set, role applies to that department
-    article_id    UUID, -- nullable; if set, role applies to that article
-    PRIMARY KEY (user_id, role, department_id, article_id)
+    entity_id UUID,
+    entity_type    TEXT,
+    PRIMARY KEY (user_id, role, entity_id, entity_type)
 );
 -- +goose StatementEnd
 
