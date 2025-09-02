@@ -1,0 +1,83 @@
+run:
+  timeout: 5m
+  tests: true
+
+output:
+  sort-results: true
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - revive
+    - errcheck
+    - errorlint
+    - wrapcheck
+    - gosimple
+    - ineffassign
+    - typecheck
+    - unused
+    - unparam
+    - misspell
+    - dupl
+    - gocyclo
+    - cyclop
+    - goconst
+    - gocritic
+    - prealloc
+    - bodyclose
+    - containedctx
+    - contextcheck
+    - sqlclosecheck
+    - rowserrcheck
+    - gosec
+    - forbidigo
+    - gofumpt
+    - goimports
+
+linters-settings:
+  gofumpt:
+    extra-rules: true
+  gocyclo:
+    min-complexity: 15
+  cyclop:
+    max-complexity: 15
+  lll:
+    line-length: 120
+    tab-width: 1
+  revive:
+    severity: warning
+    rules:
+      - name: exported
+        disabled: true
+      - name: var-naming
+      - name: receiver-naming
+      - name: package-comments
+        disabled: true
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  forbidigo:
+    forbid:
+      - 'fmt\.Print.*'   # используем zerolog
+  gosec:
+    excludes:
+      - G104             # unchecked error (допускаем в местах, где у тебя лог+wrap)
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+
+issues:
+  exclude-files:
+    - ".*_mock\\.go"
+    - ".*\\.pb\\.go"
+  exclude-dirs:
+    - vendor
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+    - path: repo/gorm
+      linters:
+        - lll           # длинные raw SQL — ок
+        - dupl          # повторяющиеся SQL блоки — ок

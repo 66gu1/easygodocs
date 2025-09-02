@@ -4,14 +4,14 @@ CREATE TABLE user_sessions
 (
     id         UUID PRIMARY KEY,
     user_id    UUID NOT NULL,
-    user_agent TEXT,
-    refresh_token      TEXT NOT NULL,
-    created_at TIMESTAMPTZ,
-    expires_at TIMESTAMPTZ
+    refresh_token_hash      TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    session_version INTEGER NOT NULL CHECK ( session_version >= 0 ),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-CREATE UNIQUE INDEX idx_user_sessions_user_id ON user_sessions (user_id);
-CREATE UNIQUE INDEX idx_user_sessions_refresh_token ON user_sessions (refresh_token);
-CREATE UNIQUE INDEX idx_user_sessions_expires_at ON user_sessions (expires_at);
+CREATE INDEX idx_user_sessions_user_id ON user_sessions (user_id);
+CREATE INDEX idx_user_sessions_expires_at ON user_sessions (expires_at);
 -- +goose StatementEnd
 
 -- +goose Down

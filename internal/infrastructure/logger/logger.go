@@ -3,37 +3,54 @@ package logger
 import (
 	"context"
 	"errors"
-	"github.com/66gu1/easygodocs/internal/infrastructure/apperror"
-	"github.com/66gu1/easygodocs/internal/infrastructure/contextutil"
-	"github.com/google/uuid"
+
+	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
+	"github.com/66gu1/easygodocs/internal/infrastructure/contextx"
 	"github.com/rs/zerolog"
 )
 
-func Error(ctx context.Context, err error) *zerolog.Event {
-	l := zerolog.Ctx(ctx)
+func Error(ctx context.Context, loggingErr error) *zerolog.Event {
+	return log(ctx, apperr.LogLevelOf(loggingErr), loggingErr)
+}
 
-	var (
-		appErr *apperror.Error
-		event  = l.Error()
-	)
+func Warn(ctx context.Context, loggingErr error) *zerolog.Event {
+	return log(ctx, apperr.LogLevelWarn, loggingErr)
+}
 
-	if errors.As(err, &appErr) && appErr.LogLevel == apperror.LogLevelWarn {
-		event = l.Warn()
-	}
+func log(ctx context.Context, level apperr.LogLevel, loggingErr error) *zerolog.Event {
+	ctx = context.WithoutCancel(ctx)
+	event := zerolog.Ctx(ctx).WithLevel(toZerologLevel(level))
 
-	if currentUser, ok := contextutil.GetFromContext[uuid.UUID](ctx, contextutil.ContextKeyUserID); ok {
+	currentUser, err := contextx.GetUserID(ctx)
+	if err != nil {
+		if !errors.Is(err, contextx.ErrNotFound) {
+			zerolog.Ctx(ctx).Error().Err(err).Msg("logger.log: GetUserID")
+		}
+	} else {
 		event = event.Str("current_user_id", currentUser.String())
 	}
 
-	return event.Err(err)
-}
-
-func Warn(ctx context.Context, err error) *zerolog.Event {
-	l := zerolog.Ctx(ctx)
-	resp := l.Warn()
+	sessionID, err := contextx.GetSessionID(ctx)
 	if err != nil {
-		return resp.Err(err)
+		if !errors.Is(err, contextx.ErrNotFound) {
+			zerolog.Ctx(ctx).Error().Err(err).Msg("logger.log: GetSessionID")
+		}
+	} else {
+		event = event.Str("session_id", sessionID.String())
 	}
 
-	return resp
+	if loggingErr != nil {
+		event = event.Err(loggingErr)
+	}
+
+	return event
+}
+
+func toZerologLevel(level apperr.LogLevel) zerolog.Level {
+	switch level {
+	case apperr.LogLevelWarn:
+		return zerolog.WarnLevel
+	default:
+		return zerolog.ErrorLevel
+	}
 }

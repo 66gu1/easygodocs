@@ -2,3 +2,15 @@ app_name: EasyGoDocs
 port: 8080
 log_level: debug
 database_dsn: "host=localhost user=postgres dbname=easy_go_docs port=5432 sslmode=disable"
+auth:
+  session_ttl_minutes: 6000
+  access_token_ttl_minutes: 15
+user:
+  max_email_length: 254
+  max_name_length: 30
+  min_password_length: 8
+  max_password_length: 50
+  password_hash_cost: 12
+entity:
+  max_hierarchy_depth: 15
+  max_name_length: 100

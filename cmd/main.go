@@ -3,9 +3,25 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/66gu1/easygodocs/internal/app/article"
-	"github.com/66gu1/easygodocs/internal/app/department"
-	"github.com/66gu1/easygodocs/internal/infrastructure/auth"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/66gu1/easygodocs/internal/app/auth"
+	authrepo "github.com/66gu1/easygodocs/internal/app/auth/repo/gorm"
+	authhttp "github.com/66gu1/easygodocs/internal/app/auth/transport/http"
+	authusecase "github.com/66gu1/easygodocs/internal/app/auth/usecase"
+	"github.com/66gu1/easygodocs/internal/app/entity"
+	entityrepo "github.com/66gu1/easygodocs/internal/app/entity/repo/gorm"
+	entityhttp "github.com/66gu1/easygodocs/internal/app/entity/transport/http"
+	entityusecase "github.com/66gu1/easygodocs/internal/app/entity/usecase"
+	"github.com/66gu1/easygodocs/internal/app/user"
+	userrepo "github.com/66gu1/easygodocs/internal/app/user/repo/gorm"
+	userhttp "github.com/66gu1/easygodocs/internal/app/user/transport/http"
+	userusecase "github.com/66gu1/easygodocs/internal/app/user/usecase"
+	"github.com/66gu1/easygodocs/internal/infrastructure/httpx"
+	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
+	"github.com/66gu1/easygodocs/internal/infrastructure/system"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
@@ -13,9 +29,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"net/http"
-	"os"
-	"time"
 )
 
 func main() {
@@ -25,9 +38,9 @@ func main() {
 	zerolog.SetGlobalLevel(cfg.LogLevel.zeroLog())
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	err := godotenv.Load() // looks for .env in current directory
+	err := godotenv.Overload(".env")
 	if err != nil {
-		log.Debug().Err(err).Msg("failed to load .env file, using environment variables")
+		log.Debug().Err(err).Msg("failed to load .env.local file, using environment variables")
 	}
 
 	password := os.Getenv("DB_PASSWORD")
@@ -35,58 +48,106 @@ func main() {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		NowFunc: func() time.Time {
 			return time.Now().UTC()
-		}})
+		},
+	})
 	if err != nil {
 		panic(err)
 	}
 
 	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal().Msg("JWT_SECRET environment variable not set")
-	}
-	authService := auth.New(jwtSecret)
+	jwtCodec := secure.NewTokenCodec([]byte(jwtSecret))
+
+	idGen := &system.UUIDv7Generator{}
+	timeGen := &system.TimeGenerator{}
+	rndGen := &system.RNDGenerator{}
+
+	userRepo := userrepo.NewRepository(db)
+	userCore := user.NewCore(userRepo, idGen, cfg.User)
+
+	authRepo := authrepo.NewRepository(db)
+	authCore := auth.NewCore(authRepo, jwtCodec, idGen, rndGen, timeGen, cfg.Auth)
+
+	entityRepo := entityrepo.NewRepository(db, cfg.Entity)
+	entityCore := entity.NewCore(entityRepo, entity.Generators{
+		ID:   idGen,
+		Time: timeGen,
+	})
+
+	userService := userusecase.NewService(userCore, authCore)
+	userHandler := userhttp.NewHandler(userService)
+
+	authService := authusecase.NewService(authCore, userCore)
+	authHandler := authhttp.NewHandler(authService)
+
+	entityService := entityusecase.NewService(entityCore, authCore)
+	entityHandler := entityhttp.NewHandler(entityService)
 
 	// --- set up chi router
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Logger)
+	r.Use(httpx.MaxBodyBytes(cfg.MaxBodySize))
 
-	departmentService := department.NewService(department.NewRepository(db), nil)
-	articleService := article.NewService(article.NewRepository(db), departmentService)
-	departmentService.SetArticleService(articleService)
+	// with auth
+	r.Group(func(r chi.Router) {
+		r.Use(authhttp.AuthMiddleware(jwtCodec))
+		// --- user routes
+		r.Route("/users", func(r chi.Router) {
+			r.Get("/", userHandler.GetAllUsers) // GET    /users
 
-	departmentHandler := department.NewHandler(departmentService)
-	articleHandler := article.NewHandler(articleService)
-
-	r.Group(func(p chi.Router) {
-		p.Use(authService.AuthMiddleware)
-		// --- department routes
-		p.Route("/departments", func(r chi.Router) {
-			p.Get("/", departmentHandler.GetDepartmentTree) // GET    /departments
-			p.Post("/", departmentHandler.Create)           // POST   /departments
-
-			p.Route("/{id}", func(r chi.Router) {
-				p.Put("/", departmentHandler.Update)    // PUT    /departments/{id}
-				p.Delete("/", departmentHandler.Delete) // DELETE /departments/{id}
+			r.Route(fmt.Sprintf("/{%s}", userhttp.URLParamUserID), func(r chi.Router) {
+				r.Get("/", userHandler.GetUser)                 // GET    /users/{user_id}
+				r.Put("/", userHandler.UpdateUser)              // PUT    /users/{user_id}
+				r.Delete("/", userHandler.DeleteUser)           // DELETE /users/{user_id}
+				r.Post("/password", userHandler.ChangePassword) // POST   /users/{user_id}/password
 			})
 		})
 
-		// --- article routes
-		p.Route("/articles", func(r chi.Router) {
-			p.Post("/", articleHandler.Create) // POST   /articles
-			p.Post("/draft", articleHandler.CreateDraft)
+		// --- session routes
+		r.Route("/sessions", func(r chi.Router) {
+			r.Get("/", authHandler.GetSessionsByUserID)       // GET    /sessions?user_id={user_id}
+			r.Delete("/", authHandler.DeleteSessionsByUserID) // DELETE /sessions?user_id={user_id}
 
-			p.Route("/{id}", func(r chi.Router) {
-				p.Get("/", articleHandler.Get)                          // GET    /articles/{id}
-				p.Put("/", articleHandler.Update)                       // PUT    /articles/{id}
-				p.Delete("/", articleHandler.Delete)                    // DELETE /articles/{id}
-				p.Get("/versions", articleHandler.GetVersionsList)      // GET    /articles/{id}/versions
-				p.Get("/versions/{version}", articleHandler.GetVersion) // GET    /articles/{id}/versions/{version}
+			r.Route(fmt.Sprintf("/{%s}", authhttp.URLParamSessionID), func(r chi.Router) {
+				r.Delete("/", authHandler.DeleteSession) // DELETE /sessions/{session_id}
 			})
 		})
+
+		// --- roles routes
+		r.Route("/roles", func(r chi.Router) {
+			r.Get("/", authHandler.ListUserRoles)     // GET /roles
+			r.Post("/", authHandler.AddUserRole)      // POST /roles
+			r.Delete("/", authHandler.DeleteUserRole) // DELETE /roles?user_id={user_id}&role={role}&entity_id={entity_id}
+		})
+
+		// --- entity routes
+		r.Route("/entities", func(r chi.Router) {
+			r.Post("/", entityHandler.Create) // POST /entities
+			r.Get("/", entityHandler.GetTree) // GET /entities
+
+			r.Route(fmt.Sprintf("/{%s}", entityhttp.URLParamEntityID), func(r chi.Router) {
+				r.Get("/", entityHandler.Get)       // GET    /entities/{entity_id}
+				r.Put("/", entityHandler.Update)    // PUT    /entities/{entity_id}
+				r.Delete("/", entityHandler.Delete) // DELETE /entities/{entity_id}
+
+				r.Route("/versions", func(r chi.Router) {
+					r.Get("/", entityHandler.GetVersionsList) // GET /entities/{entity_id}/versions
+
+					r.Route(fmt.Sprintf("/{%s}", entityhttp.URLParamVersion), func(r chi.Router) {
+						r.Get("/", entityHandler.GetVersion) // GET /entities/{entity_id}/versions/{version}
+					})
+				})
+			})
+		})
+	})
+
+	// without auth
+	r.Group(func(r chi.Router) {
+		r.Post("/login", authHandler.Login)           // POST /login
+		r.Post("/refresh", authHandler.RefreshTokens) // POST /refresh
+		r.Post("/register", userHandler.CreateUser)   // POST /register
 	})
 
 	srv := &http.Server{
@@ -96,9 +157,8 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Info().Msg("starting server on :8080")
+	log.Info().Msg(fmt.Sprintf("starting server on :%s", cfg.Port))
 	if err = srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal().Err(err).Msg("server error")
 	}
-
 }
