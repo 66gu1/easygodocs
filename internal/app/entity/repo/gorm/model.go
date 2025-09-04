@@ -20,7 +20,11 @@ type entityModel struct {
 	CurrentVersion *int
 }
 
-func (m entityModel) toDTO() entity.Entity {
+func (m *entityModel) TableName() string {
+	return "entities"
+}
+
+func (m *entityModel) toDTO() entity.Entity {
 	return entity.Entity{
 		ID:             m.ID,
 		Type:           m.Type,
@@ -45,15 +49,21 @@ type versionModel struct {
 	Version   int
 }
 
-func (m versionModel) toDTO() entity.Entity {
+func (m *versionModel) TableName() string {
+	return "entity_versions"
+}
+
+func (m *versionModel) toDTO() entity.Entity {
 	return entity.Entity{
 		ID:             m.EntityID,
 		Name:           m.Name,
 		Content:        m.Content,
 		ParentID:       m.ParentID,
 		CreatedBy:      m.CreatedBy,
+		UpdatedBy:      m.CreatedBy,
 		CurrentVersion: &m.Version,
 		CreatedAt:      m.CreatedAt,
+		UpdatedAt:      m.CreatedAt,
 	}
 }
 
@@ -62,6 +72,10 @@ type entityListItemModel struct {
 	Type     entity.Type
 	Name     string
 	ParentID *uuid.UUID
+}
+
+func (m *entityListItemModel) TableName() string {
+	return "entities"
 }
 
 func (m entityListItemModel) toDTO() entity.ListItem {

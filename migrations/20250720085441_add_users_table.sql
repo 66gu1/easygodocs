@@ -6,7 +6,7 @@ CREATE TABLE users
     email         TEXT NOT NULL,
     password_hash TEXT        NOT NULL,
     name          TEXT,
-    session_version INTEGER NOT NULL CHECK (session_version >= 0),
+    session_version INTEGER NOT NULL CHECK (session_version >= 0) DEFAULT 0,
     created_at    TIMESTAMPTZ,
     updated_at    TIMESTAMPTZ,
     deleted_at    TIMESTAMPTZ

@@ -43,6 +43,15 @@ func (role Role) Validate() error {
 	}
 }
 
+func (role Role) IsOnlyForRead() bool {
+	switch role {
+	case RoleRead:
+		return true
+	default:
+		return false
+	}
+}
+
 func (role Role) RequiresEntity() bool {
 	switch role {
 	case RoleRead, RoleWrite:

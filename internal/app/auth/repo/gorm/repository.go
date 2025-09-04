@@ -7,7 +7,9 @@ import (
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
+	"github.com/66gu1/easygodocs/internal/infrastructure/db"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 )
@@ -26,7 +28,7 @@ func NewRepository(db *gorm.DB) *gormRepo {
 }
 
 func (r *gormRepo) CreateSession(ctx context.Context, req auth.Session, rtHash string) error {
-	model := &sessionModel{
+	model := &userSession{
 		ID:               req.ID,
 		UserID:           req.UserID,
 		RefreshTokenHash: rtHash,
@@ -44,19 +46,19 @@ func (r *gormRepo) CreateSession(ctx context.Context, req auth.Session, rtHash s
 }
 
 func (r *gormRepo) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error) {
-	models := make([]sessionModel, 0)
+	models := make([]userSession, 0)
 
-	err := r.db.WithContext(ctx).Where("user_id = $1", userID).Find(&models).Error
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Find(&models).Error
 	if err != nil {
 		return nil, fmt.Errorf("gormRepo.GetSessionsByUserID: %w", err)
 	}
 
-	return lo.Map(models, func(s sessionModel, _ int) auth.Session { return s.toDTO() }), nil
+	return lo.Map(models, func(s userSession, _ int) auth.Session { return s.toDTO() }), nil
 }
 
 func (r *gormRepo) GetSessionByID(ctx context.Context, id uuid.UUID) (auth.Session, string, error) {
-	var model sessionModel
-	err := r.db.WithContext(ctx).Where("id = $1", id).First(&model).Error
+	var model userSession
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = ErrSessionNotFound
@@ -68,9 +70,9 @@ func (r *gormRepo) GetSessionByID(ctx context.Context, id uuid.UUID) (auth.Sessi
 }
 
 func (r *gormRepo) DeleteSessionByID(ctx context.Context, id uuid.UUID) error {
-	model := &sessionModel{ID: id}
+	model := &userSession{ID: id}
 
-	result := r.db.WithContext(ctx).Where("id = $1", id).Delete(model)
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(model)
 	if result.Error != nil {
 		return fmt.Errorf("gormRepo.DeleteSessionByID: %w", result.Error)
 	}
@@ -82,9 +84,9 @@ func (r *gormRepo) DeleteSessionByID(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *gormRepo) DeleteSessionByIDAndUser(ctx context.Context, id, userID uuid.UUID) error {
-	model := &sessionModel{ID: id}
+	model := &userSession{ID: id}
 
-	result := r.db.WithContext(ctx).Where("id = $1 AND user_id = $2",
+	result := r.db.WithContext(ctx).Where("id = ? AND user_id = ?",
 		id, userID).Delete(model)
 	if result.Error != nil {
 		return fmt.Errorf("gormRepo.DeleteSessionByIDAndUser: %w", result.Error)
@@ -97,9 +99,9 @@ func (r *gormRepo) DeleteSessionByIDAndUser(ctx context.Context, id, userID uuid
 }
 
 func (r *gormRepo) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error {
-	model := &sessionModel{}
+	model := &userSession{}
 
-	result := r.db.WithContext(ctx).Where("user_id = $1", userID).Delete(model)
+	result := r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(model)
 	if result.Error != nil {
 		return fmt.Errorf("gormRepo.DeleteSessionsByUserID: %w", result.Error)
 	}
@@ -108,9 +110,9 @@ func (r *gormRepo) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID)
 }
 
 func (r *gormRepo) UpdateRefreshToken(ctx context.Context, req auth.UpdateTokenReq) error {
-	model := &sessionModel{}
+	model := &userSession{}
 
-	result := r.db.WithContext(ctx).Model(model).Where("id = $1 AND refresh_token_hash = $2 AND user_id = $3",
+	result := r.db.WithContext(ctx).Model(model).Where("id = ? AND refresh_token_hash = ? AND user_id = ?",
 		req.SessionID, req.OldRefreshTokenHash, req.UserID).
 		Updates(map[string]interface{}{"refresh_token_hash": req.RefreshTokenHash, "expires_at": req.ExpiresAt})
 	if result.Error != nil {
@@ -125,8 +127,10 @@ func (r *gormRepo) UpdateRefreshToken(ctx context.Context, req auth.UpdateTokenR
 
 func (r *gormRepo) AddUserRole(ctx context.Context, req auth.UserRole) error {
 	if err := r.db.WithContext(ctx).Create(userRoleFromDTO(req)).Error; err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			err = apperr.New("role already assigned to user", auth.CodeRoleDuplicate, apperr.ClassConflict, apperr.LogLevelWarn)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == db.DuplicateCode {
+			return apperr.New("role already assigned to user",
+				auth.CodeRoleDuplicate, apperr.ClassConflict, apperr.LogLevelWarn)
 		}
 		return fmt.Errorf("gormRepo.AddUserRole: %w", err)
 	}
@@ -137,7 +141,7 @@ func (r *gormRepo) AddUserRole(ctx context.Context, req auth.UserRole) error {
 func (r *gormRepo) GetUserRoles(ctx context.Context, userID uuid.UUID, roles []auth.Role) ([]auth.UserRole, error) {
 	models := make([]userRole, 0)
 
-	err := r.db.WithContext(ctx).Where("user_id = $1 AND role = ANY($2)", userID, roles).Find(&models).Error
+	err := r.db.WithContext(ctx).Where("user_id = ? AND role IN ?", userID, roles).Find(&models).Error
 	if err != nil {
 		return nil, fmt.Errorf("gormRepo.GetUserRoles: %w", err)
 	}
@@ -148,7 +152,7 @@ func (r *gormRepo) GetUserRoles(ctx context.Context, userID uuid.UUID, roles []a
 func (r *gormRepo) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]auth.UserRole, error) {
 	models := make([]userRole, 0)
 
-	err := r.db.WithContext(ctx).Where("user_id = $1", userID).Find(&models).Error
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Find(&models).Error
 	if err != nil {
 		return nil, fmt.Errorf("gormRepo.ListUserRoles: %w", err)
 	}
@@ -159,10 +163,10 @@ func (r *gormRepo) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]auth.
 func (r *gormRepo) DeleteUserRole(ctx context.Context, req auth.UserRole) error {
 	var result *gorm.DB
 	if req.EntityID == nil {
-		result = r.db.WithContext(ctx).Where("user_id = $1 AND role = $2 AND entity_id IS NULL",
+		result = r.db.WithContext(ctx).Where("user_id = ? AND role = ? AND entity_id IS NULL",
 			req.UserID, req.Role).Delete(&userRole{})
 	} else {
-		result = r.db.WithContext(ctx).Where("user_id = $1 AND role = $2 AND entity_id = $3",
+		result = r.db.WithContext(ctx).Where("user_id = ? AND role = ? AND entity_id = ?",
 			req.UserID, req.Role, req.EntityID).Delete(&userRole{})
 	}
 	if result.Error != nil {

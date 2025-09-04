@@ -36,7 +36,7 @@ type service struct {
 
 type Core interface {
 	GetTree(ctx context.Context, permissions []uuid.UUID, isAdmin bool) (entity.Tree, error)
-	GetPermittedHierarchy(ctx context.Context, directPermissions []uuid.UUID) ([]uuid.UUID, error)
+	GetPermittedHierarchy(ctx context.Context, directPermissions []uuid.UUID, onlyForRead bool) ([]uuid.UUID, error)
 	Get(ctx context.Context, id uuid.UUID) (entity.Entity, error)
 	GetVersion(ctx context.Context, id uuid.UUID, version int) (entity.Entity, error)
 	GetVersionsList(ctx context.Context, id uuid.UUID) ([]entity.Entity, error)
@@ -273,7 +273,7 @@ func (s *service) getEffectivePermissions(ctx context.Context, role auth.Role) (
 		return effectivePermissions{isAdmin: true}, nil
 	}
 
-	effectiveIDs, err := s.core.GetPermittedHierarchy(ctx, ids)
+	effectiveIDs, err := s.core.GetPermittedHierarchy(ctx, ids, role.IsOnlyForRead())
 	if err != nil {
 		return effectivePermissions{}, fmt.Errorf("getEffectivePermissions: %w", err)
 	}

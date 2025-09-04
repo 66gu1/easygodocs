@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type sessionModel struct {
+type userSession struct {
 	ID               uuid.UUID
 	UserID           uuid.UUID
 	RefreshTokenHash string `json:"-"`
@@ -16,7 +16,7 @@ type sessionModel struct {
 	SessionVersion   int
 }
 
-func (s *sessionModel) toDTO() auth.Session {
+func (s *userSession) toDTO() auth.Session {
 	return auth.Session{
 		ID:             s.ID,
 		UserID:         s.UserID,

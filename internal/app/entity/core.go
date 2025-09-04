@@ -10,6 +10,25 @@ import (
 	"github.com/google/uuid"
 )
 
+func ErrEntityNotFound() error {
+	return apperr.New("Entity not found", CodeNotFound, apperr.ClassNotFound, apperr.LogLevelWarn)
+}
+
+func ErrParentCycle() error {
+	return apperr.New("Parent cycle detected", CodeParentCycle, apperr.ClassBadRequest, apperr.LogLevelWarn).
+		WithViolation(apperr.Violation{
+			Field: FieldParentID, Rule: apperr.RuleCycle,
+		})
+}
+
+func ErrMaxHierarchyDepthExceeded(maxDepth int) error {
+	return apperr.New("Maximum hierarchy depth exceeded", CodeMaxDepthExceeded, apperr.ClassBadRequest, apperr.LogLevelWarn).
+		WithViolation(apperr.Violation{
+			Field: FieldParentID, Rule: apperr.RuleMaxHierarchy,
+			Params: map[string]any{"max_depth": maxDepth},
+		})
+}
+
 const (
 	CodeValidationFailed apperr.Code = "entity/validation_failed"
 	CodeNotFound         apperr.Code = "entity/not_found"
@@ -41,7 +60,7 @@ func ErrParentRequired() error {
 }
 
 type Repository interface {
-	GetPermittedHierarchy(ctx context.Context, permissions []uuid.UUID) ([]ListItem, error)
+	GetPermittedHierarchy(ctx context.Context, permissions []uuid.UUID, onlyForRead bool) ([]ListItem, error)
 	Get(ctx context.Context, id uuid.UUID) (Entity, error)
 	GetVersion(ctx context.Context, id uuid.UUID, version int) (Entity, error)
 	GetVersionsList(ctx context.Context, id uuid.UUID) ([]Entity, error)
@@ -117,7 +136,7 @@ func (c *core) GetTree(ctx context.Context, permissions []uuid.UUID, isAdmin boo
 		if len(permissions) == 0 {
 			return Tree{}, nil
 		}
-		permitted, err = c.repo.GetPermittedHierarchy(ctx, permissions)
+		permitted, err = c.repo.GetPermittedHierarchy(ctx, permissions, true)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("entity.Service.GetTree: %w", err)
@@ -126,11 +145,11 @@ func (c *core) GetTree(ctx context.Context, permissions []uuid.UUID, isAdmin boo
 	return BuildTree(ctx, permitted), nil
 }
 
-func (c *core) GetPermittedHierarchy(ctx context.Context, directPermissions []uuid.UUID) ([]uuid.UUID, error) {
+func (c *core) GetPermittedHierarchy(ctx context.Context, directPermissions []uuid.UUID, onlyForRead bool) ([]uuid.UUID, error) {
 	if len(directPermissions) == 0 {
 		return nil, nil
 	}
-	permitted, err := c.repo.GetPermittedHierarchy(ctx, directPermissions)
+	permitted, err := c.repo.GetPermittedHierarchy(ctx, directPermissions, onlyForRead)
 	if err != nil {
 		return nil, fmt.Errorf("entity.core.GetPermittedHierarchy: %w", err)
 	}

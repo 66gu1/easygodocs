@@ -6,7 +6,9 @@ import (
 	"fmt"
 
 	"github.com/66gu1/easygodocs/internal/app/user"
+	"github.com/66gu1/easygodocs/internal/infrastructure/db"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 )
@@ -29,7 +31,8 @@ func (r *gormRepo) CreateUser(ctx context.Context, req user.CreateUserReq, id uu
 
 	err := r.db.WithContext(ctx).Create(model).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == db.DuplicateCode {
 			err = user.ErrUserWithEmailAlreadyExists()
 		}
 		return fmt.Errorf("gormRepo.CreateUser: %w", err)
@@ -55,7 +58,7 @@ func (r *gormRepo) GetUser(ctx context.Context, id uuid.UUID) (user.User, string
 func (r *gormRepo) GetUserByEmail(ctx context.Context, email string) (user.User, string, error) {
 	model := userModel{}
 
-	err := r.db.WithContext(ctx).Where("email = $1", email).First(&model).Error
+	err := r.db.WithContext(ctx).Where("email = ?", email).First(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = user.ErrUserNotFound()
@@ -86,7 +89,8 @@ func (r *gormRepo) UpdateUser(ctx context.Context, req user.UpdateUserReq) error
 		Updates(map[string]interface{}{"name": req.Name, "email": req.Email})
 	if result.Error != nil {
 		err := result.Error
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == db.DuplicateCode {
 			err = user.ErrUserWithEmailAlreadyExists()
 		}
 		return fmt.Errorf("gormRepo.UpdateUser: %w", err)

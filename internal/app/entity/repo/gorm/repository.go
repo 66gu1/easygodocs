@@ -7,30 +7,10 @@ import (
 	"time"
 
 	"github.com/66gu1/easygodocs/internal/app/entity"
-	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 )
-
-func ErrEntityNotFound() error {
-	return apperr.New("Entity not found", entity.CodeNotFound, apperr.ClassNotFound, apperr.LogLevelWarn)
-}
-
-func ErrParentCycle() error {
-	return apperr.New("Parent cycle detected", entity.CodeParentCycle, apperr.ClassBadRequest, apperr.LogLevelWarn).
-		WithViolation(apperr.Violation{
-			Field: entity.FieldParentID, Rule: apperr.RuleCycle,
-		})
-}
-
-func ErrMaxHierarchyDepthExceeded(maxDepth int) error {
-	return apperr.New("Maximum hierarchy depth exceeded", entity.CodeMaxDepthExceeded, apperr.ClassBadRequest, apperr.LogLevelWarn).
-		WithViolation(apperr.Violation{
-			Field: entity.FieldParentID, Rule: apperr.RuleMaxHierarchy,
-			Params: map[string]any{"max_depth": maxDepth},
-		})
-}
 
 type gormRepo struct {
 	db  *gorm.DB
@@ -59,7 +39,7 @@ func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error)
 	err := r.db.WithContext(ctx).Where("id = $1", id).First(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = ErrEntityNotFound()
+			err = entity.ErrEntityNotFound()
 		}
 		return entity.Entity{}, fmt.Errorf("gormRepo.Get: %w", err)
 	}
@@ -73,7 +53,7 @@ func (r *gormRepo) GetListItem(ctx context.Context, id uuid.UUID) (entity.ListIt
 	err := r.db.WithContext(ctx).Where("id = $1", id).First(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = ErrEntityNotFound()
+			err = entity.ErrEntityNotFound()
 		}
 		return entity.ListItem{}, fmt.Errorf("gormRepo.GetListItem: %w", err)
 	}
@@ -92,25 +72,27 @@ func (r *gormRepo) GetAll(ctx context.Context) ([]entity.ListItem, error) {
 	return lo.Map(models, func(m entityListItemModel, _ int) entity.ListItem { return m.toDTO() }), nil
 }
 
-func (r *gormRepo) GetPermittedHierarchy(ctx context.Context, permissions []uuid.UUID) ([]entity.ListItem, error) {
+func (r *gormRepo) GetPermittedHierarchy(ctx context.Context, permissions []uuid.UUID, onlyForRead bool) ([]entity.ListItem, error) {
 	var models []entityListItemModel
 	if len(permissions) == 0 {
 		return []entity.ListItem{}, nil
 	}
+	query := `/* noinspection SqlNoDataSourceInspection */
+    SELECT *
+    FROM children `
+	rqType := onlyChildren
 
-	recursiveQuery, err := r.getRecursiveQuery(childrenAndParents, r.cfg.MaxHierarchyDepth)
-	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetPermittedHierarchy: %w", err)
+	if onlyForRead {
+		rqType = childrenAndParents
+		query += `
+    	UNION
+    	SELECT *
+    	FROM parents`
 	}
 
-	err = r.db.WithContext(ctx).Raw(recursiveQuery+`
-	/* noinspection SqlNoDataSourceInspection */
-    SELECT *
-    FROM children
-    UNION
-    SELECT *
-    FROM parents;
-`,
+	recursiveQuery := r.getRecursiveQuery(rqType, r.cfg.MaxHierarchyDepth)
+
+	err := r.db.WithContext(ctx).Raw(recursiveQuery+query,
 		permissions).Scan(&models).Error
 	if err != nil {
 		return nil, fmt.Errorf("gormRepo.GetPermittedHierarchy: %w", err)
@@ -125,7 +107,7 @@ func (r *gormRepo) GetVersion(ctx context.Context, id uuid.UUID, version int) (e
 	err := r.db.WithContext(ctx).Where("entity_id = $1 AND version = $2", id, version).First(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = ErrEntityNotFound()
+			err = entity.ErrEntityNotFound()
 		}
 		return entity.Entity{}, fmt.Errorf("gormRepo.GetVersion: %w", err)
 	}
@@ -165,23 +147,12 @@ func (r *gormRepo) CreateDraft(ctx context.Context, req entity.CreateEntityReq, 
 
 func (r *gormRepo) Create(ctx context.Context, req entity.CreateEntityReq, id uuid.UUID, createdAt time.Time) error {
 	const sqlCTE = `
-INSERT INTO entities (
-    id, type, name, content,
-    parent_id, created_by, updated_by,
-    current_version, created_at, updated_at
-  ) VALUES (
-    $1, $2, $3, $4,
-    $5, $6, $6,
-    1,   $7, $7
-  );
-
-INSERT INTO entity_versions (
-  entity_id, name, content, parent_id,
-  created_by, created_at, version 
-) VALUES (
-  $1, $3, $4, $5,
-  $6, $7, 1
-);
+WITH ins AS (
+  INSERT INTO entities (id, type, name, content, parent_id, created_by, updated_by, current_version, created_at, updated_at)
+  VALUES ($1,$2,$3,$4,$5,$6,$6,1,$7,$7)
+)
+INSERT INTO entity_versions (entity_id, name, content, parent_id, created_by, created_at, version)
+VALUES ($1, $3, $4, $5, $6, $7, 1)
 `
 
 	res := r.db.WithContext(ctx).
@@ -210,12 +181,12 @@ func (r *gormRepo) UpdateDraft(ctx context.Context, req entity.UpdateEntityReq) 
 		"updated_by":      req.UserID,
 		"current_version": gorm.Expr("NULL"),
 	}
-	result := r.db.WithContext(ctx).Where("id = $1", req.ID).Updates(&updates)
+	result := r.db.WithContext(ctx).Model(&entityModel{}).Where("id = ?", req.ID).Updates(&updates)
 	if result.Error != nil {
 		return fmt.Errorf("gormRepo.UpdateDraft: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("gormRepo.UpdateDraft: %w", ErrEntityNotFound())
+		return fmt.Errorf("gormRepo.UpdateDraft: %w", entity.ErrEntityNotFound())
 	}
 	return nil
 }
@@ -262,28 +233,28 @@ FROM bumped;
 		return fmt.Errorf("entity.update: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
-		return fmt.Errorf("entity.update: %w", ErrEntityNotFound())
+		return fmt.Errorf("entity.update: %w", entity.ErrEntityNotFound())
 	}
 
 	return nil
 }
 
 func (r *gormRepo) Delete(ctx context.Context, id uuid.UUID, deletedAt time.Time) error {
-	recursiveQuery, err := r.getRecursiveQuery(onlyChildren, r.cfg.MaxHierarchyDepth)
-	if err != nil {
-		return fmt.Errorf("gormRepo.Delete: %w", err)
-	}
+	recursiveQuery := r.getRecursiveQuery(onlyChildren, r.cfg.MaxHierarchyDepth)
 
-	err = r.db.WithContext(ctx).Raw(recursiveQuery+
+	resp := r.db.WithContext(ctx).Exec(recursiveQuery+
 		`
 	/* noinspection SqlNoDataSourceInspection */
 	UPDATE entities SET deleted_at = $2
 	WHERE id IN (
     	SELECT id FROM children
 	);
-`, []uuid.UUID{id}, deletedAt).Error
-	if err != nil {
-		return fmt.Errorf("gormRepo.Delete: %w", err)
+`, []uuid.UUID{id}, deletedAt)
+	if resp.Error != nil {
+		return fmt.Errorf("gormRepo.Delete: %w", resp.Error)
+	}
+	if resp.RowsAffected == 0 {
+		return fmt.Errorf("gormRepo.Delete: %w", entity.ErrEntityNotFound())
 	}
 
 	return nil
@@ -296,12 +267,9 @@ func (r *gormRepo) ValidateChangedParent(ctx context.Context, id, parentID uuid.
 	}
 	var result validationResult
 
-	recursiveQuery, err := r.getRecursiveQuery(onlyChildren, r.cfg.MaxHierarchyDepth)
-	if err != nil {
-		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", err)
-	}
+	recursiveQuery := r.getRecursiveQuery(onlyChildren, r.cfg.MaxHierarchyDepth)
 
-	err = r.db.WithContext(ctx).Raw(recursiveQuery+`
+	err := r.db.WithContext(ctx).Raw(recursiveQuery+`
 	/* noinspection SqlNoDataSourceInspection */
 SELECT
     COALESCE((SELECT MAX(depth) FROM children), 0) AS depth,
@@ -311,38 +279,32 @@ SELECT
 		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", err)
 	}
 	if result.IsCycle {
-		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", ErrParentCycle())
+		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", entity.ErrParentCycle())
 	}
 
-	recursiveQuery, err = r.getRecursiveQuery(onlyParents, r.cfg.MaxHierarchyDepth)
-	if err != nil {
-		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", err)
-	}
+	recursiveQuery = r.getRecursiveQuery(onlyParents, r.cfg.MaxHierarchyDepth)
 
 	var parentDepth int
 	err = r.db.WithContext(ctx).Raw(recursiveQuery+`
 	/* noinspection SqlNoDataSourceInspection */
 SELECT
-    COALESCE((SELECT MAX(depth) FROM parents), 0) AS depth,
+    COALESCE((SELECT MAX(depth) FROM parents), 0) AS depth
 	`, []uuid.UUID{parentID}).Scan(&parentDepth).Error
 	if err != nil {
 		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", err)
 	}
 	if result.Depth+parentDepth > r.cfg.MaxHierarchyDepth {
-		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", ErrMaxHierarchyDepthExceeded(r.cfg.MaxHierarchyDepth))
+		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", entity.ErrMaxHierarchyDepthExceeded(r.cfg.MaxHierarchyDepth))
 	}
 
 	return nil
 }
 
 func (r *gormRepo) CheckParentDepthLimit(ctx context.Context, parentID uuid.UUID) error {
-	recursiveQuery, err := r.getRecursiveQuery(onlyParents, r.cfg.MaxHierarchyDepth)
-	if err != nil {
-		return fmt.Errorf("gormRepo.CheckParentDepthLimit: %w", err)
-	}
+	recursiveQuery := r.getRecursiveQuery(onlyParents, r.cfg.MaxHierarchyDepth)
 	var maxDepthExceeded bool
 
-	err = r.db.WithContext(ctx).Raw(recursiveQuery+`
+	err := r.db.WithContext(ctx).Raw(recursiveQuery+`
 	/* noinspection SqlNoDataSourceInspection */
 	SELECT COALESCE((MAX(depth) + 1 > $2), FALSE) AS max_depth_exceeded FROM parents;
 	`, []uuid.UUID{parentID}, r.cfg.MaxHierarchyDepth).Scan(&maxDepthExceeded).Error
@@ -351,7 +313,7 @@ func (r *gormRepo) CheckParentDepthLimit(ctx context.Context, parentID uuid.UUID
 	}
 
 	if maxDepthExceeded {
-		err = ErrMaxHierarchyDepthExceeded(r.cfg.MaxHierarchyDepth)
+		err = entity.ErrMaxHierarchyDepthExceeded(r.cfg.MaxHierarchyDepth)
 		return fmt.Errorf("gormRepo.CheckParentDepthLimit: %w", err)
 	}
 
@@ -366,12 +328,12 @@ const (
 	childrenAndParents recursiveQueryType = "children_and_parents"
 )
 
-func (r *gormRepo) getRecursiveQuery(rqType recursiveQueryType, maxDepth int) (string, error) {
+func (r *gormRepo) getRecursiveQuery(rqType recursiveQueryType, maxDepth int) string {
 	maxDepth++ // Traverse up to maxDepth + 1 to detect if actual depth exceeds the allowed maxDepth.
 	base := `
 WITH RECURSIVE
     base AS (
-        SELECT id, type, parent_id, name, 0 as depth
+        SELECT id, type, parent_id, name, 1 as depth
         FROM entities 
         WHERE id = ANY($1) AND deleted_at ISNULL
     )
@@ -404,14 +366,13 @@ WITH RECURSIVE
 `, maxDepth)
 	switch rqType {
 	case onlyChildren:
-		return base + childrenQuery, nil
+		return base + childrenQuery
 	case onlyParents:
-		return base + parentsQuery, nil
+		return base + parentsQuery
 	case childrenAndParents:
-		return base + childrenQuery + parentsQuery, nil
+		return base + childrenQuery + parentsQuery
 	default:
-		return "", fmt.Errorf("invalid recursive query type: %s", rqType)
-
+		return ""
 	}
 }
 

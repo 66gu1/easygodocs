@@ -17,6 +17,10 @@ type userModel struct {
 	SessionVersion int
 }
 
+func (u *userModel) TableName() string {
+	return "users"
+}
+
 func (u *userModel) toDTO() user.User {
 	var deletedAt *time.Time
 	if u.DeletedAt.Valid {
