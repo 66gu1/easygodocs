@@ -250,7 +250,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(refreshToken), rtHash).Return(nil)
+				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
 				mocks.rndGen.NewMock.Expect(32).Return(newRefreshToken, nil)
 				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return([]byte(newRTHash), nil)
 				mocks.tokenCodec.GenerateTokenMock.Expect(claims).Return(accessToken, nil)
@@ -270,7 +270,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(refreshToken), rtHash).Return(secure.ErrMismatchedHashAndPassword)
+				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(secure.ErrMismatchedHashAndPassword)
 			},
 			err: apperr.ErrUnauthorized(),
 		},
@@ -279,7 +279,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(refreshToken), rtHash).Return(errExp)
+				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(errExp)
 			},
 			err: errExp,
 		},
@@ -288,7 +288,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(refreshToken), rtHash).Return(nil)
+				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
 				mocks.rndGen.NewMock.Expect(32).Return("", errExp)
 			},
 			err: errExp,
@@ -298,7 +298,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(refreshToken), rtHash).Return(nil)
+				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
 				mocks.rndGen.NewMock.Expect(32).Return(newRefreshToken, nil)
 				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return(nil, errExp)
 			},
@@ -309,7 +309,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(refreshToken), rtHash).Return(nil)
+				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
 				mocks.rndGen.NewMock.Expect(32).Return(newRefreshToken, nil)
 				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return([]byte(newRTHash), nil)
 				mocks.tokenCodec.GenerateTokenMock.Expect(claims).Return("", errExp)
@@ -321,7 +321,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(refreshToken), rtHash).Return(nil)
+				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
 				mocks.rndGen.NewMock.Expect(32).Return(newRefreshToken, nil)
 				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return([]byte(newRTHash), nil)
 				mocks.tokenCodec.GenerateTokenMock.Expect(claims).Return(accessToken, nil)
@@ -504,36 +504,18 @@ func TestCore_DeleteSession(t *testing.T) {
 		errExp = fmt.Errorf("expected")
 	)
 	tests := []struct {
-		name    string
-		isAdmin bool
-		setup   func(mocks mock)
-		err     error
+		name  string
+		setup func(mocks mock)
+		err   error
 	}{
 		{
-			name:    "ok/admin",
-			isAdmin: true,
-			setup: func(mocks mock) {
-				mocks.repo.DeleteSessionByIDMock.Expect(ctx, sessID).Return(nil)
-			},
-		},
-		{
-			name:    "ok/user",
-			isAdmin: false,
+			name: "ok",
 			setup: func(mocks mock) {
 				mocks.repo.DeleteSessionByIDAndUserMock.Expect(ctx, sessID, userID).Return(nil)
 			},
 		},
 		{
-			name:    "err/repo/admin",
-			isAdmin: true,
-			setup: func(mocks mock) {
-				mocks.repo.DeleteSessionByIDMock.Expect(ctx, sessID).Return(errExp)
-			},
-			err: errExp,
-		},
-		{
-			name:    "err/repo/user",
-			isAdmin: false,
+			name: "err/repo",
 			setup: func(mocks mock) {
 				mocks.repo.DeleteSessionByIDAndUserMock.Expect(ctx, sessID, userID).Return(errExp)
 			},
@@ -560,7 +542,7 @@ func TestCore_DeleteSession(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			err = core.DeleteSession(ctx, sessID, userID, tt.isAdmin)
+			err = core.DeleteSession(ctx, sessID, userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
 				return
@@ -862,7 +844,7 @@ func TestCore_GetCurrentUserDirectPermissions(t *testing.T) {
 		ids    = []uuid.UUID{entityID1, entityID2}
 		errExp = fmt.Errorf("expected")
 	)
-	ctx = contextx.SetToContext(ctx, contextx.ContextKeyUserID, userID)
+	ctx = contextx.SetToContext(ctx, contextx.UserIDKey, userID)
 	tests := []struct {
 		name    string
 		ctx     context.Context
@@ -954,7 +936,7 @@ func TestCore_IsSelf(t *testing.T) {
 	var (
 		userID = uuid.New()
 	)
-	ctx := contextx.SetToContext(context.Background(), contextx.ContextKeyUserID, userID)
+	ctx := contextx.SetToContext(context.Background(), contextx.UserIDKey, userID)
 	tests := []struct {
 		name    string
 		ctx     context.Context

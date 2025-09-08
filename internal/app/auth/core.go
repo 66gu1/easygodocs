@@ -33,7 +33,6 @@ type Repository interface {
 	CreateSession(ctx context.Context, req Session, rtHash string) error
 	GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Session, error)
 	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, string, error)
-	DeleteSessionByID(ctx context.Context, id uuid.UUID) error
 	DeleteSessionByIDAndUser(ctx context.Context, id, userID uuid.UUID) error
 	DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error
 	UpdateRefreshToken(ctx context.Context, req UpdateTokenReq) error
@@ -45,7 +44,7 @@ type Repository interface {
 
 type PasswordHasher interface {
 	HashRefreshToken(token []byte) ([]byte, error)
-	CheckPasswordHash(password []byte, hash string) error
+	CheckPasswordHash(hash, password []byte) error
 }
 
 type TokenCodec interface {
@@ -144,7 +143,7 @@ func (c *core) RefreshTokens(ctx context.Context, session Session, refreshToken,
 		return Tokens{}, fmt.Errorf("auth.core.RefreshTokens: %w", err)
 	}
 
-	if err := c.passwordHasher.CheckPasswordHash([]byte(refreshToken), rtHash); err != nil {
+	if err := c.passwordHasher.CheckPasswordHash([]byte(rtHash), []byte(refreshToken)); err != nil {
 		if errors.Is(err, secure.ErrMismatchedHashAndPassword) {
 			err = apperr.ErrUnauthorized().WithDetail("invalid refresh token")
 		}
@@ -196,15 +195,7 @@ func (c *core) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Ses
 	return sessions, nil
 }
 
-func (c *core) DeleteSession(ctx context.Context, id, userID uuid.UUID, isAdmin bool) error {
-	if isAdmin {
-		if err := c.repo.DeleteSessionByID(ctx, id); err != nil {
-			return fmt.Errorf("auth.core.DeleteSession: %w", err)
-		}
-
-		return nil
-	}
-
+func (c *core) DeleteSession(ctx context.Context, id, userID uuid.UUID) error {
 	if err := c.repo.DeleteSessionByIDAndUser(ctx, id, userID); err != nil {
 		return fmt.Errorf("auth.core.DeleteSession: %w", err)
 	}

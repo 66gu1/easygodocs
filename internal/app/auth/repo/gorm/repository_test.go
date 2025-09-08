@@ -118,38 +118,6 @@ func TestGetSessionsByUserID(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestDeleteSessionByID(t *testing.T) {
-	t.Parallel()
-	repo, gdb, cleanup := newRepo(t)
-
-	u := createUser(t, gdb)
-	sid := uuid.New()
-	now := time.Now().UTC()
-
-	sess := auth.Session{
-		ID:             sid,
-		UserID:         u,
-		CreatedAt:      now,
-		ExpiresAt:      now.Add(time.Hour),
-		SessionVersion: 1,
-	}
-	require.NoError(t, repo.CreateSession(t.Context(), sess, "h"))
-
-	require.NoError(t, repo.DeleteSessionByID(t.Context(), sid))
-
-	_, _, err := repo.GetSessionByID(t.Context(), sid)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrSessionNotFound)
-
-	err = repo.DeleteSessionByID(t.Context(), sid)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrSessionNotFound)
-
-	cleanup()
-	err = repo.DeleteSessionByID(t.Context(), sid)
-	require.Error(t, err)
-}
-
 func TestDeleteSessionByIDAndUser(t *testing.T) {
 	t.Parallel()
 	repo, gdb, cleanup := newRepo(t)

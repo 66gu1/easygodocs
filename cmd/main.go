@@ -88,13 +88,13 @@ func main() {
 		Time: timeGen,
 	}, entityValidator)
 
-	userService := userusecase.NewService(userCore, authCore)
+	userService := userusecase.NewService(userCore, authCore, passwordHasher)
 	userHandler := userhttp.NewHandler(userService)
 
-	authService := authusecase.NewService(authCore, userCore)
+	authService := authusecase.NewService(authCore, userCore, passwordHasher)
 	authHandler := authhttp.NewHandler(authService)
 
-	entityService := entityusecase.NewService(entityCore, authCore)
+	entityService := entityusecase.NewService(entityCore, entityusecase.NewPermissionChecker(entityCore, authCore))
 	entityHandler := entityhttp.NewHandler(entityService)
 
 	// --- set up chi router

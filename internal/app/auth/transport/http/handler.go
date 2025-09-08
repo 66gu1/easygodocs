@@ -32,7 +32,7 @@ type Handler struct {
 //go:generate minimock -i github.com/66gu1/easygodocs/internal/app/auth.AuthService -o ./mock -s _mock.go
 type AuthService interface {
 	GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error)
-	DeleteSession(ctx context.Context, id uuid.UUID) error
+	DeleteSession(ctx context.Context, userID, id uuid.UUID) error
 	DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error
 	AddUserRole(ctx context.Context, role auth.UserRole) error
 	DeleteUserRole(ctx context.Context, role auth.UserRole) error
@@ -83,7 +83,18 @@ func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = h.svc.DeleteSession(ctx, id); err != nil {
+	userIDStr := chi.URLParam(r, auth_http.URLParamUserID)
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		logger.Warn(ctx, err).
+			Str(auth.FieldSessionID.String(), idStr).
+			Str(auth.FieldUserID.String(), userIDStr).
+			Msg("auth.Handler.DeleteSession: invalid user ID format")
+		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		return
+	}
+
+	if err = h.svc.DeleteSession(ctx, userID, id); err != nil {
 		httpx.ReturnError(ctx, w, err)
 		return
 	}

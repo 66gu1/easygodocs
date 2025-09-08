@@ -8,20 +8,24 @@ import (
 	"github.com/66gu1/easygodocs/internal/app/user"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
+	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
-type ChangePasswordCmd struct {
-	ID          uuid.UUID
-	OldPassword []byte
-	NewPassword []byte
-}
-
-type service struct {
-	core        Core
-	authService AuthService
-}
+var (
+	ErrNewPasswordSameAsOld = apperr.New("New password must differ from the old one", user.CodeSamePassword, apperr.ClassBadRequest, apperr.LogLevelWarn).
+				WithViolation(apperr.Violation{
+			Field: user.FieldPassword, Rule: apperr.RuleDuplicate,
+		})
+	ErrOldPasswordIncorrect = apperr.New("Old password does not match", user.CodePasswordMismatch, apperr.ClassBadRequest, apperr.LogLevelWarn).
+				WithViolation(apperr.Violation{
+			Field: user.FieldPassword, Rule: apperr.RuleMismatch,
+		})
+	ErrOldPasswordRequired = apperr.New("Old password is required", user.CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
+				WithViolation(apperr.Violation{
+			Field: user.FieldPassword, Rule: apperr.RuleRequired,
+		})
+)
 
 type Core interface {
 	CreateUser(ctx context.Context, req user.CreateUserReq) error
@@ -40,10 +44,30 @@ type AuthService interface {
 	IsAdmin(ctx context.Context) (bool, error)
 }
 
-func NewService(core Core, authService AuthService) *service {
+type PasswordHasher interface {
+	CheckPasswordHash(hash, password []byte) error
+}
+
+type ChangePasswordCmd struct {
+	ID          uuid.UUID
+	OldPassword []byte
+	NewPassword []byte
+}
+
+type service struct {
+	core           Core
+	authService    AuthService
+	passwordHasher PasswordHasher
+}
+
+func NewService(core Core, authService AuthService, passwordHasher PasswordHasher) *service {
+	if core == nil || authService == nil || passwordHasher == nil {
+		panic("user.NewService: nil dependency")
+	}
 	return &service{
-		core:        core,
-		authService: authService,
+		core:           core,
+		authService:    authService,
+		passwordHasher: passwordHasher,
 	}
 }
 
@@ -122,11 +146,10 @@ func (s *service) DeleteUser(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("user.Service.DeleteUser: %w", err)
 	}
 
-	if err := s.authService.DeleteSessionsByUserID(ctx, id); err != nil {
+	if err := s.authService.DeleteSessionsByUserID(context.WithoutCancel(ctx), id); err != nil { // Best-effort: session cleanup is attempted, but failures are ignored
 		logger.Error(ctx, err).
 			Str(user.FieldUserID.String(), id.String()).
 			Msg("user.Service.DeleteUser: failed to delete sessions")
-		return fmt.Errorf("user.Service.DeleteUser: %w", err)
 	}
 	return nil
 }
@@ -142,10 +165,7 @@ func (s *service) ChangePassword(ctx context.Context, req ChangePasswordCmd) err
 
 	if !isAdmin {
 		if len(req.OldPassword) == 0 {
-			err = apperr.New("Old password is required", user.CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-				WithViolation(apperr.Violation{
-					Field: user.FieldPassword, Rule: apperr.RuleRequired,
-				})
+			err = ErrOldPasswordRequired
 			logger.Error(ctx, err).
 				Str(user.FieldUserID.String(), req.ID.String()).
 				Msg("user.Service.ChangePassword: old password is required")
@@ -170,12 +190,9 @@ func (s *service) ChangePassword(ctx context.Context, req ChangePasswordCmd) err
 	}
 
 	if !isAdmin {
-		if err = bcrypt.CompareHashAndPassword([]byte(oldPasswordHash), req.OldPassword); err != nil {
-			if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-				err = apperr.New("Old password does not match", user.CodePasswordMismatch, apperr.ClassBadRequest, apperr.LogLevelWarn).
-					WithViolation(apperr.Violation{
-						Field: user.FieldPassword, Rule: apperr.RuleMismatch,
-					})
+		if err = s.passwordHasher.CheckPasswordHash([]byte(oldPasswordHash), req.OldPassword); err != nil {
+			if errors.Is(err, secure.ErrMismatchedHashAndPassword) {
+				err = ErrOldPasswordIncorrect
 			}
 			logger.Error(ctx, err).
 				Str(user.FieldUserID.String(), req.ID.String()).
@@ -184,18 +201,15 @@ func (s *service) ChangePassword(ctx context.Context, req ChangePasswordCmd) err
 		}
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(oldPasswordHash), req.NewPassword)
-	if err != nil && !errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+	err = s.passwordHasher.CheckPasswordHash([]byte(oldPasswordHash), req.NewPassword)
+	if err != nil && !errors.Is(err, secure.ErrMismatchedHashAndPassword) {
 		logger.Error(ctx, err).
 			Str(user.FieldUserID.String(), req.ID.String()).
-			Msg("user.Service.ChangePassword: bcrypt compare failed for new password")
+			Msg("user.Service.ChangePassword: compare failed for new password")
 		return fmt.Errorf("user.Service.ChangePassword: %w", err)
 	}
 	if err == nil {
-		err = apperr.New("New password must differ from the old one", user.CodeSamePassword, apperr.ClassBadRequest, apperr.LogLevelWarn).
-			WithViolation(apperr.Violation{
-				Field: user.FieldPassword, Rule: apperr.RuleDuplicate,
-			})
+		err = ErrNewPasswordSameAsOld
 		logger.Error(ctx, err).
 			Str(user.FieldUserID.String(), req.ID.String()).
 			Msg("user.Service.ChangePassword: new password must differ from old one")

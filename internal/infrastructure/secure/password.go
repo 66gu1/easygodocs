@@ -42,9 +42,9 @@ func (p *PasswordHasher) HashRefreshToken(token []byte) ([]byte, error) {
 	return hash, nil
 }
 
-func (p *PasswordHasher) CheckPasswordHash(password []byte, hash string) error {
+func (p *PasswordHasher) CheckPasswordHash(hash, password []byte) error {
 	defer ZeroBytes(password)
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), password); err != nil {
+	if err := bcrypt.CompareHashAndPassword(hash, password); err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 			return fmt.Errorf("secure.CheckPasswordHash: %w", ErrMismatchedHashAndPassword)
 		}

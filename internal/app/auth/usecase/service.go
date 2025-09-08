@@ -8,17 +8,10 @@ import (
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	"github.com/66gu1/easygodocs/internal/app/user"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
-	"github.com/66gu1/easygodocs/internal/infrastructure/contextx"
 	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
 	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
-
-type LoginCmd struct {
-	Email    string
-	Password []byte `json:"-"`
-}
 
 const CodeInvalidCredentials apperr.Code = "user/invalid_credentials" //nolint:gosec
 
@@ -26,15 +19,10 @@ func ErrInvalidPasswordOrEmail() error {
 	return apperr.New("invalid password or email", CodeInvalidCredentials, apperr.ClassUnauthorized, apperr.LogLevelWarn)
 }
 
-type Service struct {
-	core     Core
-	userCore UserCore
-}
-
 type Core interface {
 	GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error)
 	GetSessionByID(ctx context.Context, id uuid.UUID) (auth.Session, string, error)
-	DeleteSession(ctx context.Context, id, userID uuid.UUID, isAdmin bool) error
+	DeleteSession(ctx context.Context, id, userID uuid.UUID) error
 	DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error
 	RefreshTokens(ctx context.Context, session auth.Session, refreshToken, rtHash string) (auth.Tokens, error)
 	IssueTokens(ctx context.Context, userID uuid.UUID, sessionVersion int) (auth.Tokens, error)
@@ -46,18 +34,34 @@ type Core interface {
 	IsAdmin(ctx context.Context) (bool, error)
 }
 
+type PasswordHasher interface {
+	CheckPasswordHash(hash, password []byte) error
+}
+
 type UserCore interface {
 	GetUser(ctx context.Context, id uuid.UUID) (user.User, string, error)
 	GetUserByEmail(ctx context.Context, email string) (user.User, string, error)
 }
 
-func NewService(core Core, userCore UserCore) *Service {
-	if core == nil || userCore == nil {
-		panic("nil core")
+type LoginCmd struct {
+	Email    string
+	Password []byte `json:"-"`
+}
+
+type Service struct {
+	core           Core
+	userCore       UserCore
+	passwordHasher PasswordHasher
+}
+
+func NewService(core Core, userCore UserCore, passwordHasher PasswordHasher) *Service {
+	if core == nil || userCore == nil || passwordHasher == nil {
+		panic("nil dependency")
 	}
 	return &Service{
-		core:     core,
-		userCore: userCore,
+		core:           core,
+		userCore:       userCore,
+		passwordHasher: passwordHasher,
 	}
 }
 
@@ -80,23 +84,16 @@ func (s *Service) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]
 	return sessions, nil
 }
 
-func (s *Service) DeleteSession(ctx context.Context, id uuid.UUID) error {
-	currentUserID, err := contextx.GetUserID(ctx)
-	if err != nil {
+func (s *Service) DeleteSession(ctx context.Context, userID, id uuid.UUID) error {
+	if err := s.core.CheckSelfOrAdmin(ctx, userID); err != nil {
 		logger.Error(ctx, err).
+			Str(auth.FieldUserID.String(), userID.String()).
 			Str(auth.FieldSessionID.String(), id.String()).
-			Msg("auth.service.DeleteSession.contextx.GetUserID")
-		return fmt.Errorf("auth.service.DeleteSession: %w", err)
-	}
-	isAdmin, err := s.core.IsAdmin(ctx)
-	if err != nil {
-		logger.Error(ctx, err).
-			Str(auth.FieldSessionID.String(), id.String()).
-			Msg("auth.service.DeleteSession.core.IsAdmin")
+			Msg("auth.service.DeleteSession.core.CheckSelfOrAdmin")
 		return fmt.Errorf("auth.service.DeleteSession: %w", err)
 	}
 
-	if err = s.core.DeleteSession(ctx, id, currentUserID, isAdmin); err != nil {
+	if err := s.core.DeleteSession(ctx, id, userID); err != nil {
 		logger.Error(ctx, err).
 			Str(auth.FieldSessionID.String(), id.String()).
 			Msg("auth.service.DeleteSession.core.DeleteSession")
@@ -192,7 +189,7 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken auth.RefreshTo
 		logger.Error(ctx, err).
 			Str(auth.FieldSessionID.String(), refreshToken.SessionID.String()).
 			Msg("auth.service.RefreshTokens.core.GetSessionByID")
-		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", apperr.ErrUnauthorized())
+		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", err)
 	}
 
 	usr, _, err := s.userCore.GetUser(ctx, session.UserID)
@@ -201,7 +198,7 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken auth.RefreshTo
 			Str(auth.FieldUserID.String(), session.UserID.String()).
 			Interface(auth.FieldSession.String(), session).
 			Msg("auth.service.RefreshTokens.userCore.GetUser")
-		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", apperr.ErrUnauthorized())
+		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", err)
 	}
 
 	if usr.SessionVersion != session.SessionVersion {
@@ -219,7 +216,7 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken auth.RefreshTo
 			Str(auth.FieldSessionID.String(), refreshToken.SessionID.String()).
 			Interface(auth.FieldSession.String(), session).
 			Msg("auth.service.RefreshTokens.core.RefreshTokens")
-		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", apperr.ErrUnauthorized())
+		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", err)
 	}
 
 	return tokens, nil
@@ -239,12 +236,14 @@ func (s *Service) Login(ctx context.Context, req LoginCmd) (auth.Tokens, error) 
 		return auth.Tokens{}, fmt.Errorf("auth.service.Login: %w", err)
 	}
 
-	if !checkPassword(req.Password, passwordHash) {
-		err = ErrInvalidPasswordOrEmail()
+	if err = s.passwordHasher.CheckPasswordHash(req.Password, []byte(passwordHash)); err != nil {
+		if errors.Is(err, secure.ErrMismatchedHashAndPassword) {
+			err = ErrInvalidPasswordOrEmail()
+		}
 		logger.Error(ctx, err).
 			Str(user.FieldEmail.String(), req.Email).
 			Interface(user.FieldUser.String(), usr).
-			Msg("auth.service.Login: invalid password")
+			Msg("auth.service.Login.passwordHasher.CheckPasswordHash")
 		return auth.Tokens{}, fmt.Errorf("auth.service.Login: %w", err)
 	}
 
@@ -258,9 +257,4 @@ func (s *Service) Login(ctx context.Context, req LoginCmd) (auth.Tokens, error) 
 	}
 
 	return tokens, nil
-}
-
-func checkPassword(password []byte, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), password)
-	return err == nil
 }

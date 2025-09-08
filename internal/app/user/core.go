@@ -28,7 +28,6 @@ type IDGenerator interface {
 
 type PasswordHasher interface {
 	HashPassword(password []byte, cost int) ([]byte, error)
-	CheckPasswordHash(password []byte, hash string) error
 }
 
 type Validator interface {

@@ -18,8 +18,8 @@ func (key contextKey) String() string {
 }
 
 const (
-	ContextKeyUserID    = contextKey("user_id")
-	ContextKeySessionID = contextKey("session_id")
+	UserIDKey    = contextKey("user_id")
+	SessionIDKey = contextKey("session_id")
 )
 
 func getValue[T any](ctx context.Context, key contextKey) (T, error) {
@@ -39,7 +39,7 @@ func getValue[T any](ctx context.Context, key contextKey) (T, error) {
 }
 
 func GetUserID(ctx context.Context) (uuid.UUID, error) {
-	userID, err := getValue[uuid.UUID](ctx, ContextKeyUserID)
+	userID, err := getValue[uuid.UUID](ctx, UserIDKey)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			err = apperr.ErrUnauthorized().WithDetail("current user ID not found in context")
@@ -54,7 +54,7 @@ func GetUserID(ctx context.Context) (uuid.UUID, error) {
 }
 
 func GetSessionID(ctx context.Context) (uuid.UUID, error) {
-	sessionID, err := getValue[uuid.UUID](ctx, ContextKeySessionID)
+	sessionID, err := getValue[uuid.UUID](ctx, SessionIDKey)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("contextx.GetSessionID: %w", err)
 	}

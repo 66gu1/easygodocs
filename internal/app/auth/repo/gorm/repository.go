@@ -72,20 +72,6 @@ func (r *gormRepo) GetSessionByID(ctx context.Context, id uuid.UUID) (auth.Sessi
 	return model.toDTO(), model.RefreshTokenHash, nil
 }
 
-func (r *gormRepo) DeleteSessionByID(ctx context.Context, id uuid.UUID) error {
-	model := &userSession{ID: id}
-
-	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(model)
-	if result.Error != nil {
-		return fmt.Errorf("gormRepo.DeleteSessionByID: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return ErrSessionNotFound
-	}
-
-	return nil
-}
-
 func (r *gormRepo) DeleteSessionByIDAndUser(ctx context.Context, id, userID uuid.UUID) error {
 	model := &userSession{ID: id}
 

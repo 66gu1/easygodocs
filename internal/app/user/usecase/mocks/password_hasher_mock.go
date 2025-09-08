@@ -2,7 +2,7 @@
 
 package mocks
 
-//go:generate minimock -i github.com/66gu1/easygodocs/internal/app/auth.PasswordHasher -o password_hasher_mock.go -n PasswordHasherMock -p mocks
+//go:generate minimock -i github.com/66gu1/easygodocs/internal/app/user/usecase.PasswordHasher -o password_hasher_mock.go -n PasswordHasherMock -p mocks
 
 import (
 	"sync"
@@ -12,7 +12,7 @@ import (
 	"github.com/gojuno/minimock/v3"
 )
 
-// PasswordHasherMock implements mm_auth.PasswordHasher
+// PasswordHasherMock implements mm_usecase.PasswordHasher
 type PasswordHasherMock struct {
 	t          minimock.Tester
 	finishOnce sync.Once
@@ -23,16 +23,9 @@ type PasswordHasherMock struct {
 	afterCheckPasswordHashCounter  uint64
 	beforeCheckPasswordHashCounter uint64
 	CheckPasswordHashMock          mPasswordHasherMockCheckPasswordHash
-
-	funcHashRefreshToken          func(token []byte) (ba1 []byte, err error)
-	funcHashRefreshTokenOrigin    string
-	inspectFuncHashRefreshToken   func(token []byte)
-	afterHashRefreshTokenCounter  uint64
-	beforeHashRefreshTokenCounter uint64
-	HashRefreshTokenMock          mPasswordHasherMockHashRefreshToken
 }
 
-// NewPasswordHasherMock returns a mock for mm_auth.PasswordHasher
+// NewPasswordHasherMock returns a mock for mm_usecase.PasswordHasher
 func NewPasswordHasherMock(t minimock.Tester) *PasswordHasherMock {
 	m := &PasswordHasherMock{t: t}
 
@@ -42,9 +35,6 @@ func NewPasswordHasherMock(t minimock.Tester) *PasswordHasherMock {
 
 	m.CheckPasswordHashMock = mPasswordHasherMockCheckPasswordHash{mock: m}
 	m.CheckPasswordHashMock.callArgs = []*PasswordHasherMockCheckPasswordHashParams{}
-
-	m.HashRefreshTokenMock = mPasswordHasherMockHashRefreshToken{mock: m}
-	m.HashRefreshTokenMock.callArgs = []*PasswordHasherMockHashRefreshTokenParams{}
 
 	t.Cleanup(m.MinimockFinish)
 
@@ -263,7 +253,7 @@ func (mmCheckPasswordHash *mPasswordHasherMockCheckPasswordHash) invocationsDone
 	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
 }
 
-// CheckPasswordHash implements mm_auth.PasswordHasher
+// CheckPasswordHash implements mm_usecase.PasswordHasher
 func (mmCheckPasswordHash *PasswordHasherMock) CheckPasswordHash(hash []byte, password []byte) (err error) {
 	mm_atomic.AddUint64(&mmCheckPasswordHash.beforeCheckPasswordHashCounter, 1)
 	defer mm_atomic.AddUint64(&mmCheckPasswordHash.afterCheckPasswordHashCounter, 1)
@@ -393,325 +383,11 @@ func (m *PasswordHasherMock) MinimockCheckPasswordHashInspect() {
 	}
 }
 
-type mPasswordHasherMockHashRefreshToken struct {
-	optional           bool
-	mock               *PasswordHasherMock
-	defaultExpectation *PasswordHasherMockHashRefreshTokenExpectation
-	expectations       []*PasswordHasherMockHashRefreshTokenExpectation
-
-	callArgs []*PasswordHasherMockHashRefreshTokenParams
-	mutex    sync.RWMutex
-
-	expectedInvocations       uint64
-	expectedInvocationsOrigin string
-}
-
-// PasswordHasherMockHashRefreshTokenExpectation specifies expectation struct of the PasswordHasher.HashRefreshToken
-type PasswordHasherMockHashRefreshTokenExpectation struct {
-	mock               *PasswordHasherMock
-	params             *PasswordHasherMockHashRefreshTokenParams
-	paramPtrs          *PasswordHasherMockHashRefreshTokenParamPtrs
-	expectationOrigins PasswordHasherMockHashRefreshTokenExpectationOrigins
-	results            *PasswordHasherMockHashRefreshTokenResults
-	returnOrigin       string
-	Counter            uint64
-}
-
-// PasswordHasherMockHashRefreshTokenParams contains parameters of the PasswordHasher.HashRefreshToken
-type PasswordHasherMockHashRefreshTokenParams struct {
-	token []byte
-}
-
-// PasswordHasherMockHashRefreshTokenParamPtrs contains pointers to parameters of the PasswordHasher.HashRefreshToken
-type PasswordHasherMockHashRefreshTokenParamPtrs struct {
-	token *[]byte
-}
-
-// PasswordHasherMockHashRefreshTokenResults contains results of the PasswordHasher.HashRefreshToken
-type PasswordHasherMockHashRefreshTokenResults struct {
-	ba1 []byte
-	err error
-}
-
-// PasswordHasherMockHashRefreshTokenOrigins contains origins of expectations of the PasswordHasher.HashRefreshToken
-type PasswordHasherMockHashRefreshTokenExpectationOrigins struct {
-	origin      string
-	originToken string
-}
-
-// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
-// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
-// Optional() makes method check to work in '0 or more' mode.
-// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
-// catch the problems when the expected method call is totally skipped during test run.
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) Optional() *mPasswordHasherMockHashRefreshToken {
-	mmHashRefreshToken.optional = true
-	return mmHashRefreshToken
-}
-
-// Expect sets up expected params for PasswordHasher.HashRefreshToken
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) Expect(token []byte) *mPasswordHasherMockHashRefreshToken {
-	if mmHashRefreshToken.mock.funcHashRefreshToken != nil {
-		mmHashRefreshToken.mock.t.Fatalf("PasswordHasherMock.HashRefreshToken mock is already set by Set")
-	}
-
-	if mmHashRefreshToken.defaultExpectation == nil {
-		mmHashRefreshToken.defaultExpectation = &PasswordHasherMockHashRefreshTokenExpectation{}
-	}
-
-	if mmHashRefreshToken.defaultExpectation.paramPtrs != nil {
-		mmHashRefreshToken.mock.t.Fatalf("PasswordHasherMock.HashRefreshToken mock is already set by ExpectParams functions")
-	}
-
-	mmHashRefreshToken.defaultExpectation.params = &PasswordHasherMockHashRefreshTokenParams{token}
-	mmHashRefreshToken.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
-	for _, e := range mmHashRefreshToken.expectations {
-		if minimock.Equal(e.params, mmHashRefreshToken.defaultExpectation.params) {
-			mmHashRefreshToken.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmHashRefreshToken.defaultExpectation.params)
-		}
-	}
-
-	return mmHashRefreshToken
-}
-
-// ExpectTokenParam1 sets up expected param token for PasswordHasher.HashRefreshToken
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) ExpectTokenParam1(token []byte) *mPasswordHasherMockHashRefreshToken {
-	if mmHashRefreshToken.mock.funcHashRefreshToken != nil {
-		mmHashRefreshToken.mock.t.Fatalf("PasswordHasherMock.HashRefreshToken mock is already set by Set")
-	}
-
-	if mmHashRefreshToken.defaultExpectation == nil {
-		mmHashRefreshToken.defaultExpectation = &PasswordHasherMockHashRefreshTokenExpectation{}
-	}
-
-	if mmHashRefreshToken.defaultExpectation.params != nil {
-		mmHashRefreshToken.mock.t.Fatalf("PasswordHasherMock.HashRefreshToken mock is already set by Expect")
-	}
-
-	if mmHashRefreshToken.defaultExpectation.paramPtrs == nil {
-		mmHashRefreshToken.defaultExpectation.paramPtrs = &PasswordHasherMockHashRefreshTokenParamPtrs{}
-	}
-	mmHashRefreshToken.defaultExpectation.paramPtrs.token = &token
-	mmHashRefreshToken.defaultExpectation.expectationOrigins.originToken = minimock.CallerInfo(1)
-
-	return mmHashRefreshToken
-}
-
-// Inspect accepts an inspector function that has same arguments as the PasswordHasher.HashRefreshToken
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) Inspect(f func(token []byte)) *mPasswordHasherMockHashRefreshToken {
-	if mmHashRefreshToken.mock.inspectFuncHashRefreshToken != nil {
-		mmHashRefreshToken.mock.t.Fatalf("Inspect function is already set for PasswordHasherMock.HashRefreshToken")
-	}
-
-	mmHashRefreshToken.mock.inspectFuncHashRefreshToken = f
-
-	return mmHashRefreshToken
-}
-
-// Return sets up results that will be returned by PasswordHasher.HashRefreshToken
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) Return(ba1 []byte, err error) *PasswordHasherMock {
-	if mmHashRefreshToken.mock.funcHashRefreshToken != nil {
-		mmHashRefreshToken.mock.t.Fatalf("PasswordHasherMock.HashRefreshToken mock is already set by Set")
-	}
-
-	if mmHashRefreshToken.defaultExpectation == nil {
-		mmHashRefreshToken.defaultExpectation = &PasswordHasherMockHashRefreshTokenExpectation{mock: mmHashRefreshToken.mock}
-	}
-	mmHashRefreshToken.defaultExpectation.results = &PasswordHasherMockHashRefreshTokenResults{ba1, err}
-	mmHashRefreshToken.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
-	return mmHashRefreshToken.mock
-}
-
-// Set uses given function f to mock the PasswordHasher.HashRefreshToken method
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) Set(f func(token []byte) (ba1 []byte, err error)) *PasswordHasherMock {
-	if mmHashRefreshToken.defaultExpectation != nil {
-		mmHashRefreshToken.mock.t.Fatalf("Default expectation is already set for the PasswordHasher.HashRefreshToken method")
-	}
-
-	if len(mmHashRefreshToken.expectations) > 0 {
-		mmHashRefreshToken.mock.t.Fatalf("Some expectations are already set for the PasswordHasher.HashRefreshToken method")
-	}
-
-	mmHashRefreshToken.mock.funcHashRefreshToken = f
-	mmHashRefreshToken.mock.funcHashRefreshTokenOrigin = minimock.CallerInfo(1)
-	return mmHashRefreshToken.mock
-}
-
-// When sets expectation for the PasswordHasher.HashRefreshToken which will trigger the result defined by the following
-// Then helper
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) When(token []byte) *PasswordHasherMockHashRefreshTokenExpectation {
-	if mmHashRefreshToken.mock.funcHashRefreshToken != nil {
-		mmHashRefreshToken.mock.t.Fatalf("PasswordHasherMock.HashRefreshToken mock is already set by Set")
-	}
-
-	expectation := &PasswordHasherMockHashRefreshTokenExpectation{
-		mock:               mmHashRefreshToken.mock,
-		params:             &PasswordHasherMockHashRefreshTokenParams{token},
-		expectationOrigins: PasswordHasherMockHashRefreshTokenExpectationOrigins{origin: minimock.CallerInfo(1)},
-	}
-	mmHashRefreshToken.expectations = append(mmHashRefreshToken.expectations, expectation)
-	return expectation
-}
-
-// Then sets up PasswordHasher.HashRefreshToken return parameters for the expectation previously defined by the When method
-func (e *PasswordHasherMockHashRefreshTokenExpectation) Then(ba1 []byte, err error) *PasswordHasherMock {
-	e.results = &PasswordHasherMockHashRefreshTokenResults{ba1, err}
-	return e.mock
-}
-
-// Times sets number of times PasswordHasher.HashRefreshToken should be invoked
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) Times(n uint64) *mPasswordHasherMockHashRefreshToken {
-	if n == 0 {
-		mmHashRefreshToken.mock.t.Fatalf("Times of PasswordHasherMock.HashRefreshToken mock can not be zero")
-	}
-	mm_atomic.StoreUint64(&mmHashRefreshToken.expectedInvocations, n)
-	mmHashRefreshToken.expectedInvocationsOrigin = minimock.CallerInfo(1)
-	return mmHashRefreshToken
-}
-
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) invocationsDone() bool {
-	if len(mmHashRefreshToken.expectations) == 0 && mmHashRefreshToken.defaultExpectation == nil && mmHashRefreshToken.mock.funcHashRefreshToken == nil {
-		return true
-	}
-
-	totalInvocations := mm_atomic.LoadUint64(&mmHashRefreshToken.mock.afterHashRefreshTokenCounter)
-	expectedInvocations := mm_atomic.LoadUint64(&mmHashRefreshToken.expectedInvocations)
-
-	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
-}
-
-// HashRefreshToken implements mm_auth.PasswordHasher
-func (mmHashRefreshToken *PasswordHasherMock) HashRefreshToken(token []byte) (ba1 []byte, err error) {
-	mm_atomic.AddUint64(&mmHashRefreshToken.beforeHashRefreshTokenCounter, 1)
-	defer mm_atomic.AddUint64(&mmHashRefreshToken.afterHashRefreshTokenCounter, 1)
-
-	mmHashRefreshToken.t.Helper()
-
-	if mmHashRefreshToken.inspectFuncHashRefreshToken != nil {
-		mmHashRefreshToken.inspectFuncHashRefreshToken(token)
-	}
-
-	mm_params := PasswordHasherMockHashRefreshTokenParams{token}
-
-	// Record call args
-	mmHashRefreshToken.HashRefreshTokenMock.mutex.Lock()
-	mmHashRefreshToken.HashRefreshTokenMock.callArgs = append(mmHashRefreshToken.HashRefreshTokenMock.callArgs, &mm_params)
-	mmHashRefreshToken.HashRefreshTokenMock.mutex.Unlock()
-
-	for _, e := range mmHashRefreshToken.HashRefreshTokenMock.expectations {
-		if minimock.Equal(*e.params, mm_params) {
-			mm_atomic.AddUint64(&e.Counter, 1)
-			return e.results.ba1, e.results.err
-		}
-	}
-
-	if mmHashRefreshToken.HashRefreshTokenMock.defaultExpectation != nil {
-		mm_atomic.AddUint64(&mmHashRefreshToken.HashRefreshTokenMock.defaultExpectation.Counter, 1)
-		mm_want := mmHashRefreshToken.HashRefreshTokenMock.defaultExpectation.params
-		mm_want_ptrs := mmHashRefreshToken.HashRefreshTokenMock.defaultExpectation.paramPtrs
-
-		mm_got := PasswordHasherMockHashRefreshTokenParams{token}
-
-		if mm_want_ptrs != nil {
-
-			if mm_want_ptrs.token != nil && !minimock.Equal(*mm_want_ptrs.token, mm_got.token) {
-				mmHashRefreshToken.t.Errorf("PasswordHasherMock.HashRefreshToken got unexpected parameter token, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmHashRefreshToken.HashRefreshTokenMock.defaultExpectation.expectationOrigins.originToken, *mm_want_ptrs.token, mm_got.token, minimock.Diff(*mm_want_ptrs.token, mm_got.token))
-			}
-
-		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
-			mmHashRefreshToken.t.Errorf("PasswordHasherMock.HashRefreshToken got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-				mmHashRefreshToken.HashRefreshTokenMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
-		}
-
-		mm_results := mmHashRefreshToken.HashRefreshTokenMock.defaultExpectation.results
-		if mm_results == nil {
-			mmHashRefreshToken.t.Fatal("No results are set for the PasswordHasherMock.HashRefreshToken")
-		}
-		return (*mm_results).ba1, (*mm_results).err
-	}
-	if mmHashRefreshToken.funcHashRefreshToken != nil {
-		return mmHashRefreshToken.funcHashRefreshToken(token)
-	}
-	mmHashRefreshToken.t.Fatalf("Unexpected call to PasswordHasherMock.HashRefreshToken. %v", token)
-	return
-}
-
-// HashRefreshTokenAfterCounter returns a count of finished PasswordHasherMock.HashRefreshToken invocations
-func (mmHashRefreshToken *PasswordHasherMock) HashRefreshTokenAfterCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmHashRefreshToken.afterHashRefreshTokenCounter)
-}
-
-// HashRefreshTokenBeforeCounter returns a count of PasswordHasherMock.HashRefreshToken invocations
-func (mmHashRefreshToken *PasswordHasherMock) HashRefreshTokenBeforeCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmHashRefreshToken.beforeHashRefreshTokenCounter)
-}
-
-// Calls returns a list of arguments used in each call to PasswordHasherMock.HashRefreshToken.
-// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
-func (mmHashRefreshToken *mPasswordHasherMockHashRefreshToken) Calls() []*PasswordHasherMockHashRefreshTokenParams {
-	mmHashRefreshToken.mutex.RLock()
-
-	argCopy := make([]*PasswordHasherMockHashRefreshTokenParams, len(mmHashRefreshToken.callArgs))
-	copy(argCopy, mmHashRefreshToken.callArgs)
-
-	mmHashRefreshToken.mutex.RUnlock()
-
-	return argCopy
-}
-
-// MinimockHashRefreshTokenDone returns true if the count of the HashRefreshToken invocations corresponds
-// the number of defined expectations
-func (m *PasswordHasherMock) MinimockHashRefreshTokenDone() bool {
-	if m.HashRefreshTokenMock.optional {
-		// Optional methods provide '0 or more' call count restriction.
-		return true
-	}
-
-	for _, e := range m.HashRefreshTokenMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			return false
-		}
-	}
-
-	return m.HashRefreshTokenMock.invocationsDone()
-}
-
-// MinimockHashRefreshTokenInspect logs each unmet expectation
-func (m *PasswordHasherMock) MinimockHashRefreshTokenInspect() {
-	for _, e := range m.HashRefreshTokenMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			m.t.Errorf("Expected call to PasswordHasherMock.HashRefreshToken at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
-		}
-	}
-
-	afterHashRefreshTokenCounter := mm_atomic.LoadUint64(&m.afterHashRefreshTokenCounter)
-	// if default expectation was set then invocations count should be greater than zero
-	if m.HashRefreshTokenMock.defaultExpectation != nil && afterHashRefreshTokenCounter < 1 {
-		if m.HashRefreshTokenMock.defaultExpectation.params == nil {
-			m.t.Errorf("Expected call to PasswordHasherMock.HashRefreshToken at\n%s", m.HashRefreshTokenMock.defaultExpectation.returnOrigin)
-		} else {
-			m.t.Errorf("Expected call to PasswordHasherMock.HashRefreshToken at\n%s with params: %#v", m.HashRefreshTokenMock.defaultExpectation.expectationOrigins.origin, *m.HashRefreshTokenMock.defaultExpectation.params)
-		}
-	}
-	// if func was set then invocations count should be greater than zero
-	if m.funcHashRefreshToken != nil && afterHashRefreshTokenCounter < 1 {
-		m.t.Errorf("Expected call to PasswordHasherMock.HashRefreshToken at\n%s", m.funcHashRefreshTokenOrigin)
-	}
-
-	if !m.HashRefreshTokenMock.invocationsDone() && afterHashRefreshTokenCounter > 0 {
-		m.t.Errorf("Expected %d calls to PasswordHasherMock.HashRefreshToken at\n%s but found %d calls",
-			mm_atomic.LoadUint64(&m.HashRefreshTokenMock.expectedInvocations), m.HashRefreshTokenMock.expectedInvocationsOrigin, afterHashRefreshTokenCounter)
-	}
-}
-
 // MinimockFinish checks that all mocked methods have been called the expected number of times
 func (m *PasswordHasherMock) MinimockFinish() {
 	m.finishOnce.Do(func() {
 		if !m.minimockDone() {
 			m.MinimockCheckPasswordHashInspect()
-
-			m.MinimockHashRefreshTokenInspect()
 		}
 	})
 }
@@ -735,6 +411,5 @@ func (m *PasswordHasherMock) MinimockWait(timeout mm_time.Duration) {
 func (m *PasswordHasherMock) minimockDone() bool {
 	done := true
 	return done &&
-		m.MinimockCheckPasswordHashDone() &&
-		m.MinimockHashRefreshTokenDone()
+		m.MinimockCheckPasswordHashDone()
 }
