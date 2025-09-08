@@ -28,21 +28,13 @@ func (t Type) CheckIsValid() error {
 	case TypeArticle, TypeDepartment:
 		return nil
 	default:
-		return apperr.New("invalid entity type", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-			WithViolation(apperr.Violation{
-				Field: FieldType, Rule: apperr.RuleInvalidFormat,
-				Params: map[string]any{"allowed": []Type{TypeArticle, TypeDepartment}},
-			})
+		return ErrInvalidType()
 	}
 }
 
 func (t Type) ValidateParentTypeCompatibility(parentType Type) error {
 	if t == TypeDepartment && parentType == TypeArticle {
-		return apperr.New("invalid parent type", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-			WithViolation(apperr.Violation{
-				Field: FieldParentID, Rule: apperr.RuleInvalidFormat,
-				Params: map[string]any{"allowed": []Type{TypeDepartment}},
-			})
+		return ErrIncompatibleParentType()
 	}
 
 	return nil

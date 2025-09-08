@@ -27,8 +27,3 @@ type UpdateUserReq struct {
 	Email  string    `json:"email"`
 	Name   string    `json:"name"`
 }
-
-type ChangePasswordReq struct {
-	UserID          uuid.UUID
-	NewPasswordHash string `json:"-"`
-}

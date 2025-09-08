@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -43,6 +43,11 @@ type Repository interface {
 	ListUserRoles(ctx context.Context, userID uuid.UUID) ([]UserRole, error)
 }
 
+type PasswordHasher interface {
+	HashRefreshToken(token []byte) ([]byte, error)
+	CheckPasswordHash(password []byte, hash string) error
+}
+
 type TokenCodec interface {
 	GenerateToken(claims jwt.Claims) (string, error)
 }
@@ -71,26 +76,28 @@ type Config struct {
 }
 
 type core struct {
-	repo       Repository
-	codec      TokenCodec
-	generators generators
-	cfg        Config
+	repo           Repository
+	codec          TokenCodec
+	generators     generators
+	passwordHasher PasswordHasher
+	cfg            Config
 }
 
-func NewCore(repo Repository, codec TokenCodec, idGenerator UUIDGenerator, rndGenerator RNDGenerator, timeGenerator TimeGenerator, cfg Config) *core {
+func NewCore(repo Repository, codec TokenCodec, idGenerator UUIDGenerator, rndGenerator RNDGenerator, timeGenerator TimeGenerator, passwordHasher PasswordHasher, cfg Config) (*core, error) {
 	if cfg.SessionTTLMinutes <= 0 || cfg.AccessTokenTTLMinutes <= 0 {
-		panic("auth.core: invalid config")
+		return nil, fmt.Errorf("auth.NewCore: %w", fmt.Errorf("config TTL values must be positive"))
 	}
-	if rndGenerator == nil || idGenerator == nil || timeGenerator == nil || repo == nil || codec == nil {
-		panic("auth.core: nil dependency")
+	if rndGenerator == nil || idGenerator == nil || timeGenerator == nil || repo == nil || codec == nil || passwordHasher == nil {
+		return nil, fmt.Errorf("auth.NewCore: %w", fmt.Errorf("config values must not be nil"))
 	}
 
 	return &core{
-		repo:       repo,
-		codec:      codec,
-		generators: generators{idGenerator, rndGenerator, timeGenerator},
-		cfg:        cfg,
-	}
+		repo:           repo,
+		codec:          codec,
+		generators:     generators{idGenerator, rndGenerator, timeGenerator},
+		passwordHasher: passwordHasher,
+		cfg:            cfg,
+	}, nil
 }
 
 func (c *core) IssueTokens(ctx context.Context, userID uuid.UUID, sessionVersion int) (Tokens, error) {
@@ -137,8 +144,10 @@ func (c *core) RefreshTokens(ctx context.Context, session Session, refreshToken,
 		return Tokens{}, fmt.Errorf("auth.core.RefreshTokens: %w", err)
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(rtHash), []byte(refreshToken)); err != nil {
-		err = apperr.ErrUnauthorized().WithDetail("invalid refresh token")
+	if err := c.passwordHasher.CheckPasswordHash([]byte(refreshToken), rtHash); err != nil {
+		if errors.Is(err, secure.ErrMismatchedHashAndPassword) {
+			err = apperr.ErrUnauthorized().WithDetail("invalid refresh token")
+		}
 		return Tokens{}, fmt.Errorf("auth.core.RefreshTokens: %w", err)
 	}
 
@@ -179,9 +188,6 @@ func (c *core) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, strin
 }
 
 func (c *core) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Session, error) {
-	if userID == uuid.Nil {
-		return nil, fmt.Errorf("auth.core.GetSessionsByUserID: %w", apperr.ErrNilUUID(FieldUserID))
-	}
 	sessions, err := c.repo.GetSessionsByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("auth.core.GetSessionsByUserID: %w", err)
@@ -242,10 +248,6 @@ func (c *core) DeleteUserRole(ctx context.Context, role UserRole) error {
 // ListUserRoles returns all roles assigned to the specified user.
 // This method is intended for display purposes only (e.g., in an admin UI).
 func (c *core) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]UserRole, error) {
-	if userID == uuid.Nil {
-		return nil, fmt.Errorf("auth.core.ListUserRoles: %w", apperr.ErrNilUUID(FieldUserID))
-	}
-
 	userRoles, err := c.repo.ListUserRoles(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("auth.core.ListUserRoles: %w", err)
@@ -274,7 +276,7 @@ func (c *core) GetCurrentUserDirectPermissions(ctx context.Context, role Role) (
 	}
 
 	for _, ur := range userRoles {
-		if ur.Role == roleAdmin {
+		if ur.Role == RoleAdmin {
 			return nil, true, nil
 		}
 		if ur.EntityID != nil {
@@ -346,7 +348,7 @@ func (c *core) IsSelf(ctx context.Context, targetUserID uuid.UUID) (bool, error)
 }
 
 func (c *core) checkAdminRights(ctx context.Context) (bool, error) {
-	_, isAdmin, err := c.GetCurrentUserDirectPermissions(ctx, roleAdmin)
+	_, isAdmin, err := c.GetCurrentUserDirectPermissions(ctx, RoleAdmin)
 	if err != nil {
 		return false, fmt.Errorf("checkAdminRights: %w", err)
 	}
@@ -359,7 +361,7 @@ func (c *core) generateTokens(userID, sessionID uuid.UUID, now time.Time) (strin
 	if err != nil {
 		return "", "", nil, fmt.Errorf("generateTokens: %w", err)
 	}
-	rtHash, err := secure.HashRefreshToken([]byte(refreshToken))
+	rtHash, err := c.passwordHasher.HashRefreshToken([]byte(refreshToken))
 	if err != nil {
 		return "", "", nil, fmt.Errorf("generateTokens: %w", err)
 	}

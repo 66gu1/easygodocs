@@ -25,7 +25,9 @@ func TestMain(m *testing.M) {
 func newRepo(t *testing.T) (*gormRepo, *gorm.DB, func()) {
 	gdb, _, cleanup := shared.CreateIsolatedDB(t)
 	t.Cleanup(cleanup)
-	return NewRepository(gdb), gdb, cleanup
+	repo, err := NewRepository(gdb)
+	require.NoError(t, err)
+	return repo, gdb, cleanup
 }
 
 /* helpers */
@@ -236,5 +238,12 @@ func TestUser_ChangePassword_IncrementsSessionVersion(t *testing.T) {
 	// err
 	cleanup()
 	err = repo.ChangePassword(t.Context(), id, "xxx")
+	require.Error(t, err)
+}
+
+func TestNewRepository(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRepository(nil)
 	require.Error(t, err)
 }

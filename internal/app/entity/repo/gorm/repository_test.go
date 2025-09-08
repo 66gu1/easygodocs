@@ -25,7 +25,9 @@ func TestMain(m *testing.M) {
 func newEntityRepo(t *testing.T, cfg Config) (*gormRepo, *gorm.DB, func()) {
 	gdb, _, cleanup := shared.CreateIsolatedDB(t)
 	t.Cleanup(cleanup)
-	return NewRepository(gdb, cfg), gdb, cleanup
+	repo, err := NewRepository(gdb, cfg)
+	require.NoError(t, err)
+	return repo, gdb, cleanup
 }
 
 /* --- helpers --- */
@@ -60,7 +62,7 @@ func compareEntityDTO(t *testing.T, e entity.Entity, eType entity.Type, name, co
 
 func TestEntity_Create_Get_Versions_Update(t *testing.T) {
 	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 4, MaxNameLength: 255})
+	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 4})
 
 	userID := createUserForEntity(t, gdb)
 	userID2 := createUserForEntity(t, gdb)
@@ -135,7 +137,7 @@ func TestEntity_Create_Get_Versions_Update(t *testing.T) {
 
 func TestEntity_CreateDraft_And_UpdateDraft(t *testing.T) {
 	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 4, MaxNameLength: 255})
+	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 4})
 
 	userID := createUserForEntity(t, gdb)
 
@@ -202,7 +204,7 @@ func TestEntity_CreateDraft_And_UpdateDraft(t *testing.T) {
 
 func TestEntity_GetListItem_And_GetAll(t *testing.T) {
 	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 4, MaxNameLength: 255})
+	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 4})
 
 	userID := createUserForEntity(t, gdb)
 
@@ -242,7 +244,7 @@ func TestEntity_GetListItem_And_GetAll(t *testing.T) {
 
 func TestEntity_PermittedHierarchy(t *testing.T) {
 	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 6, MaxNameLength: 255})
+	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 6})
 	userID := createUserForEntity(t, gdb)
 
 	// root -> c1 -> gc1 ; root -> c2
@@ -299,7 +301,7 @@ func TestEntity_PermittedHierarchy(t *testing.T) {
 
 func TestEntity_Delete_SoftMarksRecursively(t *testing.T) {
 	t.Parallel()
-	repo, gdb, _ := newEntityRepo(t, Config{MaxHierarchyDepth: 6, MaxNameLength: 255})
+	repo, gdb, _ := newEntityRepo(t, Config{MaxHierarchyDepth: 6})
 	userID := createUserForEntity(t, gdb)
 
 	root := uuid.New()
@@ -329,7 +331,7 @@ func TestEntity_Delete_SoftMarksRecursively(t *testing.T) {
 
 func TestEntity_ValidateChangedParent_Cycle(t *testing.T) {
 	t.Parallel()
-	repo, gdb, clean := newEntityRepo(t, Config{MaxHierarchyDepth: 6, MaxNameLength: 255})
+	repo, gdb, clean := newEntityRepo(t, Config{MaxHierarchyDepth: 6})
 	userID := createUserForEntity(t, gdb)
 
 	a := uuid.New()
@@ -358,7 +360,7 @@ func TestEntity_ValidateChangedParent_Cycle(t *testing.T) {
 func TestEntity_ValidateChangedParent_MaxDepth(t *testing.T) {
 	t.Parallel()
 	// MaxDepth=3
-	repo, gdb, _ := newEntityRepo(t, Config{MaxHierarchyDepth: 3, MaxNameLength: 255})
+	repo, gdb, _ := newEntityRepo(t, Config{MaxHierarchyDepth: 3})
 	userID := createUserForEntity(t, gdb)
 
 	// parent chain: P0 <- P1 <- P2
@@ -391,7 +393,7 @@ func TestEntity_ValidateChangedParent_MaxDepth(t *testing.T) {
 
 func TestEntity_CheckParentDepthLimit(t *testing.T) {
 	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 3, MaxNameLength: 255})
+	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 3})
 	userID := createUserForEntity(t, gdb)
 
 	// A <- B <- C
@@ -421,9 +423,12 @@ func TestEntity_CheckParentDepthLimit(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestEntity_GetMaxNameLength(t *testing.T) {
+func TestNewRepository(t *testing.T) {
 	t.Parallel()
-	cfg := Config{MaxHierarchyDepth: 3, MaxNameLength: 128}
-	repo, _, _ := newEntityRepo(t, cfg)
-	require.Equal(t, cfg.MaxNameLength, repo.GetMaxNameLength())
+
+	_, err := NewRepository(nil, Config{MaxHierarchyDepth: 3})
+	require.Error(t, err)
+
+	_, err = NewRepository(&gorm.DB{}, Config{MaxHierarchyDepth: 0})
+	require.Error(t, err)
 }

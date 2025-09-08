@@ -17,8 +17,11 @@ type gormRepo struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) *gormRepo {
-	return &gormRepo{db: db}
+func NewRepository(db *gorm.DB) (*gormRepo, error) {
+	if db == nil {
+		return nil, fmt.Errorf("gormRepo.NewRepository: %w", fmt.Errorf("nil db"))
+	}
+	return &gormRepo{db: db}, nil
 }
 
 func (r *gormRepo) CreateUser(ctx context.Context, req user.CreateUserReq, id uuid.UUID, passwordHash string) error {

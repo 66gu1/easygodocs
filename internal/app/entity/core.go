@@ -10,55 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-func ErrEntityNotFound() error {
-	return apperr.New("Entity not found", CodeNotFound, apperr.ClassNotFound, apperr.LogLevelWarn)
-}
-
-func ErrParentCycle() error {
-	return apperr.New("Parent cycle detected", CodeParentCycle, apperr.ClassBadRequest, apperr.LogLevelWarn).
-		WithViolation(apperr.Violation{
-			Field: FieldParentID, Rule: apperr.RuleCycle,
-		})
-}
-
-func ErrMaxHierarchyDepthExceeded(maxDepth int) error {
-	return apperr.New("Maximum hierarchy depth exceeded", CodeMaxDepthExceeded, apperr.ClassBadRequest, apperr.LogLevelWarn).
-		WithViolation(apperr.Violation{
-			Field: FieldParentID, Rule: apperr.RuleMaxHierarchy,
-			Params: map[string]any{"max_depth": maxDepth},
-		})
-}
-
-const (
-	CodeValidationFailed apperr.Code = "entity/validation_failed"
-	CodeNotFound         apperr.Code = "entity/not_found"
-	CodeParentCycle      apperr.Code = "entity/parent_cycle"
-	CodeMaxDepthExceeded apperr.Code = "entity/max_depth_exceeded"
-)
-
-const (
-	FieldName     apperr.Field = "name"
-	FieldType     apperr.Field = "type"
-	FieldParentID apperr.Field = "parent_id"
-	FieldEntityID apperr.Field = "entity_id"
-	FieldUserID   apperr.Field = "user_id"
-)
-
-func ErrNameRequired() error {
-	return apperr.New("name is required", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-		WithViolation(apperr.Violation{Field: FieldName, Rule: apperr.RuleRequired})
-}
-
-func ErrNameTooLong(max int) error {
-	return apperr.New("name is too long", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-		WithViolation(apperr.Violation{Field: FieldName, Rule: apperr.RuleTooLong, Params: map[string]any{"max": max}})
-}
-
-func ErrParentRequired() error {
-	return apperr.New("article must have a parent entity", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-		WithViolation(apperr.Violation{Field: FieldParentID, Rule: apperr.RuleRequired})
-}
-
 type Repository interface {
 	GetPermittedHierarchy(ctx context.Context, permissions []uuid.UUID, onlyForRead bool) ([]ListItem, error)
 	Get(ctx context.Context, id uuid.UUID) (Entity, error)
@@ -73,7 +24,6 @@ type Repository interface {
 	GetListItem(ctx context.Context, id uuid.UUID) (ListItem, error)
 	CheckParentDepthLimit(ctx context.Context, parentID uuid.UUID) error
 	ValidateChangedParent(ctx context.Context, id, parentID uuid.UUID) error
-	GetMaxNameLength() int
 }
 
 type IDGenerator interface {
@@ -84,21 +34,31 @@ type TimeGenerator interface {
 	Now() time.Time
 }
 
+type Validator interface {
+	NormalizeName(name string) string
+	ValidateName(name string) error
+}
+
 type Generators struct {
 	ID   IDGenerator
 	Time TimeGenerator
 }
 
 type core struct {
-	repo Repository
-	gen  Generators
+	repo      Repository
+	gen       Generators
+	validator Validator
 }
 
-func NewCore(repo Repository, generators Generators) *core {
-	return &core{
-		repo: repo,
-		gen:  generators,
+func NewCore(repo Repository, generators Generators, validator Validator) (*core, error) {
+	if repo == nil || generators.ID == nil || generators.Time == nil || validator == nil {
+		return nil, fmt.Errorf("entity.NewCore: %w", fmt.Errorf("nil dependency"))
 	}
+	return &core{
+		repo:      repo,
+		gen:       generators,
+		validator: validator,
+	}, nil
 }
 
 func (c *core) Get(ctx context.Context, id uuid.UUID) (Entity, error) {
@@ -167,9 +127,7 @@ func (c *core) GetVersion(ctx context.Context, id uuid.UUID, version int) (Entit
 		return Entity{}, fmt.Errorf("entity.core.GetVersion: %w", apperr.ErrNilUUID(FieldEntityID))
 	}
 	if version <= 0 {
-		return Entity{}, fmt.Errorf("entity.core.GetVersion: %w",
-			apperr.New("version must be positive", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-				WithViolation(apperr.Violation{Field: FieldVersion, Rule: apperr.RuleInvalidFormat}))
+		return Entity{}, fmt.Errorf("entity.core.GetVersion: %w", ErrInvalidVersion())
 	}
 
 	entity, err := c.repo.GetVersion(ctx, id, version)
@@ -199,8 +157,8 @@ func (c *core) Create(ctx context.Context, req CreateEntityReq) (uuid.UUID, erro
 	if err := req.Type.CheckIsValid(); err != nil {
 		return uuid.Nil, fmt.Errorf("entity.core.Create: %w", err)
 	}
-	req.Name = c.NormalizeName(req.Name)
-	if err := c.ValidateName(req.Name); err != nil {
+	req.Name = c.validator.NormalizeName(req.Name)
+	if err := c.validator.ValidateName(req.Name); err != nil {
 		return uuid.Nil, fmt.Errorf("entity.core.Create: %w", err)
 	}
 
@@ -238,8 +196,8 @@ func (c *core) Update(ctx context.Context, req UpdateEntityReq) error {
 	if req.UserID == uuid.Nil {
 		return fmt.Errorf("entity.core.Update: %w", apperr.ErrNilUUID(FieldUserID))
 	}
-	req.Name = c.NormalizeName(req.Name)
-	if err := c.ValidateName(req.Name); err != nil {
+	req.Name = c.validator.NormalizeName(req.Name)
+	if err := c.validator.ValidateName(req.Name); err != nil {
 		return fmt.Errorf("entity.core.Update: %w", err)
 	}
 
@@ -280,15 +238,6 @@ func (c *core) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (c *core) GetAll(ctx context.Context) ([]ListItem, error) {
-	entities, err := c.repo.GetAll(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("entity.core.GetAll: %w", err)
-	}
-
-	return entities, nil
-}
-
 func (c *core) validateParent(ctx context.Context, parentID *uuid.UUID, entityType Type) error {
 	if parentID != nil {
 		if *parentID == uuid.Nil {
@@ -309,17 +258,31 @@ func (c *core) validateParent(ctx context.Context, parentID *uuid.UUID, entityTy
 	return nil
 }
 
-func (c *core) NormalizeName(name string) string {
+type ValidationConfig struct {
+	MaxNameLength int `mapstructure:"max_name_length" json:"max_name_length"`
+}
+
+type validator struct {
+	cfg ValidationConfig
+}
+
+func NewValidator(cfg ValidationConfig) (*validator, error) {
+	if cfg.MaxNameLength <= 0 {
+		return nil, fmt.Errorf("entity.NewValidator: %w", fmt.Errorf("max name length must be positive"))
+	}
+	return &validator{cfg: cfg}, nil
+}
+
+func (c *validator) NormalizeName(name string) string {
 	return strings.TrimSpace(name)
 }
 
-func (c *core) ValidateName(name string) error {
-	maxLen := c.repo.GetMaxNameLength()
+func (c *validator) ValidateName(name string) error {
 	if name == "" {
 		return fmt.Errorf("validateName: %w", ErrNameRequired())
 	}
-	if len(name) > maxLen {
-		return fmt.Errorf("validateName: %w", ErrNameTooLong(maxLen))
+	if len(name) > c.cfg.MaxNameLength {
+		return fmt.Errorf("validateName: %w", ErrNameTooLong(c.cfg.MaxNameLength))
 	}
 
 	return nil

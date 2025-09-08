@@ -32,7 +32,7 @@ import (
 )
 
 func main() {
-	cfg := getConfig()
+	cfg := loadConfig()
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	zerolog.SetGlobalLevel(cfg.LogLevel.zeroLog())
@@ -60,18 +60,33 @@ func main() {
 	idGen := &system.UUIDv7Generator{}
 	timeGen := &system.TimeGenerator{}
 	rndGen := &system.RNDGenerator{}
+	passwordHasher := secure.NewPasswordHasher()
 
-	userRepo := userrepo.NewRepository(db)
-	userCore := user.NewCore(userRepo, idGen, cfg.User)
+	userCfg, userValidationCfg := getUserConfigs()
+	userRepo, err := userrepo.NewRepository(db)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create user repository")
+	}
+	userValidator, err := user.NewValidator(userValidationCfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create user validator")
+	}
+	userCore, err := user.NewCore(userRepo, idGen, passwordHasher, userValidator, userCfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create user core")
+	}
 
-	authRepo := authrepo.NewRepository(db)
-	authCore := auth.NewCore(authRepo, jwtCodec, idGen, rndGen, timeGen, cfg.Auth)
+	authCfg := getAuthConfigs()
+	authRepo, err := authrepo.NewRepository(db)
+	authCore, err := auth.NewCore(authRepo, jwtCodec, idGen, rndGen, timeGen, passwordHasher, authCfg)
 
-	entityRepo := entityrepo.NewRepository(db, cfg.Entity)
-	entityCore := entity.NewCore(entityRepo, entity.Generators{
+	entityCfg, entityValidationCfg := getEntityConfigs()
+	entityRepo, err := entityrepo.NewRepository(db, entityCfg)
+	entityValidator, err := entity.NewValidator(entityValidationCfg)
+	entityCore, err := entity.NewCore(entityRepo, entity.Generators{
 		ID:   idGen,
 		Time: timeGen,
-	})
+	}, entityValidator)
 
 	userService := userusecase.NewService(userCore, authCore)
 	userHandler := userhttp.NewHandler(userService)

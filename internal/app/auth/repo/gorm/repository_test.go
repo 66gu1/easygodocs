@@ -26,7 +26,9 @@ func TestMain(m *testing.M) {
 func newRepo(t *testing.T) (*gormRepo, *gorm.DB, func()) {
 	gdb, _, cleanup := shared.CreateIsolatedDB(t)
 	t.Cleanup(cleanup)
-	return NewRepository(gdb), gdb, cleanup
+	repo, err := NewRepository(gdb)
+	require.NoError(t, err)
+	return repo, gdb, cleanup
 }
 
 func TestCreateAndGetSessionByID(t *testing.T) {
@@ -399,4 +401,11 @@ func compareSessions(t *testing.T, exp, got auth.Session) {
 	require.WithinDuration(t, exp.CreatedAt, got.CreatedAt, time.Second)
 	require.WithinDuration(t, exp.ExpiresAt, got.ExpiresAt, time.Second)
 	require.Equal(t, exp.SessionVersion, got.SessionVersion)
+}
+
+func TestNewRepository(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRepository(nil)
+	require.Error(t, err)
 }

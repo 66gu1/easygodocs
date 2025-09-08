@@ -19,18 +19,16 @@ type gormRepo struct {
 
 type Config struct {
 	MaxHierarchyDepth int `mapstructure:"max_hierarchy_depth" json:"max_hierarchy_depth"`
-
-	MaxNameLength int `mapstructure:"max_name_length" json:"max_name_length"`
 }
 
-func NewRepository(db *gorm.DB, cfg Config) *gormRepo {
+func NewRepository(db *gorm.DB, cfg Config) (*gormRepo, error) {
 	if cfg.MaxHierarchyDepth <= 0 {
-		panic("Config.MaxHierarchyDepth must be > 0")
+		return nil, errors.New("max_hierarchy_depth must be positive")
 	}
-	if cfg.MaxNameLength <= 0 {
-		panic("Config.MaxNameLength must be > 0")
+	if db == nil {
+		return nil, errors.New("db is nil")
 	}
-	return &gormRepo{db: db, cfg: cfg}
+	return &gormRepo{db: db, cfg: cfg}, nil
 }
 
 func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error) {
@@ -374,8 +372,4 @@ WITH RECURSIVE
 	default:
 		return ""
 	}
-}
-
-func (r *gormRepo) GetMaxNameLength() int {
-	return r.cfg.MaxNameLength
 }

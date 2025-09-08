@@ -4,7 +4,8 @@ import (
 	"fmt"
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
-	entity "github.com/66gu1/easygodocs/internal/app/entity/repo/gorm"
+	"github.com/66gu1/easygodocs/internal/app/entity"
+	entity_repo "github.com/66gu1/easygodocs/internal/app/entity/repo/gorm"
 	"github.com/66gu1/easygodocs/internal/app/user"
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
@@ -15,13 +16,9 @@ type config struct {
 	DatabaseDSN string   `mapstructure:"database_dsn" json:"database_dsn"`
 	LogLevel    logLevel `mapstructure:"log_level" json:"log_level"`
 	MaxBodySize int64    `mapstructure:"max_body_size" json:"max_body_size"`
-
-	User   user.Config   `mapstructure:"user" json:"user"`
-	Auth   auth.Config   `mapstructure:"auth" json:"auth"`
-	Entity entity.Config `mapstructure:"entity" json:"entity"`
 }
 
-func getConfig() config {
+func loadConfig() config {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("config")
@@ -37,6 +34,43 @@ func getConfig() config {
 	}
 
 	return Cfg
+}
+
+func getUserConfigs() (user.Config, user.ValidationConfig) {
+	var userCfg user.Config
+	if err := viper.Sub("user").Unmarshal(&userCfg); err != nil {
+		panic(fmt.Errorf("fatal error user config: %w", err))
+	}
+
+	var userValCfg user.ValidationConfig
+	if err := viper.Sub("user").Unmarshal(&userValCfg); err != nil {
+		panic(fmt.Errorf("fatal error user validation config: %w", err))
+	}
+
+	return userCfg, userValCfg
+}
+
+func getAuthConfigs() auth.Config {
+	var authCfg auth.Config
+	if err := viper.Sub("auth").Unmarshal(&authCfg); err != nil {
+		panic(fmt.Errorf("fatal error auth config: %w", err))
+	}
+
+	return authCfg
+}
+
+func getEntityConfigs() (entity_repo.Config, entity.ValidationConfig) {
+	var entityCfg entity.ValidationConfig
+	if err := viper.Sub("entity").Unmarshal(&entityCfg); err != nil {
+		panic(fmt.Errorf("fatal error entity config: %w", err))
+	}
+
+	var entityRepoCfg entity_repo.Config
+	if err := viper.Sub("entity").Unmarshal(&entityRepoCfg); err != nil {
+		panic(fmt.Errorf("fatal error entity repo config: %w", err))
+	}
+
+	return entityRepoCfg, entityCfg
 }
 
 type logLevel string
