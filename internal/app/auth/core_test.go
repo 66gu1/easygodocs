@@ -178,6 +178,7 @@ func TestCore_IssueTokens(t *testing.T) {
 				mocks.pswHasher,
 				cfg(),
 			)
+			require.NoError(t, err)
 
 			tokens, err := core.IssueTokens(ctx, tt.userID, sessionVersion)
 			if tt.err != nil || tt.wantErr {
@@ -348,6 +349,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 				mocks.pswHasher,
 				cfg(),
 			)
+			require.NoError(t, err)
 
 			tokens, err := core.RefreshTokens(ctx, tt.session, refreshToken, rtHash)
 			if tt.err != nil {
@@ -933,9 +935,8 @@ func TestCore_GetCurrentUserDirectPermissions(t *testing.T) {
 
 func TestCore_IsSelf(t *testing.T) {
 	t.Parallel()
-	var (
-		userID = uuid.New()
-	)
+	userID := uuid.New()
+
 	ctx := contextx.SetToContext(context.Background(), contextx.UserIDKey, userID)
 	tests := []struct {
 		name    string

@@ -6,7 +6,7 @@ import (
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	"github.com/66gu1/easygodocs/internal/app/auth/usecase"
-	auth_http "github.com/66gu1/easygodocs/internal/app/user/transport/http"
+	user_http "github.com/66gu1/easygodocs/internal/app/user/transport/http"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/httpx"
 	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
@@ -19,17 +19,6 @@ const (
 	URLParamSessionID = "session_id"
 )
 
-type userRoleInput struct {
-	Role     auth.Role  `json:"role"`
-	EntityID *uuid.UUID `json:"entity_id"`
-}
-
-// Handler knows how to decode HTTP → service calls and encode responses.
-type Handler struct {
-	svc AuthService
-}
-
-//go:generate minimock -i github.com/66gu1/easygodocs/internal/app/auth.AuthService -o ./mock -s _mock.go
 type AuthService interface {
 	GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error)
 	DeleteSession(ctx context.Context, userID, id uuid.UUID) error
@@ -39,6 +28,16 @@ type AuthService interface {
 	ListUserRoles(ctx context.Context, userID uuid.UUID) ([]auth.UserRole, error)
 	RefreshTokens(ctx context.Context, refreshToken auth.RefreshToken) (auth.Tokens, error)
 	Login(ctx context.Context, req usecase.LoginCmd) (auth.Tokens, error)
+}
+
+type LoginInput struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// Handler knows how to decode HTTP → service calls and encode responses.
+type Handler struct {
+	svc AuthService
 }
 
 func NewHandler(svc AuthService) *Handler {
@@ -51,7 +50,7 @@ func NewHandler(svc AuthService) *Handler {
 func (h *Handler) GetSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	idStr := chi.URLParam(r, auth_http.URLParamUserID)
+	idStr := chi.URLParam(r, user_http.URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).
@@ -83,7 +82,7 @@ func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userIDStr := chi.URLParam(r, auth_http.URLParamUserID)
+	userIDStr := chi.URLParam(r, user_http.URLParamUserID)
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		logger.Warn(ctx, err).
@@ -105,7 +104,7 @@ func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	idStr := chi.URLParam(r, auth_http.URLParamUserID)
+	idStr := chi.URLParam(r, user_http.URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).
@@ -126,28 +125,14 @@ func (h *Handler) DeleteSessionsByUserID(w http.ResponseWriter, r *http.Request)
 func (h *Handler) AddUserRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	idStr := chi.URLParam(r, auth_http.URLParamUserID)
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		logger.Warn(ctx, err).
-			Str(auth.FieldUserID.String(), idStr).
-			Msg("auth.Handler.AddUserRole: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
-		return
-	}
-
-	var role userRoleInput
-	if err = httpx.DecodeJSON(r, &role); err != nil {
+	var input auth.UserRole
+	if err := httpx.DecodeJSON(r, &input); err != nil {
 		logger.Error(ctx, err).Msg("auth.Handler.AddUserRole: request json decode failed")
 		httpx.ReturnError(ctx, w, err)
 		return
 	}
 
-	if err = h.svc.AddUserRole(ctx, auth.UserRole{
-		UserID:   id,
-		Role:     role.Role,
-		EntityID: role.EntityID,
-	}); err != nil {
+	if err := h.svc.AddUserRole(ctx, input); err != nil {
 		httpx.ReturnError(ctx, w, err)
 		return
 	}
@@ -158,30 +143,15 @@ func (h *Handler) AddUserRole(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteUserRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	idStr := chi.URLParam(r, auth_http.URLParamUserID)
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		logger.Warn(ctx, err).
-			Str(auth.FieldUserID.String(), idStr).
-			Msg("auth.Handler.DeleteUserRole: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
-		return
-	}
-
-	var input userRoleInput
-	if err = httpx.DecodeJSON(r, &input); err != nil {
+	var input auth.UserRole
+	if err := httpx.DecodeJSON(r, &input); err != nil {
 		logger.Error(ctx, err).
-			Str(auth.FieldUserID.String(), idStr).
 			Msg("auth.Handler.DeleteUserRole: request json decode failed")
 		httpx.ReturnError(ctx, w, err)
 		return
 	}
 
-	if err = h.svc.DeleteUserRole(ctx, auth.UserRole{
-		UserID:   id,
-		Role:     input.Role,
-		EntityID: input.EntityID,
-	}); err != nil {
+	if err := h.svc.DeleteUserRole(ctx, input); err != nil {
 		httpx.ReturnError(ctx, w, err)
 		return
 	}
@@ -192,7 +162,7 @@ func (h *Handler) DeleteUserRole(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListUserRoles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	idStr := chi.URLParam(r, auth_http.URLParamUserID)
+	idStr := chi.URLParam(r, user_http.URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).
@@ -233,11 +203,7 @@ func (h *Handler) RefreshTokens(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	type loginInput struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	var input loginInput
+	var input LoginInput
 	if err := httpx.DecodeJSON(r, &input); err != nil {
 		logger.Error(ctx, err).Msg("auth.Handler.Login: request json decode failed")
 		httpx.ReturnError(ctx, w, err)

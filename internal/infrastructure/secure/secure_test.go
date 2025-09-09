@@ -15,7 +15,7 @@ import (
 func TestPasswordHasher_HashPassword(t *testing.T) {
 	t.Parallel()
 
-	var password = "password"
+	password := "password"
 	tests := []struct {
 		name     string
 		password []byte
@@ -52,7 +52,7 @@ func TestPasswordHasher_HashPassword(t *testing.T) {
 
 func TestPasswordHasher_CheckPasswordHash(t *testing.T) {
 	t.Parallel()
-	var password = "password"
+	password := "password"
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 4)
 	require.NoError(t, err)
@@ -83,8 +83,9 @@ func TestPasswordHasher_CheckPasswordHash(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			hasher := secure.NewPasswordHasher()
-			err = hasher.CheckPasswordHash(tt.hash, tt.password)
+			err := hasher.CheckPasswordHash(tt.hash, tt.password)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -172,7 +173,7 @@ func TestTokenCodec_ParseToken(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			gotClaims := auth.AccessTokenClaims{}
-			err = codec.ParseToken(tt.tokenStr, &gotClaims)
+			err := codec.ParseToken(tt.tokenStr, &gotClaims)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
 			} else {

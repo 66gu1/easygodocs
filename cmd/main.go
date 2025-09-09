@@ -78,15 +78,30 @@ func main() {
 
 	authCfg := getAuthConfigs()
 	authRepo, err := authrepo.NewRepository(db)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create auth repository")
+	}
 	authCore, err := auth.NewCore(authRepo, jwtCodec, idGen, rndGen, timeGen, passwordHasher, authCfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create auth core")
+	}
 
 	entityCfg, entityValidationCfg := getEntityConfigs()
 	entityRepo, err := entityrepo.NewRepository(db, entityCfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create entity repository")
+	}
 	entityValidator, err := entity.NewValidator(entityValidationCfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create entity validator")
+	}
 	entityCore, err := entity.NewCore(entityRepo, entity.Generators{
 		ID:   idGen,
 		Time: timeGen,
 	}, entityValidator)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create entity core")
+	}
 
 	userService := userusecase.NewService(userCore, authCore, passwordHasher)
 	userHandler := userhttp.NewHandler(userService)
@@ -126,7 +141,7 @@ func main() {
 			r.Delete("/", authHandler.DeleteSessionsByUserID) // DELETE /sessions?user_id={user_id}
 
 			r.Route(fmt.Sprintf("/{%s}", authhttp.URLParamSessionID), func(r chi.Router) {
-				r.Delete("/", authHandler.DeleteSession) // DELETE /sessions/{session_id}
+				r.Delete("/", authHandler.DeleteSession) // DELETE /sessions/{session_id}?user_id={user_id}
 			})
 		})
 
@@ -134,7 +149,7 @@ func main() {
 		r.Route("/roles", func(r chi.Router) {
 			r.Get("/", authHandler.ListUserRoles)     // GET /roles
 			r.Post("/", authHandler.AddUserRole)      // POST /roles
-			r.Delete("/", authHandler.DeleteUserRole) // DELETE /roles?user_id={user_id}&role={role}&entity_id={entity_id}
+			r.Delete("/", authHandler.DeleteUserRole) // DELETE /roles
 		})
 
 		// --- entity routes

@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
@@ -36,7 +37,7 @@ func AuthMiddleware(codec TokenCodec) func(http.Handler) http.Handler {
 			if err != nil {
 				logger.Error(ctx, err).
 					Msg("auth.AuthMiddleware: invalid token")
-				httpx.ReturnError(ctx, w, err)
+				httpx.ReturnError(ctx, w, apperr.ErrUnauthorized())
 				return
 			}
 
@@ -61,6 +62,21 @@ func AuthMiddleware(codec TokenCodec) func(http.Handler) http.Handler {
 					Str("sid", claims.SID).
 					Msg("auth.AuthMiddleware: invalid token claims.SID")
 				httpx.ReturnError(ctx, w, apperr.ErrUnauthorized())
+				return
+			}
+			if sessionID == uuid.Nil {
+				err = apperr.ErrUnauthorized().WithDetail("invalid token claims.SID")
+				logger.Error(ctx, err).
+					Msg("auth.AuthMiddleware: invalid token claims.SID")
+				httpx.ReturnError(ctx, w, err)
+				return
+			}
+
+			if !claims.ExpiresAt.After(time.Now().UTC()) {
+				err = apperr.ErrUnauthorized().WithDetail("token is expired")
+				logger.Error(ctx, err).
+					Msg("auth.AuthMiddleware: token is expired")
+				httpx.ReturnError(ctx, w, err)
 				return
 			}
 

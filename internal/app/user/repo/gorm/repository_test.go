@@ -78,6 +78,7 @@ func TestUser_CreateAndGet_ByID_And_ByEmail(t *testing.T) {
 
 	// by Email
 	u, ph, err = repo.GetUserByEmail(t.Context(), req.Email)
+	require.NoError(t, err)
 	compareUsersDTO(t, u, req.Name, req.Email, id)
 	require.Equal(t, expHash, ph)
 
@@ -100,12 +101,9 @@ func TestUser_GetAllUsers(t *testing.T) {
 	repo, _, cleanup := newRepo(t)
 
 	var (
-		data1 = testDataForCreate{req: uapp.CreateUserReq{
-			Email: uuid.New().String() + "@ex.com", Name: "John"}, hash: "h1", id: uuid.New()}
-		data2 = testDataForCreate{req: uapp.CreateUserReq{
-			Email: uuid.New().String() + "@ex.com", Name: "Mike"}, hash: "h2", id: uuid.New()}
-		data3 = testDataForCreate{req: uapp.CreateUserReq{
-			Email: uuid.New().String() + "@ex.com", Name: "Alice"}, hash: "h3", id: uuid.New()}
+		data1  = testDataForCreate{req: uapp.CreateUserReq{Email: uuid.New().String() + "@ex.com", Name: "John"}, hash: "h1", id: uuid.New()}
+		data2  = testDataForCreate{req: uapp.CreateUserReq{Email: uuid.New().String() + "@ex.com", Name: "Mike"}, hash: "h2", id: uuid.New()}
+		data3  = testDataForCreate{req: uapp.CreateUserReq{Email: uuid.New().String() + "@ex.com", Name: "Alice"}, hash: "h3", id: uuid.New()}
 		expMap = map[uuid.UUID]testDataForCreate{
 			data1.id: data1,
 			data2.id: data2,
@@ -140,10 +138,8 @@ func TestUser_UpdateUser_Success_Duplicate_NotFound(t *testing.T) {
 	repo, _, cleanup := newRepo(t)
 
 	var (
-		data1 = testDataForCreate{req: uapp.CreateUserReq{
-			Email: uuid.New().String() + "@ex.com", Name: "John"}, hash: "h1", id: uuid.New()}
-		data2 = testDataForCreate{req: uapp.CreateUserReq{
-			Email: uuid.New().String() + "@ex.com", Name: "Mike"}, hash: "h2", id: uuid.New()}
+		data1 = testDataForCreate{req: uapp.CreateUserReq{Email: uuid.New().String() + "@ex.com", Name: "John"}, hash: "h1", id: uuid.New()}
+		data2 = testDataForCreate{req: uapp.CreateUserReq{Email: uuid.New().String() + "@ex.com", Name: "Mike"}, hash: "h2", id: uuid.New()}
 	)
 
 	// create
@@ -192,9 +188,8 @@ func TestUser_DeleteUser_Success_And_NotFound(t *testing.T) {
 	repo, _, cleanup := newRepo(t)
 
 	id := uuid.New()
-	//create
-	err := repo.CreateUser(t.Context(), uapp.CreateUserReq{
-		Email: uuid.New().String() + "@ex.com", Name: "ToDelete"}, id, "hash")
+	// create
+	err := repo.CreateUser(t.Context(), uapp.CreateUserReq{Email: uuid.New().String() + "@ex.com", Name: "ToDelete"}, id, "hash")
 	require.NoError(t, err)
 
 	require.NoError(t, repo.DeleteUser(t.Context(), id))
@@ -220,8 +215,7 @@ func TestUser_ChangePassword_IncrementsSessionVersion(t *testing.T) {
 	repo, _, cleanup := newRepo(t)
 
 	id := uuid.New()
-	require.NoError(t, repo.CreateUser(t.Context(), uapp.CreateUserReq{
-		Email: uuid.New().String() + "@ex.com", Name: "Changeme"}, id, "oldhash"))
+	require.NoError(t, repo.CreateUser(t.Context(), uapp.CreateUserReq{Email: uuid.New().String() + "@ex.com", Name: "Changeme"}, id, "oldhash"))
 
 	// success
 	require.NoError(t, repo.ChangePassword(t.Context(), id, "newhash"))

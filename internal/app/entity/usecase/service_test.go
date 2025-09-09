@@ -771,7 +771,7 @@ func TestPermissionChecker_CheckEntityPermission(t *testing.T) {
 
 func TestEffectivePermissions_CheckID(t *testing.T) {
 	t.Parallel()
-	var id = uuid.New()
+	id := uuid.New()
 	tests := []struct {
 		name string
 		perm usecase.EffectivePermissions

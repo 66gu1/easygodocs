@@ -18,6 +18,22 @@ const (
 	URLParamUserID = "user_id"
 )
 
+type CreateUserInput struct {
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+type UpdateUserInput struct {
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+type ChangePasswordInput struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
 // Handler knows how to decode HTTP → service calls and encode responses.
 type Handler struct {
 	svc Service
@@ -34,17 +50,15 @@ type Service interface {
 }
 
 func NewHandler(svc Service) *Handler {
+	if svc == nil {
+		panic("user HTTP handler: nil service")
+	}
 	return &Handler{svc: svc}
 }
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	type CreateUserInput struct {
-		Email    string `json:"email"`
-		Name     string `json:"name"`
-		Password string `json:"password"`
-	}
 	var in CreateUserInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		logger.Error(ctx, err).
@@ -114,10 +128,6 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type UpdateUserInput struct {
-		Email string `json:"email"`
-		Name  string `json:"name"`
-	}
 	var in UpdateUserInput
 	if err = httpx.DecodeJSON(r, &in); err != nil {
 		logger.Error(ctx, err).
@@ -175,10 +185,6 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type ChangePasswordInput struct {
-		OldPassword string `json:"old_password"`
-		NewPassword string `json:"new_password"`
-	}
 	var in ChangePasswordInput
 	if err = httpx.DecodeJSON(r, &in); err != nil {
 		logger.Error(ctx, err).

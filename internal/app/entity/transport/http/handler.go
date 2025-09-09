@@ -19,6 +19,17 @@ const (
 	URLParamVersion  = "version"
 )
 
+type CreateEntityResp struct {
+	ID uuid.UUID `json:"id"`
+}
+
+type UpdateEntityInput struct {
+	Name     string     `json:"name"`
+	Content  string     `json:"content"`
+	ParentID *uuid.UUID `json:"parent_id,omitempty"`
+	IsDraft  bool       `json:"is_draft,omitempty"`
+}
+
 // Handler knows how to decode HTTP → service calls and encode responses.
 type Handler struct {
 	svc Service
@@ -36,6 +47,9 @@ type Service interface {
 }
 
 func NewHandler(svc Service) *Handler {
+	if svc == nil {
+		panic("entity HTTP handler: nil service")
+	}
 	return &Handler{svc: svc}
 }
 
@@ -147,7 +161,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Location", "/entities/"+id.String())
 
-	httpx.WriteJSON(ctx, w, http.StatusCreated, map[string]uuid.UUID{URLParamEntityID: id})
+	httpx.WriteJSON(ctx, w, http.StatusCreated, CreateEntityResp{ID: id})
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -163,12 +177,6 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type UpdateEntityInput struct {
-		Name     string     `json:"name"`
-		Content  string     `json:"content"`
-		ParentID *uuid.UUID `json:"parent_id,omitempty"`
-		IsDraft  bool       `json:"is_draft,omitempty"`
-	}
 	var input UpdateEntityInput
 	if err = httpx.DecodeJSON(r, &input); err != nil {
 		logger.Error(ctx, err).

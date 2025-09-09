@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/docker/go-connections/nat"
+	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
 	tc "github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -73,12 +74,12 @@ func StartPostgres() (td *TestDB, cleanup func()) {
 
 	host, err := container.Host(ctx)
 	if err != nil {
-		_ = container.Terminate(context.Background())
+		_ = container.Terminate(context.Background()) //nolint:errcheck
 		panic(fmt.Sprintf("get container host: %v", err))
 	}
 	port, err := container.MappedPort(ctx, "5432/tcp")
 	if err != nil {
-		_ = container.Terminate(context.Background())
+		_ = container.Terminate(context.Background()) //nolint:errcheck
 		panic(fmt.Sprintf("get mapped port: %v", err))
 	}
 
@@ -93,7 +94,7 @@ func StartPostgres() (td *TestDB, cleanup func()) {
 	cleanup = func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_ = container.Terminate(ctx)
+		_ = container.Terminate(ctx) //nolint:errcheck
 	}
 
 	return td, cleanup
@@ -108,7 +109,7 @@ func (td *TestDB) CreateIsolatedDB(t *testing.T) (*gorm.DB, *sql.DB, func()) {
 	}
 	defer admin.Close()
 
-	dbName := fmt.Sprintf("test_%d", time.Now().UnixNano())
+	dbName := fmt.Sprintf("test_%s", uuid.New().String())
 
 	if _, err = admin.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, dbName)); err != nil {
 		t.Fatalf("fail to create database %s: %v", dbName, err)
@@ -134,7 +135,12 @@ func (td *TestDB) CreateIsolatedDB(t *testing.T) (*gorm.DB, *sql.DB, func()) {
 	}
 
 	once := &sync.Once{}
-	cleanup := func() { once.Do(func() { _ = sqlDB.Close() }) }
+	cleanup := func() {
+		once.Do(func() {
+			_, _ = admin.Exec(fmt.Sprintf(`DROP DATABASE IF EXISTS "%s"`, dbName)) //nolint:errcheck
+			_ = sqlDB.Close()
+		})
+	}
 	return gdb, sqlDB, cleanup
 }
 
@@ -147,11 +153,6 @@ func (td *TestDB) adminDSN(dbname string) string {
 
 func (td *TestDB) sqlDSN(dbname string) string {
 	return td.adminDSN(dbname)
-}
-
-func (td *TestDB) gormDSN(dbname string) string {
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable TimeZone=UTC",
-		td.Host, td.Port, td.User, td.Password, dbname)
 }
 
 // --- goose ---
@@ -173,7 +174,10 @@ func findMigrationsDir() string {
 	if v := os.Getenv("MIGRATIONS_DIR"); v != "" {
 		return v
 	}
-	d, _ := os.Getwd()
+	d, err := os.Getwd()
+	if err != nil {
+		return "migrations" // fallback
+	}
 	for {
 		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
 			return filepath.Join(d, "migrations")

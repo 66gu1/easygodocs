@@ -496,7 +496,6 @@ func TestService_RefreshTokens(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestService_Login(t *testing.T) {

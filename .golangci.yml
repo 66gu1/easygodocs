@@ -1,6 +1,8 @@
 run:
-  timeout: 5m
   tests: true
+  build-tags:
+    - testutil
+  timeout: 5m
 
 output:
   sort-results: true
@@ -76,7 +78,12 @@ issues:
   exclude-rules:
     - path: _test\.go
       linters:
-        - gosec
+        - funlen
+        - gocyclo
+        - dupl
+        - lll
+        - goconst
+        - containedctx
     - path: repo/gorm
       linters:
         - lll           # длинные raw SQL — ок

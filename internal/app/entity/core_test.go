@@ -349,7 +349,6 @@ func TestCore_GetTree(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
-
 }
 
 func TestCore_GetPermittedHierarchy(t *testing.T) {
