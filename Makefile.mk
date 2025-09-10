@@ -32,6 +32,9 @@ vet:
 lint:
 	golangci-lint run --build-tags "$(TAGS)" ./...
 
+vuln:
+	govulncheck ./...
+
 test:
 	$(TESTENV) go test $(RACE) -tags $(TAGS) -timeout $(TIMEOUT) -count=$(COUNT) ./...
 
@@ -53,6 +56,7 @@ tools:
 	go install mvdan.cc/gofumpt@latest
 	go install golang.org/x/tools/cmd/goimports@latest
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install golang.org/x/vuln/cmd/govulncheck@latest
 
 clean:
 	rm -f coverage.out coverage.html
