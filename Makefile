@@ -4,14 +4,13 @@ RACE      ?= -race
 COUNT     ?= 1
 TIMEOUT   ?= 5m
 BIN ?= easygodocs
-TESTENV ?= DOCKER_HOST=unix:///Users/andbubnov/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 
 PKGS_ALL := $(shell go list ./...)
 PKGS     := $(filter-out %/mocks %/mocks/% %/mock %/mock/% %/minimock %/minimock/%,$(PKGS_ALL))
 COVERPKG := $(shell printf "%s\n" $(PKGS) | paste -sd, -)
 
 # -------- Targets --------
-.PHONY: all build run fmt vet lint test cover cover-html clean tools
+.PHONY: all build run fmt vet lint test cover cover-html clean tools vuln
 
 all: test
 
@@ -36,10 +35,10 @@ vuln:
 	govulncheck ./...
 
 test:
-	$(TESTENV) go test $(RACE) -tags $(TAGS) -timeout $(TIMEOUT) -count=$(COUNT) ./...
+	go test $(RACE) -tags $(TAGS) -timeout $(TIMEOUT) -count=$(COUNT) ./...
 
 cover:
-	$(TESTENV) go test $(RACE) -tags $(TAGS) -timeout $(TIMEOUT) -count=$(COUNT) \
+	go test $(RACE) -tags $(TAGS) -timeout $(TIMEOUT) -count=$(COUNT) \
 	  -covermode=atomic -coverpkg=$(COVERPKG) -coverprofile=coverage.out $(PKGS)
 	go tool cover -func=coverage.out
 
