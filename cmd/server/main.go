@@ -45,6 +45,10 @@ func main() {
 
 	password := os.Getenv("DB_PASSWORD")
 	dsn := fmt.Sprintf("%s password=%s", cfg.DatabaseDSN, password)
+	envDSN, ok := os.LookupEnv("DATABASE_DSN")
+	if ok {
+		dsn = envDSN
+	}
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		NowFunc: func() time.Time {
 			return time.Now().UTC()

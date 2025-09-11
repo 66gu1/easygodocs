@@ -27,6 +27,7 @@ go.work.sum
 # env file
 .env
 
+docker-compose.override.yml
 # Editor/IDE
 # .idea/
 # .vscode/
