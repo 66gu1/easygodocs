@@ -38,7 +38,7 @@ jobs:
 
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.2
           make vuln
 
       - name: Upload coverage artifact
