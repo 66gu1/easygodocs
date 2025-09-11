@@ -16,8 +16,14 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22.x'
+          go-version: '1.22.6'
           cache: true
+
+      - name: Pin toolchain & download deps
+        run: |
+          go version
+          go mod tidy
+          go mod download all
 
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -33,10 +39,9 @@ jobs:
       - name: govulncheck
         uses: golang/govulncheck-action@v1
         with:
-          go-version-input: '1.22'
+          go-version-input: '1.22.6'
           packages: ./...
 
-      # Артефакты (не обязательно, но удобно приложить coverage)
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
