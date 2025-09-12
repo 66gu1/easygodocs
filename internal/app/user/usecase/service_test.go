@@ -52,13 +52,13 @@ func TestService_CreateUser(t *testing.T) {
 		{
 			name: "ok",
 			setup: func(mocks mock) {
-				mocks.core.CreateUserMock.Expect(ctx, req).Return(nil)
+				mocks.core.CreateUserMock.Expect(ctx, req).Return(uuid.Nil, nil)
 			},
 		},
 		{
 			name: "core.CreateUser returns error",
 			setup: func(mocks mock) {
-				mocks.core.CreateUserMock.Expect(ctx, req).Return(expErr)
+				mocks.core.CreateUserMock.Expect(ctx, req).Return(uuid.Nil, expErr)
 			},
 			err: expErr,
 		},

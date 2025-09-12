@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -11,14 +11,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-type config struct {
+type Config struct {
 	Port        string   `mapstructure:"port" json:"port"`
 	DatabaseDSN string   `mapstructure:"database_dsn" json:"database_dsn"`
-	LogLevel    logLevel `mapstructure:"log_level" json:"log_level"`
+	LogLevel    LogLevel `mapstructure:"log_level" json:"log_level"`
 	MaxBodySize int64    `mapstructure:"max_body_size" json:"max_body_size"`
 }
 
-func loadConfig() config {
+func LoadConfig() Config {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("config")
@@ -28,7 +28,7 @@ func loadConfig() config {
 		panic(fmt.Errorf("fatal error config file: %w", err))
 	}
 
-	var Cfg config
+	var Cfg Config
 	if err := viper.Unmarshal(&Cfg); err != nil {
 		panic(fmt.Errorf("fatal error config file: %w", err))
 	}
@@ -36,7 +36,7 @@ func loadConfig() config {
 	return Cfg
 }
 
-func getUserConfigs() (user.Config, user.ValidationConfig) {
+func GetUserConfigs() (user.Config, user.ValidationConfig) {
 	var userCfg user.Config
 	if err := viper.Sub("user").Unmarshal(&userCfg); err != nil {
 		panic(fmt.Errorf("fatal error user config: %w", err))
@@ -50,7 +50,7 @@ func getUserConfigs() (user.Config, user.ValidationConfig) {
 	return userCfg, userValCfg
 }
 
-func getAuthConfigs() auth.Config {
+func GetAuthConfigs() auth.Config {
 	var authCfg auth.Config
 	if err := viper.Sub("auth").Unmarshal(&authCfg); err != nil {
 		panic(fmt.Errorf("fatal error auth config: %w", err))
@@ -59,7 +59,7 @@ func getAuthConfigs() auth.Config {
 	return authCfg
 }
 
-func getEntityConfigs() (entity_repo.Config, entity.ValidationConfig) {
+func GetEntityConfigs() (entity_repo.Config, entity.ValidationConfig) {
 	var entityCfg entity.ValidationConfig
 	if err := viper.Sub("entity").Unmarshal(&entityCfg); err != nil {
 		panic(fmt.Errorf("fatal error entity config: %w", err))
@@ -73,16 +73,16 @@ func getEntityConfigs() (entity_repo.Config, entity.ValidationConfig) {
 	return entityRepoCfg, entityCfg
 }
 
-type logLevel string
+type LogLevel string
 
 const (
-	logLevelDebug logLevel = "debug"
-	logLevelInfo  logLevel = "info"
-	logLevelWarn  logLevel = "warn"
-	logLevelError logLevel = "error"
+	logLevelDebug LogLevel = "debug"
+	logLevelInfo  LogLevel = "info"
+	logLevelWarn  LogLevel = "warn"
+	logLevelError LogLevel = "error"
 )
 
-func (l logLevel) zeroLog() zerolog.Level {
+func (l LogLevel) ZeroLog() zerolog.Level {
 	switch l {
 	case logLevelDebug:
 		return zerolog.DebugLevel

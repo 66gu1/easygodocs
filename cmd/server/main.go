@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/66gu1/easygodocs/config"
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	authrepo "github.com/66gu1/easygodocs/internal/app/auth/repo/gorm"
 	authhttp "github.com/66gu1/easygodocs/internal/app/auth/transport/http"
@@ -32,10 +33,10 @@ import (
 )
 
 func main() {
-	cfg := loadConfig()
+	cfg := config.LoadConfig()
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	zerolog.SetGlobalLevel(cfg.LogLevel.zeroLog())
+	zerolog.SetGlobalLevel(cfg.LogLevel.ZeroLog())
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	err := godotenv.Overload(".env")
@@ -43,11 +44,9 @@ func main() {
 		log.Debug().Err(err).Msg("failed to load .env.local file, using environment variables")
 	}
 
-	password := os.Getenv("DB_PASSWORD")
-	dsn := fmt.Sprintf("%s password=%s", cfg.DatabaseDSN, password)
-	envDSN, ok := os.LookupEnv("DATABASE_DSN")
-	if ok {
-		dsn = envDSN
+	dsn, ok := os.LookupEnv("DATABASE_DSN")
+	if !ok {
+		panic("DATABASE_DSN environment variable is required")
 	}
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		NowFunc: func() time.Time {
@@ -66,7 +65,7 @@ func main() {
 	rndGen := &system.RNDGenerator{}
 	passwordHasher := secure.NewPasswordHasher()
 
-	userCfg, userValidationCfg := getUserConfigs()
+	userCfg, userValidationCfg := config.GetUserConfigs()
 	userRepo, err := userrepo.NewRepository(db)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create user repository")
@@ -80,7 +79,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to create user core")
 	}
 
-	authCfg := getAuthConfigs()
+	authCfg := config.GetAuthConfigs()
 	authRepo, err := authrepo.NewRepository(db)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create auth repository")
@@ -90,7 +89,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to create auth core")
 	}
 
-	entityCfg, entityValidationCfg := getEntityConfigs()
+	entityCfg, entityValidationCfg := config.GetEntityConfigs()
 	entityRepo, err := entityrepo.NewRepository(db, entityCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create entity repository")

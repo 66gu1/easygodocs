@@ -247,11 +247,12 @@ func TestCore_CreateUser(t *testing.T) {
 
 			core, err := user.NewCore(m.repo, m.idGen, m.passwordHasher, m.validator, cfg())
 			require.NoError(t, err)
-			err = core.CreateUser(ctx, req)
+			got, err := core.CreateUser(ctx, req)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
 			} else {
 				require.NoError(t, err)
+				require.Equal(t, id, got)
 			}
 		})
 	}

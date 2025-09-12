@@ -16,7 +16,8 @@ all: test
 
 build:
 	mkdir -p bin
-	go build -o bin/$(BIN) ./cmd
+	go build -o bin/$(BIN) ./cmd/server
+	go build -o bin/$(BIN) ./cmd/seedadmin
 
 run:
 	go run ./cmd

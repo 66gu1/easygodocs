@@ -20,12 +20,27 @@ services:
       - GOOSE_DBSTRING=host=db port=5432 user=app password=pass dbname=easy_go_docs
     volumes:
       - ./migrations:/migrations
+    depends_on:
+      db:
+        condition: service_healthy
+
+  create-admin:
+    build: .
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+    entrypoint: ["/app/seedadmin"]
+    environment:
+      DATABASE_DSN: "postgres://app:pass@db:5432/easy_go_docs?sslmode=disable"
+      ADMIN_EMAIL: "admin@example.com"
+      ADMIN_PASSWORD: "changeme"
+    restart: "no"
 
   app:
     build: .
     depends_on:
-      db:
-        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     environment:
       DATABASE_DSN: "postgres://app:pass@db:5432/easy_go_docs?sslmode=disable"
       JWT_SECRET: "l5VwxuCXfmJ3G8vn2rzEo+UHar86kIb4CLW7mUqMlvM="

@@ -61,32 +61,32 @@ func NewCore(repo Repository, idGenerator IDGenerator, passwordHasher PasswordHa
 	return &core{repo: repo, cfg: cfg, idGenerator: idGenerator, passwordHasher: passwordHasher, validator: validator}, nil
 }
 
-func (c *core) CreateUser(ctx context.Context, req CreateUserReq) error {
+func (c *core) CreateUser(ctx context.Context, req CreateUserReq) (uuid.UUID, error) {
 	req.Name = c.validator.NormalizeName(req.Name)
 	if err := c.validator.ValidateName(req.Name); err != nil {
-		return fmt.Errorf("user.core.CreateUser: %w", err)
+		return uuid.Nil, fmt.Errorf("user.core.CreateUser: %w", err)
 	}
 	req.Email = c.validator.NormalizeEmail(req.Email)
 	if err := c.validator.ValidateEmail(req.Email, true); err != nil {
-		return fmt.Errorf("user.core.CreateUser: %w", err)
+		return uuid.Nil, fmt.Errorf("user.core.CreateUser: %w", err)
 	}
 	if err := c.validator.ValidatePassword(req.Password); err != nil {
-		return fmt.Errorf("user.core.CreateUser: %w", err)
+		return uuid.Nil, fmt.Errorf("user.core.CreateUser: %w", err)
 	}
 	passwordHash, err := c.passwordHasher.HashPassword(req.Password, c.cfg.PasswordHashCost)
 	if err != nil {
-		return fmt.Errorf("user.core.CreateUser: %w", err)
+		return uuid.Nil, fmt.Errorf("user.core.CreateUser: %w", err)
 	}
 
 	id, err := c.idGenerator.New()
 	if err != nil {
-		return fmt.Errorf("user.core.CreateUser: %w", err)
+		return uuid.Nil, fmt.Errorf("user.core.CreateUser: %w", err)
 	}
 	if err = c.repo.CreateUser(ctx, req, id, string(passwordHash)); err != nil {
-		return fmt.Errorf("user.core.CreateUser: %w", err)
+		return uuid.Nil, fmt.Errorf("user.core.CreateUser: %w", err)
 	}
 
-	return nil
+	return id, nil
 }
 
 func (c *core) GetUser(ctx context.Context, id uuid.UUID) (User, string, error) {

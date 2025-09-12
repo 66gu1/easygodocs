@@ -28,7 +28,7 @@ var (
 )
 
 type Core interface {
-	CreateUser(ctx context.Context, req user.CreateUserReq) error
+	CreateUser(ctx context.Context, req user.CreateUserReq) (uuid.UUID, error)
 	GetUser(ctx context.Context, id uuid.UUID) (user.User, string, error)
 	GetAllUsers(ctx context.Context) ([]user.User, error)
 	UpdateUser(ctx context.Context, req user.UpdateUserReq) error
@@ -72,7 +72,7 @@ func NewService(core Core, authService AuthService, passwordHasher PasswordHashe
 }
 
 func (s *service) CreateUser(ctx context.Context, req user.CreateUserReq) error {
-	if err := s.core.CreateUser(ctx, req); err != nil {
+	if _, err := s.core.CreateUser(ctx, req); err != nil {
 		logger.Error(ctx, err).
 			Str(user.FieldEmail.String(), req.Email).
 			Str(user.FieldName.String(), req.Name).

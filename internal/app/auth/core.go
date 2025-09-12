@@ -29,6 +29,11 @@ const (
 	CodeRoleDuplicate    apperr.Code = "auth/role_duplicate"
 )
 
+func ErrDuplicateUserRole() error {
+	return apperr.New("role already assigned to user",
+		CodeRoleDuplicate, apperr.ClassConflict, apperr.LogLevelWarn)
+}
+
 type Repository interface {
 	CreateSession(ctx context.Context, req Session, rtHash string) error
 	GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Session, error)

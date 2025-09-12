@@ -27,7 +27,7 @@ type CoreMock struct {
 	beforeChangePasswordCounter uint64
 	ChangePasswordMock          mCoreMockChangePassword
 
-	funcCreateUser          func(ctx context.Context, req user.CreateUserReq) (err error)
+	funcCreateUser          func(ctx context.Context, req user.CreateUserReq) (u1 uuid.UUID, err error)
 	funcCreateUserOrigin    string
 	inspectFuncCreateUser   func(ctx context.Context, req user.CreateUserReq)
 	afterCreateUserCounter  uint64
@@ -505,6 +505,7 @@ type CoreMockCreateUserParamPtrs struct {
 
 // CoreMockCreateUserResults contains results of the Core.CreateUser
 type CoreMockCreateUserResults struct {
+	u1  uuid.UUID
 	err error
 }
 
@@ -608,7 +609,7 @@ func (mmCreateUser *mCoreMockCreateUser) Inspect(f func(ctx context.Context, req
 }
 
 // Return sets up results that will be returned by Core.CreateUser
-func (mmCreateUser *mCoreMockCreateUser) Return(err error) *CoreMock {
+func (mmCreateUser *mCoreMockCreateUser) Return(u1 uuid.UUID, err error) *CoreMock {
 	if mmCreateUser.mock.funcCreateUser != nil {
 		mmCreateUser.mock.t.Fatalf("CoreMock.CreateUser mock is already set by Set")
 	}
@@ -616,13 +617,13 @@ func (mmCreateUser *mCoreMockCreateUser) Return(err error) *CoreMock {
 	if mmCreateUser.defaultExpectation == nil {
 		mmCreateUser.defaultExpectation = &CoreMockCreateUserExpectation{mock: mmCreateUser.mock}
 	}
-	mmCreateUser.defaultExpectation.results = &CoreMockCreateUserResults{err}
+	mmCreateUser.defaultExpectation.results = &CoreMockCreateUserResults{u1, err}
 	mmCreateUser.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
 	return mmCreateUser.mock
 }
 
 // Set uses given function f to mock the Core.CreateUser method
-func (mmCreateUser *mCoreMockCreateUser) Set(f func(ctx context.Context, req user.CreateUserReq) (err error)) *CoreMock {
+func (mmCreateUser *mCoreMockCreateUser) Set(f func(ctx context.Context, req user.CreateUserReq) (u1 uuid.UUID, err error)) *CoreMock {
 	if mmCreateUser.defaultExpectation != nil {
 		mmCreateUser.mock.t.Fatalf("Default expectation is already set for the Core.CreateUser method")
 	}
@@ -653,8 +654,8 @@ func (mmCreateUser *mCoreMockCreateUser) When(ctx context.Context, req user.Crea
 }
 
 // Then sets up Core.CreateUser return parameters for the expectation previously defined by the When method
-func (e *CoreMockCreateUserExpectation) Then(err error) *CoreMock {
-	e.results = &CoreMockCreateUserResults{err}
+func (e *CoreMockCreateUserExpectation) Then(u1 uuid.UUID, err error) *CoreMock {
+	e.results = &CoreMockCreateUserResults{u1, err}
 	return e.mock
 }
 
@@ -680,7 +681,7 @@ func (mmCreateUser *mCoreMockCreateUser) invocationsDone() bool {
 }
 
 // CreateUser implements mm_usecase.Core
-func (mmCreateUser *CoreMock) CreateUser(ctx context.Context, req user.CreateUserReq) (err error) {
+func (mmCreateUser *CoreMock) CreateUser(ctx context.Context, req user.CreateUserReq) (u1 uuid.UUID, err error) {
 	mm_atomic.AddUint64(&mmCreateUser.beforeCreateUserCounter, 1)
 	defer mm_atomic.AddUint64(&mmCreateUser.afterCreateUserCounter, 1)
 
@@ -700,7 +701,7 @@ func (mmCreateUser *CoreMock) CreateUser(ctx context.Context, req user.CreateUse
 	for _, e := range mmCreateUser.CreateUserMock.expectations {
 		if minimock.Equal(*e.params, mm_params) {
 			mm_atomic.AddUint64(&e.Counter, 1)
-			return e.results.err
+			return e.results.u1, e.results.err
 		}
 	}
 
@@ -732,7 +733,7 @@ func (mmCreateUser *CoreMock) CreateUser(ctx context.Context, req user.CreateUse
 		if mm_results == nil {
 			mmCreateUser.t.Fatal("No results are set for the CoreMock.CreateUser")
 		}
-		return (*mm_results).err
+		return (*mm_results).u1, (*mm_results).err
 	}
 	if mmCreateUser.funcCreateUser != nil {
 		return mmCreateUser.funcCreateUser(ctx, req)
