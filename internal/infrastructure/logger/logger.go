@@ -23,7 +23,7 @@ func log(ctx context.Context, level apperr.LogLevel, loggingErr error) *zerolog.
 
 	currentUser, err := contextx.GetUserID(ctx)
 	if err != nil {
-		if !errors.Is(err, contextx.ErrNotFound) {
+		if !errors.Is(err, apperr.ErrUnauthorized()) {
 			zerolog.Ctx(ctx).Error().Err(err).Msg("logger.log: GetUserID")
 		}
 	} else {

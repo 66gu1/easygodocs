@@ -68,6 +68,7 @@ func (m *versionModel) toDTO() entity.Entity {
 }
 
 type entityListItemModel struct {
+	db.Base
 	ID       uuid.UUID
 	Type     entity.Type
 	Name     string

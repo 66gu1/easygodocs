@@ -50,7 +50,7 @@ func NewHandler(svc AuthService) *Handler {
 func (h *Handler) GetSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	idStr := chi.URLParam(r, user_http.URLParamUserID)
+	idStr := r.URL.Query().Get(user_http.URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).
@@ -82,7 +82,7 @@ func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userIDStr := chi.URLParam(r, user_http.URLParamUserID)
+	userIDStr := r.URL.Query().Get(user_http.URLParamUserID)
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		logger.Warn(ctx, err).
@@ -104,7 +104,7 @@ func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	idStr := chi.URLParam(r, user_http.URLParamUserID)
+	idStr := r.URL.Query().Get(user_http.URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).
@@ -162,7 +162,7 @@ func (h *Handler) DeleteUserRole(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListUserRoles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	idStr := chi.URLParam(r, user_http.URLParamUserID)
+	idStr := r.URL.Query().Get(user_http.URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		logger.Warn(ctx, err).

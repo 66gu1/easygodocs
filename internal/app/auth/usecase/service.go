@@ -236,7 +236,7 @@ func (s *Service) Login(ctx context.Context, req LoginCmd) (auth.Tokens, error) 
 		return auth.Tokens{}, fmt.Errorf("auth.service.Login: %w", err)
 	}
 
-	if err = s.passwordHasher.CheckPasswordHash(req.Password, []byte(passwordHash)); err != nil {
+	if err = s.passwordHasher.CheckPasswordHash([]byte(passwordHash), req.Password); err != nil {
 		if errors.Is(err, secure.ErrMismatchedHashAndPassword) {
 			err = ErrInvalidPasswordOrEmail()
 		}

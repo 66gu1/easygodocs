@@ -92,7 +92,7 @@ func BuildTree(ctx context.Context, entities []ListItem) Tree {
 		nodes[e.ID] = &Node{ListItem: e}
 	}
 
-	var roots Tree
+	roots := Tree{}
 	for _, node := range nodes {
 		if node.ParentID != nil {
 			parent, ok := nodes[*node.ParentID]

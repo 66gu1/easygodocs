@@ -120,14 +120,14 @@ func main() {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Logger)
+	r.Use(httpx.Logger)
 	r.Use(httpx.MaxBodyBytes(cfg.MaxBodySize))
 
 	// with auth
 	r.Group(func(r chi.Router) {
 		r.Use(authhttp.AuthMiddleware(jwtCodec))
 		// --- user routes
-		r.Route("/users", func(r chi.Router) {
+		r.Route("/api/v1/users", func(r chi.Router) {
 			r.Get("/", userHandler.GetAllUsers) // GET    /users
 
 			r.Route(fmt.Sprintf("/{%s}", userhttp.URLParamUserID), func(r chi.Router) {
@@ -139,7 +139,7 @@ func main() {
 		})
 
 		// --- session routes
-		r.Route("/sessions", func(r chi.Router) {
+		r.Route("/api/v1/sessions", func(r chi.Router) {
 			r.Get("/", authHandler.GetSessionsByUserID)       // GET    /sessions?user_id={user_id}
 			r.Delete("/", authHandler.DeleteSessionsByUserID) // DELETE /sessions?user_id={user_id}
 
@@ -149,14 +149,14 @@ func main() {
 		})
 
 		// --- roles routes
-		r.Route("/roles", func(r chi.Router) {
+		r.Route("/api/v1/roles", func(r chi.Router) {
 			r.Get("/", authHandler.ListUserRoles)     // GET /roles
 			r.Post("/", authHandler.AddUserRole)      // POST /roles
 			r.Delete("/", authHandler.DeleteUserRole) // DELETE /roles
 		})
 
 		// --- entity routes
-		r.Route("/entities", func(r chi.Router) {
+		r.Route("/api/v1/entities", func(r chi.Router) {
 			r.Post("/", entityHandler.Create) // POST /entities
 			r.Get("/", entityHandler.GetTree) // GET /entities
 
@@ -178,9 +178,9 @@ func main() {
 
 	// without auth
 	r.Group(func(r chi.Router) {
-		r.Post("/login", authHandler.Login)           // POST /login
-		r.Post("/refresh", authHandler.RefreshTokens) // POST /refresh
-		r.Post("/register", userHandler.CreateUser)   // POST /register
+		r.Post("/api/v1/login", authHandler.Login)           // POST /login
+		r.Post("/api/v1/refresh", authHandler.RefreshTokens) // POST /refresh
+		r.Post("/api/v1/register", userHandler.CreateUser)   // POST /register
 	})
 
 	srv := &http.Server{
