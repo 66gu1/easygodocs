@@ -19,6 +19,7 @@ import (
 func Cfg() entity.Config {
 	return entity.Config{MaxHierarchyDepth: 1}
 }
+
 func TestNewCore(t *testing.T) {
 	t.Parallel()
 

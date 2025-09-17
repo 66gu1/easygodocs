@@ -118,7 +118,7 @@ func (r *gormRepo) AddUserRole(ctx context.Context, req auth.UserRole) error {
 	if err := r.db.WithContext(ctx).Create(userRoleFromDTO(req)).Error; err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == db.DuplicateCode {
-			return auth.ErrDuplicateUserRole()
+			return fmt.Errorf("gormRepo.AddUserRole: %w", auth.ErrDuplicateUserRole())
 		}
 		return fmt.Errorf("gormRepo.AddUserRole: %w", err)
 	}
