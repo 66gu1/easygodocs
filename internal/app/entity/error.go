@@ -21,6 +21,13 @@ func ErrMaxHierarchyDepthExceeded(maxDepth int) error {
 		})
 }
 
+func ErrCannotDraftEntityWithChildren() error {
+	return apperr.New("Cannot create draft for entity with children", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
+		WithViolation(apperr.Violation{
+			Field: FieldEntityID, Rule: apperr.RuleInvalidState,
+		})
+}
+
 const (
 	CodeValidationFailed apperr.Code = "entity/validation_failed"
 	CodeNotFound         apperr.Code = "entity/not_found"
@@ -49,6 +56,11 @@ func ErrNameTooLong(max int) error {
 func ErrParentRequired() error {
 	return apperr.New("article must have a parent entity", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
 		WithViolation(apperr.Violation{Field: FieldParentID, Rule: apperr.RuleRequired})
+}
+
+func ErrParentNotFound() error {
+	return apperr.New("parent entity not found", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
+		WithViolation(apperr.Violation{Field: FieldParentID, Rule: apperr.RuleNotFound})
 }
 
 func ErrInvalidVersion() error {

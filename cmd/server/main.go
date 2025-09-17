@@ -90,7 +90,7 @@ func main() {
 	}
 
 	entityCfg, entityValidationCfg := config.GetEntityConfigs()
-	entityRepo, err := entityrepo.NewRepository(db, entityCfg)
+	entityRepo, err := entityrepo.NewRepository(db)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create entity repository")
 	}
@@ -101,7 +101,7 @@ func main() {
 	entityCore, err := entity.NewCore(entityRepo, entity.Generators{
 		ID:   idGen,
 		Time: timeGen,
-	}, entityValidator)
+	}, entityValidator, entityCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create entity core")
 	}

@@ -9,12 +9,16 @@ import (
 	"github.com/66gu1/easygodocs/internal/app/entity"
 	"github.com/66gu1/easygodocs/internal/app/entity/mocks"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
+	"github.com/66gu1/easygodocs/internal/infrastructure/contextx"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
 //go:generate minimock -o ./mocks -s _mock.go
 
+func Cfg() entity.Config {
+	return entity.Config{MaxHierarchyDepth: 1}
+}
 func TestNewCore(t *testing.T) {
 	t.Parallel()
 
@@ -71,7 +75,7 @@ func TestNewCore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := entity.NewCore(tt.repo, tt.gen, tt.validator)
+			_, err := entity.NewCore(tt.repo, tt.gen, tt.validator, entity.Config{MaxHierarchyDepth: 1})
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -144,7 +148,7 @@ func TestCore_Get(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator)
+			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.Get(ctx, tt.id)
@@ -215,7 +219,7 @@ func TestCore_GetListItem(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator)
+			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.GetListItem(ctx, tt.id)
@@ -266,8 +270,12 @@ func TestCore_GetTree(t *testing.T) {
 			},
 		}
 		expErr = fmt.Errorf("test error")
+		userID = uuid.New()
+		hType  = entity.HierarchyTypeChildrenAndParents
+		cfg    = entity.Config{MaxHierarchyDepth: 1}
 	)
 
+	ctx = contextx.SetUserID(ctx, userID)
 	tests := []struct {
 		name    string
 		perms   []uuid.UUID
@@ -294,7 +302,7 @@ func TestCore_GetTree(t *testing.T) {
 			perms:   permissions,
 			isAdmin: false,
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock) {
-				repo.GetPermittedHierarchyMock.Expect(ctx, permissions, true).Return([]entity.ListItem{
+				repo.GetHierarchyMock.Expect(ctx, permissions, cfg.MaxHierarchyDepth, &userID, hType).Return([]entity.ListItem{
 					want[0].ListItem,
 					want[0].Children[0].ListItem,
 					want[1].ListItem,
@@ -313,7 +321,7 @@ func TestCore_GetTree(t *testing.T) {
 			perms:   permissions,
 			isAdmin: false,
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock) {
-				repo.GetPermittedHierarchyMock.Expect(ctx, permissions, true).Return(nil, expErr)
+				repo.GetHierarchyMock.Expect(ctx, permissions, cfg.MaxHierarchyDepth, &userID, hType).Return(nil, expErr)
 			},
 			err: expErr,
 		},
@@ -337,7 +345,7 @@ func TestCore_GetTree(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator)
+			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.GetTree(ctx, tt.perms, tt.isAdmin)
@@ -351,7 +359,7 @@ func TestCore_GetTree(t *testing.T) {
 	}
 }
 
-func TestCore_GetPermittedHierarchy(t *testing.T) {
+func TestCore_GetPermittedIDs(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -359,10 +367,13 @@ func TestCore_GetPermittedHierarchy(t *testing.T) {
 		permissions = []uuid.UUID{uuid.New(), uuid.New()}
 		want        = append(permissions, uuid.New())
 		items       = []entity.ListItem{{ID: want[0]}, {ID: want[1]}, {ID: want[2]}}
+		userID      = uuid.New()
+		hType       = entity.HierarchyTypeChildrenOnly
+		cfg         = entity.Config{MaxHierarchyDepth: 7}
 
 		expErr = fmt.Errorf("test error")
 	)
-
+	ctx = contextx.SetUserID(ctx, userID)
 	tests := []struct {
 		name  string
 		perms []uuid.UUID
@@ -374,7 +385,7 @@ func TestCore_GetPermittedHierarchy(t *testing.T) {
 			name:  "success",
 			perms: permissions,
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock) {
-				repo.GetPermittedHierarchyMock.Expect(ctx, permissions, false).Return(items, nil)
+				repo.GetHierarchyMock.Expect(ctx, permissions, cfg.MaxHierarchyDepth, &userID, hType).Return(items, nil)
 			},
 			want: want,
 			err:  nil,
@@ -391,7 +402,7 @@ func TestCore_GetPermittedHierarchy(t *testing.T) {
 			name:  "repo_error",
 			perms: permissions,
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock) {
-				repo.GetPermittedHierarchyMock.Expect(ctx, permissions, false).Return(nil, expErr)
+				repo.GetHierarchyMock.Expect(ctx, permissions, cfg.MaxHierarchyDepth, &userID, hType).Return(nil, expErr)
 			},
 			err: expErr,
 		},
@@ -406,10 +417,10 @@ func TestCore_GetPermittedHierarchy(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator)
+			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
 			require.NoError(t, err)
 
-			got, err := c.GetPermittedHierarchy(ctx, tt.perms, false)
+			got, err := c.GetPermittedIDs(ctx, tt.perms, hType)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
 				return
@@ -492,7 +503,7 @@ func TestCore_GetVersion(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator)
+			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.GetVersion(ctx, tt.id, tt.v)
@@ -583,7 +594,7 @@ func TestCore_GetVersionsList(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator)
+			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.GetVersionsList(ctx, tt.id)
@@ -637,6 +648,8 @@ func TestCore_Create(t *testing.T) {
 			Name:     "parent",
 			ParentID: nil,
 		}
+		cfg    = entity.Config{MaxHierarchyDepth: 4}
+		list   = []entity.ListItem{parent, {}, {}}
 		expErr = fmt.Errorf("test error")
 	)
 
@@ -664,8 +677,7 @@ func TestCore_Create(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, *requestWithParent.ParentID).Return(parent, nil)
-				repo.CheckParentDepthLimitMock.Expect(ctx, parentID).Return(nil)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return(list, nil)
 				timeGen.NowMock.Expect().Return(now)
 				idGen.NewMock.Expect().Return(id, nil)
 				repo.CreateDraftMock.Expect(ctx, requestWithParent, id).Return(nil)
@@ -703,30 +715,34 @@ func TestCore_Create(t *testing.T) {
 			err: expErr,
 		},
 		{
-			name: "error/validation/parent_nil_uuid",
-			req: entity.CreateEntityReq{
-				Type:     req.Type,
-				Name:     req.Name,
-				Content:  req.Content,
-				ParentID: &uuid.UUID{},
-				IsDraft:  req.IsDraft,
-				UserID:   req.UserID,
-			},
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
-				validator.NormalizeNameMock.Expect(req.Name).Return(normalizedName)
-				validator.ValidateNameMock.Expect(normalizedName).Return(nil)
-			},
-			err: apperr.ErrNilUUID(entity.FieldParentID),
-		},
-		{
 			name: "error/repo/get_parent",
 			req:  requestWithParent,
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, *requestWithParent.ParentID).Return(entity.ListItem{}, expErr)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return(nil, expErr)
 			},
 			err: expErr,
+		},
+		{
+			name: "error/max hierarchy depth exceeded",
+			req:  requestWithParent,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
+				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{{}, {}, {}, {}}, nil)
+			},
+			err: entity.ErrMaxHierarchyDepthExceeded(cfg.MaxHierarchyDepth),
+		},
+		{
+			name: "error/validation/parent_not_found",
+			req:  requestWithParent,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
+				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{}, nil)
+			},
+			err: entity.ErrParentNotFound(),
 		},
 		{
 			name: "error/validation/incompatible_parent_type",
@@ -734,11 +750,13 @@ func TestCore_Create(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, *requestWithParent.ParentID).Return(entity.ListItem{
-					ID:       parentID,
-					Type:     entity.TypeArticle,
-					Name:     "parent",
-					ParentID: nil,
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{
+					{
+						ID:       parentID,
+						Type:     entity.TypeArticle,
+						Name:     "parent",
+						ParentID: nil,
+					},
 				}, nil)
 			},
 			err: entity.ErrIncompatibleParentType(),
@@ -757,17 +775,6 @@ func TestCore_Create(t *testing.T) {
 				validator.ValidateNameMock.Expect(normalizedName).Return(nil)
 			},
 			err: entity.ErrParentRequired(),
-		},
-		{
-			name: "error/repo/check_parent_depth_limit",
-			req:  requestWithParent,
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
-				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
-				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, *requestWithParent.ParentID).Return(parent, nil)
-				repo.CheckParentDepthLimitMock.Expect(ctx, parentID).Return(expErr)
-			},
-			err: expErr,
 		},
 		{
 			name: "error/id_gen",
@@ -798,8 +805,7 @@ func TestCore_Create(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, *requestWithParent.ParentID).Return(parent, nil)
-				repo.CheckParentDepthLimitMock.Expect(ctx, parentID).Return(nil)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return(list, nil)
 				timeGen.NowMock.Expect().Return(now)
 				idGen.NewMock.Expect().Return(id, nil)
 				repo.CreateDraftMock.Expect(ctx, requestWithParent, id).Return(expErr)
@@ -817,7 +823,7 @@ func TestCore_Create(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen, validator)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator)
+			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
 			require.NoError(t, err)
 
 			gotID, err := c.Create(ctx, tt.req)
@@ -862,6 +868,7 @@ func TestCore_Update(t *testing.T) {
 			ParentChanged: true,
 			IsDraft:       true,
 			UserID:        req.UserID,
+			EntityType:    entity.TypeArticle,
 		}
 		parentID         = uuid.MustParse("c4abc05f-91f6-43ca-97b2-1cf4f7de0978")
 		reqParentChanged = entity.UpdateEntityReq{
@@ -869,15 +876,10 @@ func TestCore_Update(t *testing.T) {
 			Name:          req.Name,
 			Content:       req.Content,
 			ParentID:      &parentID,
-			ParentChanged: true,
 			IsDraft:       true,
 			UserID:        req.UserID,
-		}
-		item = entity.ListItem{
-			ID:       id,
-			Type:     entity.TypeDepartment,
-			Name:     "name",
-			ParentID: &parentID,
+			ParentChanged: true,
+			EntityType:    entity.TypeDepartment,
 		}
 		parentItem = entity.ListItem{
 			ID:       parentID,
@@ -885,7 +887,9 @@ func TestCore_Update(t *testing.T) {
 			Name:     "parent",
 			ParentID: nil,
 		}
-		expErr = fmt.Errorf("test error")
+		parentList = []entity.ListItem{parentItem, {}, {}}
+		cfg        = entity.Config{MaxHierarchyDepth: 5}
+		expErr     = fmt.Errorf("test error")
 	)
 
 	tests := []struct {
@@ -906,24 +910,13 @@ func TestCore_Update(t *testing.T) {
 			},
 		},
 		{
-			name: "success/parent_removed/draft",
-			req:  reqParentRemoved,
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
-				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
-				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, reqParentRemoved.ID).Return(item, nil)
-				repo.UpdateDraftMock.Expect(ctx, reqParentRemoved).Return(nil)
-			},
-		},
-		{
 			name: "success/parent_changed/draft",
 			req:  reqParentChanged,
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
 				validator.ValidateNameMock.Expect(reqParentChanged.Name).Return(nil)
-				repo.GetListItemMock.When(ctx, reqParentChanged.ID).Then(item, nil)
-				repo.GetListItemMock.When(ctx, *reqParentChanged.ParentID).Then(parentItem, nil)
-				repo.ValidateChangedParentMock.Expect(ctx, reqParentChanged.ID, *reqParentChanged.ParentID).Return(nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then(parentList, nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Then(nil, nil)
 				repo.UpdateDraftMock.Expect(ctx, reqParentChanged).Return(nil)
 			},
 		},
@@ -959,41 +952,78 @@ func TestCore_Update(t *testing.T) {
 			err: expErr,
 		},
 		{
-			name: "error/repo/get_item",
-			req:  reqParentRemoved,
+			name: "error/parent_changed/id == parent_id",
+			req: entity.UpdateEntityReq{
+				ID:            id,
+				Name:          req.Name,
+				Content:       req.Content,
+				ParentID:      &id,
+				ParentChanged: true,
+				IsDraft:       req.IsDraft,
+				UserID:        req.UserID,
+				EntityType:    entity.TypeDepartment,
+			},
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(req.Name).Return(reqParentRemoved.Name)
+				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+			},
+			err: entity.ErrParentCycle(),
+		},
+		{
+			name: "error/parent_changed/parent cycle",
+			req:  reqParentChanged,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
+				validator.ValidateNameMock.Expect(reqParentChanged.Name).Return(nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then([]entity.ListItem{
+					{
+						ID:   req.ID,
+						Type: entity.TypeDepartment,
+						Name: "child",
+					},
+				}, nil)
+			},
+			err: entity.ErrParentCycle(),
+		},
+		{
+			name: "error/parent_changed/parent not found",
+			req:  reqParentChanged,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
+				validator.ValidateNameMock.Expect(reqParentChanged.Name).Return(nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then([]entity.ListItem{}, nil)
+			},
+			err: entity.ErrParentNotFound(),
+		},
+		{
+			name: "error/parent_changed/max hierarchy depth exceeded",
+			req:  reqParentChanged,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
+				validator.ValidateNameMock.Expect(reqParentChanged.Name).Return(nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then(parentList, nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Then([]entity.ListItem{{Depth: 3}}, nil)
+			},
+			err: entity.ErrMaxHierarchyDepthExceeded(cfg.MaxHierarchyDepth),
+		},
+		{
+			name: "error/repo/get_children",
+			req:  reqParentChanged,
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
 				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, reqParentRemoved.ID).Return(entity.ListItem{}, expErr)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return(nil, expErr)
 			},
 			err: expErr,
 		},
 		{
-			name: "error/validation/parent_id_nil_uuid",
-			req: entity.UpdateEntityReq{
-				ID:            reqParentChanged.ID,
-				Name:          reqParentChanged.Name,
-				Content:       reqParentChanged.Content,
-				ParentID:      &uuid.UUID{},
-				ParentChanged: reqParentChanged.ParentChanged,
-				IsDraft:       reqParentChanged.IsDraft,
-				UserID:        reqParentChanged.UserID,
-			},
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
-				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
-				validator.ValidateNameMock.Expect(reqParentChanged.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, reqParentChanged.ID).Return(item, nil)
-			},
-			err: apperr.ErrNilUUID(entity.FieldEntityID),
-		},
-		{
-			name: "error/repo/get_parent",
+			name: "error/repo/get_parents",
 			req:  reqParentChanged,
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
 				validator.ValidateNameMock.Expect(req.Name).Return(nil)
-				repo.GetListItemMock.When(ctx, reqParentChanged.ID).Then(item, nil)
-				repo.GetListItemMock.When(ctx, *reqParentChanged.ParentID).Then(entity.ListItem{}, expErr)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then(parentList, nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Then(nil, expErr)
 			},
 			err: expErr,
 		},
@@ -1003,12 +1033,13 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
 				validator.ValidateNameMock.Expect(req.Name).Return(nil)
-				repo.GetListItemMock.When(ctx, reqParentChanged.ID).Then(item, nil)
-				repo.GetListItemMock.When(ctx, *reqParentChanged.ParentID).Then(entity.ListItem{
-					ID:       parentID,
-					Type:     entity.TypeArticle,
-					Name:     "parent",
-					ParentID: nil,
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{
+					{
+						ID:       parentID,
+						Type:     entity.TypeArticle,
+						Name:     "parent",
+						ParentID: nil,
+					},
 				}, nil)
 			},
 			err: entity.ErrIncompatibleParentType(),
@@ -1019,19 +1050,36 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
 				validator.ValidateNameMock.Expect(req.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, req.ID).Return(entity.ListItem{Type: entity.TypeArticle}, nil)
 			},
 			err: entity.ErrParentRequired(),
 		},
 		{
-			name: "error/repo/validate_changed_parent",
-			req:  reqParentChanged,
+			name: "error/update_draft/has_children",
+			req: entity.UpdateEntityReq{
+				ID:      req.ID,
+				UserID:  userID,
+				Name:    reqParentChanged.Name,
+				IsDraft: reqParentChanged.IsDraft,
+			},
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
-				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
-				validator.ValidateNameMock.Expect(req.Name).Return(nil)
-				repo.GetListItemMock.When(ctx, reqParentChanged.ID).Then(item, nil)
-				repo.GetListItemMock.When(ctx, *reqParentChanged.ParentID).Then(parentItem, nil)
-				repo.ValidateChangedParentMock.Expect(ctx, reqParentChanged.ID, *reqParentChanged.ParentID).Return(expErr)
+				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
+				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, 2, nil, entity.HierarchyTypeChildrenOnly).Then([]entity.ListItem{{}, {}}, nil)
+			},
+			err: entity.ErrCannotDraftEntityWithChildren(),
+		},
+		{
+			name: "error/update_draft/repo/GetHierarchy",
+			req: entity.UpdateEntityReq{
+				ID:      req.ID,
+				UserID:  userID,
+				Name:    reqParentChanged.Name,
+				IsDraft: reqParentChanged.IsDraft,
+			},
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
+				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, 2, nil, entity.HierarchyTypeChildrenOnly).Then(nil, expErr)
 			},
 			err: expErr,
 		},
@@ -1046,17 +1094,6 @@ func TestCore_Update(t *testing.T) {
 			},
 			err: expErr,
 		},
-		{
-			name: "error/repo/update_draft",
-			req:  reqParentRemoved,
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
-				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
-				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
-				repo.GetListItemMock.Expect(ctx, reqParentRemoved.ID).Return(item, nil)
-				repo.UpdateDraftMock.Expect(ctx, reqParentRemoved).Return(expErr)
-			},
-			err: expErr,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1068,7 +1105,7 @@ func TestCore_Update(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen, validator)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator)
+			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
 			require.NoError(t, err)
 
 			err = c.Update(ctx, tt.req)
@@ -1085,9 +1122,12 @@ func TestCore_Delete(t *testing.T) {
 	t.Parallel()
 
 	var (
-		ctx    = context.Background()
-		id     = uuid.New()
-		now    = time.Now()
+		ctx = context.Background()
+		id  = uuid.New()
+
+		ids    = []uuid.UUID{id, uuid.New(), uuid.New()}
+		list   = []entity.ListItem{{ID: id}, {ID: ids[1]}, {ID: ids[2]}}
+		cfg    = entity.Config{MaxHierarchyDepth: 5}
 		expErr = fmt.Errorf("test error")
 	)
 
@@ -1099,17 +1139,38 @@ func TestCore_Delete(t *testing.T) {
 		{
 			name: "success",
 			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
-				timeGen.NowMock.Expect().Return(now)
-				repo.DeleteMock.Expect(ctx, id, now).Return(nil)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return(list, nil)
+				repo.DeleteMock.Expect(ctx, ids).Return(nil)
 			},
 		},
 		{
-			name: "error/repo",
+			name: "error/repo/GetHierarchyMock",
 			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
-				timeGen.NowMock.Expect().Return(now)
-				repo.DeleteMock.Expect(ctx, id, now).Return(expErr)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return(nil, expErr)
 			},
 			err: expErr,
+		},
+		{
+			name: "error/repo/Delete",
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return(list, nil)
+				repo.DeleteMock.Expect(ctx, ids).Return(expErr)
+			},
+			err: expErr,
+		},
+		{
+			name: "error/not found",
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return([]entity.ListItem{}, nil)
+			},
+			err: entity.ErrEntityNotFound(),
+		},
+		{
+			name: "error/max hierarchy depth exceeded",
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return([]entity.ListItem{{Depth: 6}}, nil)
+			},
+			err: entity.ErrMaxHierarchyDepthExceeded(cfg.MaxHierarchyDepth),
 		},
 	}
 	for _, tt := range tests {
@@ -1122,7 +1183,7 @@ func TestCore_Delete(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{Time: timeGen, ID: idGen}, validator)
+			c, err := entity.NewCore(repo, entity.Generators{Time: timeGen, ID: idGen}, validator, cfg)
 			require.NoError(t, err)
 
 			err = c.Delete(ctx, id)

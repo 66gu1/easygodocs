@@ -21,13 +21,6 @@ type RepositoryMock struct {
 	t          minimock.Tester
 	finishOnce sync.Once
 
-	funcCheckParentDepthLimit          func(ctx context.Context, parentID uuid.UUID) (err error)
-	funcCheckParentDepthLimitOrigin    string
-	inspectFuncCheckParentDepthLimit   func(ctx context.Context, parentID uuid.UUID)
-	afterCheckParentDepthLimitCounter  uint64
-	beforeCheckParentDepthLimitCounter uint64
-	CheckParentDepthLimitMock          mRepositoryMockCheckParentDepthLimit
-
 	funcCreate          func(ctx context.Context, req mm_entity.CreateEntityReq, id uuid.UUID, createdAt time.Time) (err error)
 	funcCreateOrigin    string
 	inspectFuncCreate   func(ctx context.Context, req mm_entity.CreateEntityReq, id uuid.UUID, createdAt time.Time)
@@ -42,9 +35,9 @@ type RepositoryMock struct {
 	beforeCreateDraftCounter uint64
 	CreateDraftMock          mRepositoryMockCreateDraft
 
-	funcDelete          func(ctx context.Context, id uuid.UUID, deletedAt time.Time) (err error)
+	funcDelete          func(ctx context.Context, ids []uuid.UUID) (err error)
 	funcDeleteOrigin    string
-	inspectFuncDelete   func(ctx context.Context, id uuid.UUID, deletedAt time.Time)
+	inspectFuncDelete   func(ctx context.Context, ids []uuid.UUID)
 	afterDeleteCounter  uint64
 	beforeDeleteCounter uint64
 	DeleteMock          mRepositoryMockDelete
@@ -63,19 +56,19 @@ type RepositoryMock struct {
 	beforeGetAllCounter uint64
 	GetAllMock          mRepositoryMockGetAll
 
+	funcGetHierarchy          func(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) (la1 []mm_entity.ListItem, err error)
+	funcGetHierarchyOrigin    string
+	inspectFuncGetHierarchy   func(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType)
+	afterGetHierarchyCounter  uint64
+	beforeGetHierarchyCounter uint64
+	GetHierarchyMock          mRepositoryMockGetHierarchy
+
 	funcGetListItem          func(ctx context.Context, id uuid.UUID) (l1 mm_entity.ListItem, err error)
 	funcGetListItemOrigin    string
 	inspectFuncGetListItem   func(ctx context.Context, id uuid.UUID)
 	afterGetListItemCounter  uint64
 	beforeGetListItemCounter uint64
 	GetListItemMock          mRepositoryMockGetListItem
-
-	funcGetPermittedHierarchy          func(ctx context.Context, permissions []uuid.UUID, onlyForRead bool) (la1 []mm_entity.ListItem, err error)
-	funcGetPermittedHierarchyOrigin    string
-	inspectFuncGetPermittedHierarchy   func(ctx context.Context, permissions []uuid.UUID, onlyForRead bool)
-	afterGetPermittedHierarchyCounter  uint64
-	beforeGetPermittedHierarchyCounter uint64
-	GetPermittedHierarchyMock          mRepositoryMockGetPermittedHierarchy
 
 	funcGetVersion          func(ctx context.Context, id uuid.UUID, version int) (e1 mm_entity.Entity, err error)
 	funcGetVersionOrigin    string
@@ -104,13 +97,6 @@ type RepositoryMock struct {
 	afterUpdateDraftCounter  uint64
 	beforeUpdateDraftCounter uint64
 	UpdateDraftMock          mRepositoryMockUpdateDraft
-
-	funcValidateChangedParent          func(ctx context.Context, id uuid.UUID, parentID uuid.UUID) (err error)
-	funcValidateChangedParentOrigin    string
-	inspectFuncValidateChangedParent   func(ctx context.Context, id uuid.UUID, parentID uuid.UUID)
-	afterValidateChangedParentCounter  uint64
-	beforeValidateChangedParentCounter uint64
-	ValidateChangedParentMock          mRepositoryMockValidateChangedParent
 }
 
 // NewRepositoryMock returns a mock for mm_entity.Repository
@@ -120,9 +106,6 @@ func NewRepositoryMock(t minimock.Tester) *RepositoryMock {
 	if controller, ok := t.(minimock.MockController); ok {
 		controller.RegisterMocker(m)
 	}
-
-	m.CheckParentDepthLimitMock = mRepositoryMockCheckParentDepthLimit{mock: m}
-	m.CheckParentDepthLimitMock.callArgs = []*RepositoryMockCheckParentDepthLimitParams{}
 
 	m.CreateMock = mRepositoryMockCreate{mock: m}
 	m.CreateMock.callArgs = []*RepositoryMockCreateParams{}
@@ -139,11 +122,11 @@ func NewRepositoryMock(t minimock.Tester) *RepositoryMock {
 	m.GetAllMock = mRepositoryMockGetAll{mock: m}
 	m.GetAllMock.callArgs = []*RepositoryMockGetAllParams{}
 
+	m.GetHierarchyMock = mRepositoryMockGetHierarchy{mock: m}
+	m.GetHierarchyMock.callArgs = []*RepositoryMockGetHierarchyParams{}
+
 	m.GetListItemMock = mRepositoryMockGetListItem{mock: m}
 	m.GetListItemMock.callArgs = []*RepositoryMockGetListItemParams{}
-
-	m.GetPermittedHierarchyMock = mRepositoryMockGetPermittedHierarchy{mock: m}
-	m.GetPermittedHierarchyMock.callArgs = []*RepositoryMockGetPermittedHierarchyParams{}
 
 	m.GetVersionMock = mRepositoryMockGetVersion{mock: m}
 	m.GetVersionMock.callArgs = []*RepositoryMockGetVersionParams{}
@@ -157,354 +140,9 @@ func NewRepositoryMock(t minimock.Tester) *RepositoryMock {
 	m.UpdateDraftMock = mRepositoryMockUpdateDraft{mock: m}
 	m.UpdateDraftMock.callArgs = []*RepositoryMockUpdateDraftParams{}
 
-	m.ValidateChangedParentMock = mRepositoryMockValidateChangedParent{mock: m}
-	m.ValidateChangedParentMock.callArgs = []*RepositoryMockValidateChangedParentParams{}
-
 	t.Cleanup(m.MinimockFinish)
 
 	return m
-}
-
-type mRepositoryMockCheckParentDepthLimit struct {
-	optional           bool
-	mock               *RepositoryMock
-	defaultExpectation *RepositoryMockCheckParentDepthLimitExpectation
-	expectations       []*RepositoryMockCheckParentDepthLimitExpectation
-
-	callArgs []*RepositoryMockCheckParentDepthLimitParams
-	mutex    sync.RWMutex
-
-	expectedInvocations       uint64
-	expectedInvocationsOrigin string
-}
-
-// RepositoryMockCheckParentDepthLimitExpectation specifies expectation struct of the Repository.CheckParentDepthLimit
-type RepositoryMockCheckParentDepthLimitExpectation struct {
-	mock               *RepositoryMock
-	params             *RepositoryMockCheckParentDepthLimitParams
-	paramPtrs          *RepositoryMockCheckParentDepthLimitParamPtrs
-	expectationOrigins RepositoryMockCheckParentDepthLimitExpectationOrigins
-	results            *RepositoryMockCheckParentDepthLimitResults
-	returnOrigin       string
-	Counter            uint64
-}
-
-// RepositoryMockCheckParentDepthLimitParams contains parameters of the Repository.CheckParentDepthLimit
-type RepositoryMockCheckParentDepthLimitParams struct {
-	ctx      context.Context
-	parentID uuid.UUID
-}
-
-// RepositoryMockCheckParentDepthLimitParamPtrs contains pointers to parameters of the Repository.CheckParentDepthLimit
-type RepositoryMockCheckParentDepthLimitParamPtrs struct {
-	ctx      *context.Context
-	parentID *uuid.UUID
-}
-
-// RepositoryMockCheckParentDepthLimitResults contains results of the Repository.CheckParentDepthLimit
-type RepositoryMockCheckParentDepthLimitResults struct {
-	err error
-}
-
-// RepositoryMockCheckParentDepthLimitOrigins contains origins of expectations of the Repository.CheckParentDepthLimit
-type RepositoryMockCheckParentDepthLimitExpectationOrigins struct {
-	origin         string
-	originCtx      string
-	originParentID string
-}
-
-// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
-// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
-// Optional() makes method check to work in '0 or more' mode.
-// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
-// catch the problems when the expected method call is totally skipped during test run.
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) Optional() *mRepositoryMockCheckParentDepthLimit {
-	mmCheckParentDepthLimit.optional = true
-	return mmCheckParentDepthLimit
-}
-
-// Expect sets up expected params for Repository.CheckParentDepthLimit
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) Expect(ctx context.Context, parentID uuid.UUID) *mRepositoryMockCheckParentDepthLimit {
-	if mmCheckParentDepthLimit.mock.funcCheckParentDepthLimit != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("RepositoryMock.CheckParentDepthLimit mock is already set by Set")
-	}
-
-	if mmCheckParentDepthLimit.defaultExpectation == nil {
-		mmCheckParentDepthLimit.defaultExpectation = &RepositoryMockCheckParentDepthLimitExpectation{}
-	}
-
-	if mmCheckParentDepthLimit.defaultExpectation.paramPtrs != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("RepositoryMock.CheckParentDepthLimit mock is already set by ExpectParams functions")
-	}
-
-	mmCheckParentDepthLimit.defaultExpectation.params = &RepositoryMockCheckParentDepthLimitParams{ctx, parentID}
-	mmCheckParentDepthLimit.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
-	for _, e := range mmCheckParentDepthLimit.expectations {
-		if minimock.Equal(e.params, mmCheckParentDepthLimit.defaultExpectation.params) {
-			mmCheckParentDepthLimit.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmCheckParentDepthLimit.defaultExpectation.params)
-		}
-	}
-
-	return mmCheckParentDepthLimit
-}
-
-// ExpectCtxParam1 sets up expected param ctx for Repository.CheckParentDepthLimit
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) ExpectCtxParam1(ctx context.Context) *mRepositoryMockCheckParentDepthLimit {
-	if mmCheckParentDepthLimit.mock.funcCheckParentDepthLimit != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("RepositoryMock.CheckParentDepthLimit mock is already set by Set")
-	}
-
-	if mmCheckParentDepthLimit.defaultExpectation == nil {
-		mmCheckParentDepthLimit.defaultExpectation = &RepositoryMockCheckParentDepthLimitExpectation{}
-	}
-
-	if mmCheckParentDepthLimit.defaultExpectation.params != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("RepositoryMock.CheckParentDepthLimit mock is already set by Expect")
-	}
-
-	if mmCheckParentDepthLimit.defaultExpectation.paramPtrs == nil {
-		mmCheckParentDepthLimit.defaultExpectation.paramPtrs = &RepositoryMockCheckParentDepthLimitParamPtrs{}
-	}
-	mmCheckParentDepthLimit.defaultExpectation.paramPtrs.ctx = &ctx
-	mmCheckParentDepthLimit.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
-
-	return mmCheckParentDepthLimit
-}
-
-// ExpectParentIDParam2 sets up expected param parentID for Repository.CheckParentDepthLimit
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) ExpectParentIDParam2(parentID uuid.UUID) *mRepositoryMockCheckParentDepthLimit {
-	if mmCheckParentDepthLimit.mock.funcCheckParentDepthLimit != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("RepositoryMock.CheckParentDepthLimit mock is already set by Set")
-	}
-
-	if mmCheckParentDepthLimit.defaultExpectation == nil {
-		mmCheckParentDepthLimit.defaultExpectation = &RepositoryMockCheckParentDepthLimitExpectation{}
-	}
-
-	if mmCheckParentDepthLimit.defaultExpectation.params != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("RepositoryMock.CheckParentDepthLimit mock is already set by Expect")
-	}
-
-	if mmCheckParentDepthLimit.defaultExpectation.paramPtrs == nil {
-		mmCheckParentDepthLimit.defaultExpectation.paramPtrs = &RepositoryMockCheckParentDepthLimitParamPtrs{}
-	}
-	mmCheckParentDepthLimit.defaultExpectation.paramPtrs.parentID = &parentID
-	mmCheckParentDepthLimit.defaultExpectation.expectationOrigins.originParentID = minimock.CallerInfo(1)
-
-	return mmCheckParentDepthLimit
-}
-
-// Inspect accepts an inspector function that has same arguments as the Repository.CheckParentDepthLimit
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) Inspect(f func(ctx context.Context, parentID uuid.UUID)) *mRepositoryMockCheckParentDepthLimit {
-	if mmCheckParentDepthLimit.mock.inspectFuncCheckParentDepthLimit != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("Inspect function is already set for RepositoryMock.CheckParentDepthLimit")
-	}
-
-	mmCheckParentDepthLimit.mock.inspectFuncCheckParentDepthLimit = f
-
-	return mmCheckParentDepthLimit
-}
-
-// Return sets up results that will be returned by Repository.CheckParentDepthLimit
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) Return(err error) *RepositoryMock {
-	if mmCheckParentDepthLimit.mock.funcCheckParentDepthLimit != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("RepositoryMock.CheckParentDepthLimit mock is already set by Set")
-	}
-
-	if mmCheckParentDepthLimit.defaultExpectation == nil {
-		mmCheckParentDepthLimit.defaultExpectation = &RepositoryMockCheckParentDepthLimitExpectation{mock: mmCheckParentDepthLimit.mock}
-	}
-	mmCheckParentDepthLimit.defaultExpectation.results = &RepositoryMockCheckParentDepthLimitResults{err}
-	mmCheckParentDepthLimit.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
-	return mmCheckParentDepthLimit.mock
-}
-
-// Set uses given function f to mock the Repository.CheckParentDepthLimit method
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) Set(f func(ctx context.Context, parentID uuid.UUID) (err error)) *RepositoryMock {
-	if mmCheckParentDepthLimit.defaultExpectation != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("Default expectation is already set for the Repository.CheckParentDepthLimit method")
-	}
-
-	if len(mmCheckParentDepthLimit.expectations) > 0 {
-		mmCheckParentDepthLimit.mock.t.Fatalf("Some expectations are already set for the Repository.CheckParentDepthLimit method")
-	}
-
-	mmCheckParentDepthLimit.mock.funcCheckParentDepthLimit = f
-	mmCheckParentDepthLimit.mock.funcCheckParentDepthLimitOrigin = minimock.CallerInfo(1)
-	return mmCheckParentDepthLimit.mock
-}
-
-// When sets expectation for the Repository.CheckParentDepthLimit which will trigger the result defined by the following
-// Then helper
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) When(ctx context.Context, parentID uuid.UUID) *RepositoryMockCheckParentDepthLimitExpectation {
-	if mmCheckParentDepthLimit.mock.funcCheckParentDepthLimit != nil {
-		mmCheckParentDepthLimit.mock.t.Fatalf("RepositoryMock.CheckParentDepthLimit mock is already set by Set")
-	}
-
-	expectation := &RepositoryMockCheckParentDepthLimitExpectation{
-		mock:               mmCheckParentDepthLimit.mock,
-		params:             &RepositoryMockCheckParentDepthLimitParams{ctx, parentID},
-		expectationOrigins: RepositoryMockCheckParentDepthLimitExpectationOrigins{origin: minimock.CallerInfo(1)},
-	}
-	mmCheckParentDepthLimit.expectations = append(mmCheckParentDepthLimit.expectations, expectation)
-	return expectation
-}
-
-// Then sets up Repository.CheckParentDepthLimit return parameters for the expectation previously defined by the When method
-func (e *RepositoryMockCheckParentDepthLimitExpectation) Then(err error) *RepositoryMock {
-	e.results = &RepositoryMockCheckParentDepthLimitResults{err}
-	return e.mock
-}
-
-// Times sets number of times Repository.CheckParentDepthLimit should be invoked
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) Times(n uint64) *mRepositoryMockCheckParentDepthLimit {
-	if n == 0 {
-		mmCheckParentDepthLimit.mock.t.Fatalf("Times of RepositoryMock.CheckParentDepthLimit mock can not be zero")
-	}
-	mm_atomic.StoreUint64(&mmCheckParentDepthLimit.expectedInvocations, n)
-	mmCheckParentDepthLimit.expectedInvocationsOrigin = minimock.CallerInfo(1)
-	return mmCheckParentDepthLimit
-}
-
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) invocationsDone() bool {
-	if len(mmCheckParentDepthLimit.expectations) == 0 && mmCheckParentDepthLimit.defaultExpectation == nil && mmCheckParentDepthLimit.mock.funcCheckParentDepthLimit == nil {
-		return true
-	}
-
-	totalInvocations := mm_atomic.LoadUint64(&mmCheckParentDepthLimit.mock.afterCheckParentDepthLimitCounter)
-	expectedInvocations := mm_atomic.LoadUint64(&mmCheckParentDepthLimit.expectedInvocations)
-
-	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
-}
-
-// CheckParentDepthLimit implements mm_entity.Repository
-func (mmCheckParentDepthLimit *RepositoryMock) CheckParentDepthLimit(ctx context.Context, parentID uuid.UUID) (err error) {
-	mm_atomic.AddUint64(&mmCheckParentDepthLimit.beforeCheckParentDepthLimitCounter, 1)
-	defer mm_atomic.AddUint64(&mmCheckParentDepthLimit.afterCheckParentDepthLimitCounter, 1)
-
-	mmCheckParentDepthLimit.t.Helper()
-
-	if mmCheckParentDepthLimit.inspectFuncCheckParentDepthLimit != nil {
-		mmCheckParentDepthLimit.inspectFuncCheckParentDepthLimit(ctx, parentID)
-	}
-
-	mm_params := RepositoryMockCheckParentDepthLimitParams{ctx, parentID}
-
-	// Record call args
-	mmCheckParentDepthLimit.CheckParentDepthLimitMock.mutex.Lock()
-	mmCheckParentDepthLimit.CheckParentDepthLimitMock.callArgs = append(mmCheckParentDepthLimit.CheckParentDepthLimitMock.callArgs, &mm_params)
-	mmCheckParentDepthLimit.CheckParentDepthLimitMock.mutex.Unlock()
-
-	for _, e := range mmCheckParentDepthLimit.CheckParentDepthLimitMock.expectations {
-		if minimock.Equal(*e.params, mm_params) {
-			mm_atomic.AddUint64(&e.Counter, 1)
-			return e.results.err
-		}
-	}
-
-	if mmCheckParentDepthLimit.CheckParentDepthLimitMock.defaultExpectation != nil {
-		mm_atomic.AddUint64(&mmCheckParentDepthLimit.CheckParentDepthLimitMock.defaultExpectation.Counter, 1)
-		mm_want := mmCheckParentDepthLimit.CheckParentDepthLimitMock.defaultExpectation.params
-		mm_want_ptrs := mmCheckParentDepthLimit.CheckParentDepthLimitMock.defaultExpectation.paramPtrs
-
-		mm_got := RepositoryMockCheckParentDepthLimitParams{ctx, parentID}
-
-		if mm_want_ptrs != nil {
-
-			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
-				mmCheckParentDepthLimit.t.Errorf("RepositoryMock.CheckParentDepthLimit got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmCheckParentDepthLimit.CheckParentDepthLimitMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
-			}
-
-			if mm_want_ptrs.parentID != nil && !minimock.Equal(*mm_want_ptrs.parentID, mm_got.parentID) {
-				mmCheckParentDepthLimit.t.Errorf("RepositoryMock.CheckParentDepthLimit got unexpected parameter parentID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmCheckParentDepthLimit.CheckParentDepthLimitMock.defaultExpectation.expectationOrigins.originParentID, *mm_want_ptrs.parentID, mm_got.parentID, minimock.Diff(*mm_want_ptrs.parentID, mm_got.parentID))
-			}
-
-		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
-			mmCheckParentDepthLimit.t.Errorf("RepositoryMock.CheckParentDepthLimit got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-				mmCheckParentDepthLimit.CheckParentDepthLimitMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
-		}
-
-		mm_results := mmCheckParentDepthLimit.CheckParentDepthLimitMock.defaultExpectation.results
-		if mm_results == nil {
-			mmCheckParentDepthLimit.t.Fatal("No results are set for the RepositoryMock.CheckParentDepthLimit")
-		}
-		return (*mm_results).err
-	}
-	if mmCheckParentDepthLimit.funcCheckParentDepthLimit != nil {
-		return mmCheckParentDepthLimit.funcCheckParentDepthLimit(ctx, parentID)
-	}
-	mmCheckParentDepthLimit.t.Fatalf("Unexpected call to RepositoryMock.CheckParentDepthLimit. %v %v", ctx, parentID)
-	return
-}
-
-// CheckParentDepthLimitAfterCounter returns a count of finished RepositoryMock.CheckParentDepthLimit invocations
-func (mmCheckParentDepthLimit *RepositoryMock) CheckParentDepthLimitAfterCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmCheckParentDepthLimit.afterCheckParentDepthLimitCounter)
-}
-
-// CheckParentDepthLimitBeforeCounter returns a count of RepositoryMock.CheckParentDepthLimit invocations
-func (mmCheckParentDepthLimit *RepositoryMock) CheckParentDepthLimitBeforeCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmCheckParentDepthLimit.beforeCheckParentDepthLimitCounter)
-}
-
-// Calls returns a list of arguments used in each call to RepositoryMock.CheckParentDepthLimit.
-// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
-func (mmCheckParentDepthLimit *mRepositoryMockCheckParentDepthLimit) Calls() []*RepositoryMockCheckParentDepthLimitParams {
-	mmCheckParentDepthLimit.mutex.RLock()
-
-	argCopy := make([]*RepositoryMockCheckParentDepthLimitParams, len(mmCheckParentDepthLimit.callArgs))
-	copy(argCopy, mmCheckParentDepthLimit.callArgs)
-
-	mmCheckParentDepthLimit.mutex.RUnlock()
-
-	return argCopy
-}
-
-// MinimockCheckParentDepthLimitDone returns true if the count of the CheckParentDepthLimit invocations corresponds
-// the number of defined expectations
-func (m *RepositoryMock) MinimockCheckParentDepthLimitDone() bool {
-	if m.CheckParentDepthLimitMock.optional {
-		// Optional methods provide '0 or more' call count restriction.
-		return true
-	}
-
-	for _, e := range m.CheckParentDepthLimitMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			return false
-		}
-	}
-
-	return m.CheckParentDepthLimitMock.invocationsDone()
-}
-
-// MinimockCheckParentDepthLimitInspect logs each unmet expectation
-func (m *RepositoryMock) MinimockCheckParentDepthLimitInspect() {
-	for _, e := range m.CheckParentDepthLimitMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			m.t.Errorf("Expected call to RepositoryMock.CheckParentDepthLimit at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
-		}
-	}
-
-	afterCheckParentDepthLimitCounter := mm_atomic.LoadUint64(&m.afterCheckParentDepthLimitCounter)
-	// if default expectation was set then invocations count should be greater than zero
-	if m.CheckParentDepthLimitMock.defaultExpectation != nil && afterCheckParentDepthLimitCounter < 1 {
-		if m.CheckParentDepthLimitMock.defaultExpectation.params == nil {
-			m.t.Errorf("Expected call to RepositoryMock.CheckParentDepthLimit at\n%s", m.CheckParentDepthLimitMock.defaultExpectation.returnOrigin)
-		} else {
-			m.t.Errorf("Expected call to RepositoryMock.CheckParentDepthLimit at\n%s with params: %#v", m.CheckParentDepthLimitMock.defaultExpectation.expectationOrigins.origin, *m.CheckParentDepthLimitMock.defaultExpectation.params)
-		}
-	}
-	// if func was set then invocations count should be greater than zero
-	if m.funcCheckParentDepthLimit != nil && afterCheckParentDepthLimitCounter < 1 {
-		m.t.Errorf("Expected call to RepositoryMock.CheckParentDepthLimit at\n%s", m.funcCheckParentDepthLimitOrigin)
-	}
-
-	if !m.CheckParentDepthLimitMock.invocationsDone() && afterCheckParentDepthLimitCounter > 0 {
-		m.t.Errorf("Expected %d calls to RepositoryMock.CheckParentDepthLimit at\n%s but found %d calls",
-			mm_atomic.LoadUint64(&m.CheckParentDepthLimitMock.expectedInvocations), m.CheckParentDepthLimitMock.expectedInvocationsOrigin, afterCheckParentDepthLimitCounter)
-	}
 }
 
 type mRepositoryMockCreate struct {
@@ -1310,16 +948,14 @@ type RepositoryMockDeleteExpectation struct {
 
 // RepositoryMockDeleteParams contains parameters of the Repository.Delete
 type RepositoryMockDeleteParams struct {
-	ctx       context.Context
-	id        uuid.UUID
-	deletedAt time.Time
+	ctx context.Context
+	ids []uuid.UUID
 }
 
 // RepositoryMockDeleteParamPtrs contains pointers to parameters of the Repository.Delete
 type RepositoryMockDeleteParamPtrs struct {
-	ctx       *context.Context
-	id        *uuid.UUID
-	deletedAt *time.Time
+	ctx *context.Context
+	ids *[]uuid.UUID
 }
 
 // RepositoryMockDeleteResults contains results of the Repository.Delete
@@ -1329,10 +965,9 @@ type RepositoryMockDeleteResults struct {
 
 // RepositoryMockDeleteOrigins contains origins of expectations of the Repository.Delete
 type RepositoryMockDeleteExpectationOrigins struct {
-	origin          string
-	originCtx       string
-	originId        string
-	originDeletedAt string
+	origin    string
+	originCtx string
+	originIds string
 }
 
 // Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
@@ -1346,7 +981,7 @@ func (mmDelete *mRepositoryMockDelete) Optional() *mRepositoryMockDelete {
 }
 
 // Expect sets up expected params for Repository.Delete
-func (mmDelete *mRepositoryMockDelete) Expect(ctx context.Context, id uuid.UUID, deletedAt time.Time) *mRepositoryMockDelete {
+func (mmDelete *mRepositoryMockDelete) Expect(ctx context.Context, ids []uuid.UUID) *mRepositoryMockDelete {
 	if mmDelete.mock.funcDelete != nil {
 		mmDelete.mock.t.Fatalf("RepositoryMock.Delete mock is already set by Set")
 	}
@@ -1359,7 +994,7 @@ func (mmDelete *mRepositoryMockDelete) Expect(ctx context.Context, id uuid.UUID,
 		mmDelete.mock.t.Fatalf("RepositoryMock.Delete mock is already set by ExpectParams functions")
 	}
 
-	mmDelete.defaultExpectation.params = &RepositoryMockDeleteParams{ctx, id, deletedAt}
+	mmDelete.defaultExpectation.params = &RepositoryMockDeleteParams{ctx, ids}
 	mmDelete.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
 	for _, e := range mmDelete.expectations {
 		if minimock.Equal(e.params, mmDelete.defaultExpectation.params) {
@@ -1393,8 +1028,8 @@ func (mmDelete *mRepositoryMockDelete) ExpectCtxParam1(ctx context.Context) *mRe
 	return mmDelete
 }
 
-// ExpectIdParam2 sets up expected param id for Repository.Delete
-func (mmDelete *mRepositoryMockDelete) ExpectIdParam2(id uuid.UUID) *mRepositoryMockDelete {
+// ExpectIdsParam2 sets up expected param ids for Repository.Delete
+func (mmDelete *mRepositoryMockDelete) ExpectIdsParam2(ids []uuid.UUID) *mRepositoryMockDelete {
 	if mmDelete.mock.funcDelete != nil {
 		mmDelete.mock.t.Fatalf("RepositoryMock.Delete mock is already set by Set")
 	}
@@ -1410,37 +1045,14 @@ func (mmDelete *mRepositoryMockDelete) ExpectIdParam2(id uuid.UUID) *mRepository
 	if mmDelete.defaultExpectation.paramPtrs == nil {
 		mmDelete.defaultExpectation.paramPtrs = &RepositoryMockDeleteParamPtrs{}
 	}
-	mmDelete.defaultExpectation.paramPtrs.id = &id
-	mmDelete.defaultExpectation.expectationOrigins.originId = minimock.CallerInfo(1)
-
-	return mmDelete
-}
-
-// ExpectDeletedAtParam3 sets up expected param deletedAt for Repository.Delete
-func (mmDelete *mRepositoryMockDelete) ExpectDeletedAtParam3(deletedAt time.Time) *mRepositoryMockDelete {
-	if mmDelete.mock.funcDelete != nil {
-		mmDelete.mock.t.Fatalf("RepositoryMock.Delete mock is already set by Set")
-	}
-
-	if mmDelete.defaultExpectation == nil {
-		mmDelete.defaultExpectation = &RepositoryMockDeleteExpectation{}
-	}
-
-	if mmDelete.defaultExpectation.params != nil {
-		mmDelete.mock.t.Fatalf("RepositoryMock.Delete mock is already set by Expect")
-	}
-
-	if mmDelete.defaultExpectation.paramPtrs == nil {
-		mmDelete.defaultExpectation.paramPtrs = &RepositoryMockDeleteParamPtrs{}
-	}
-	mmDelete.defaultExpectation.paramPtrs.deletedAt = &deletedAt
-	mmDelete.defaultExpectation.expectationOrigins.originDeletedAt = minimock.CallerInfo(1)
+	mmDelete.defaultExpectation.paramPtrs.ids = &ids
+	mmDelete.defaultExpectation.expectationOrigins.originIds = minimock.CallerInfo(1)
 
 	return mmDelete
 }
 
 // Inspect accepts an inspector function that has same arguments as the Repository.Delete
-func (mmDelete *mRepositoryMockDelete) Inspect(f func(ctx context.Context, id uuid.UUID, deletedAt time.Time)) *mRepositoryMockDelete {
+func (mmDelete *mRepositoryMockDelete) Inspect(f func(ctx context.Context, ids []uuid.UUID)) *mRepositoryMockDelete {
 	if mmDelete.mock.inspectFuncDelete != nil {
 		mmDelete.mock.t.Fatalf("Inspect function is already set for RepositoryMock.Delete")
 	}
@@ -1465,7 +1077,7 @@ func (mmDelete *mRepositoryMockDelete) Return(err error) *RepositoryMock {
 }
 
 // Set uses given function f to mock the Repository.Delete method
-func (mmDelete *mRepositoryMockDelete) Set(f func(ctx context.Context, id uuid.UUID, deletedAt time.Time) (err error)) *RepositoryMock {
+func (mmDelete *mRepositoryMockDelete) Set(f func(ctx context.Context, ids []uuid.UUID) (err error)) *RepositoryMock {
 	if mmDelete.defaultExpectation != nil {
 		mmDelete.mock.t.Fatalf("Default expectation is already set for the Repository.Delete method")
 	}
@@ -1481,14 +1093,14 @@ func (mmDelete *mRepositoryMockDelete) Set(f func(ctx context.Context, id uuid.U
 
 // When sets expectation for the Repository.Delete which will trigger the result defined by the following
 // Then helper
-func (mmDelete *mRepositoryMockDelete) When(ctx context.Context, id uuid.UUID, deletedAt time.Time) *RepositoryMockDeleteExpectation {
+func (mmDelete *mRepositoryMockDelete) When(ctx context.Context, ids []uuid.UUID) *RepositoryMockDeleteExpectation {
 	if mmDelete.mock.funcDelete != nil {
 		mmDelete.mock.t.Fatalf("RepositoryMock.Delete mock is already set by Set")
 	}
 
 	expectation := &RepositoryMockDeleteExpectation{
 		mock:               mmDelete.mock,
-		params:             &RepositoryMockDeleteParams{ctx, id, deletedAt},
+		params:             &RepositoryMockDeleteParams{ctx, ids},
 		expectationOrigins: RepositoryMockDeleteExpectationOrigins{origin: minimock.CallerInfo(1)},
 	}
 	mmDelete.expectations = append(mmDelete.expectations, expectation)
@@ -1523,17 +1135,17 @@ func (mmDelete *mRepositoryMockDelete) invocationsDone() bool {
 }
 
 // Delete implements mm_entity.Repository
-func (mmDelete *RepositoryMock) Delete(ctx context.Context, id uuid.UUID, deletedAt time.Time) (err error) {
+func (mmDelete *RepositoryMock) Delete(ctx context.Context, ids []uuid.UUID) (err error) {
 	mm_atomic.AddUint64(&mmDelete.beforeDeleteCounter, 1)
 	defer mm_atomic.AddUint64(&mmDelete.afterDeleteCounter, 1)
 
 	mmDelete.t.Helper()
 
 	if mmDelete.inspectFuncDelete != nil {
-		mmDelete.inspectFuncDelete(ctx, id, deletedAt)
+		mmDelete.inspectFuncDelete(ctx, ids)
 	}
 
-	mm_params := RepositoryMockDeleteParams{ctx, id, deletedAt}
+	mm_params := RepositoryMockDeleteParams{ctx, ids}
 
 	// Record call args
 	mmDelete.DeleteMock.mutex.Lock()
@@ -1552,7 +1164,7 @@ func (mmDelete *RepositoryMock) Delete(ctx context.Context, id uuid.UUID, delete
 		mm_want := mmDelete.DeleteMock.defaultExpectation.params
 		mm_want_ptrs := mmDelete.DeleteMock.defaultExpectation.paramPtrs
 
-		mm_got := RepositoryMockDeleteParams{ctx, id, deletedAt}
+		mm_got := RepositoryMockDeleteParams{ctx, ids}
 
 		if mm_want_ptrs != nil {
 
@@ -1561,14 +1173,9 @@ func (mmDelete *RepositoryMock) Delete(ctx context.Context, id uuid.UUID, delete
 					mmDelete.DeleteMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
 			}
 
-			if mm_want_ptrs.id != nil && !minimock.Equal(*mm_want_ptrs.id, mm_got.id) {
-				mmDelete.t.Errorf("RepositoryMock.Delete got unexpected parameter id, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmDelete.DeleteMock.defaultExpectation.expectationOrigins.originId, *mm_want_ptrs.id, mm_got.id, minimock.Diff(*mm_want_ptrs.id, mm_got.id))
-			}
-
-			if mm_want_ptrs.deletedAt != nil && !minimock.Equal(*mm_want_ptrs.deletedAt, mm_got.deletedAt) {
-				mmDelete.t.Errorf("RepositoryMock.Delete got unexpected parameter deletedAt, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmDelete.DeleteMock.defaultExpectation.expectationOrigins.originDeletedAt, *mm_want_ptrs.deletedAt, mm_got.deletedAt, minimock.Diff(*mm_want_ptrs.deletedAt, mm_got.deletedAt))
+			if mm_want_ptrs.ids != nil && !minimock.Equal(*mm_want_ptrs.ids, mm_got.ids) {
+				mmDelete.t.Errorf("RepositoryMock.Delete got unexpected parameter ids, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDelete.DeleteMock.defaultExpectation.expectationOrigins.originIds, *mm_want_ptrs.ids, mm_got.ids, minimock.Diff(*mm_want_ptrs.ids, mm_got.ids))
 			}
 
 		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
@@ -1583,9 +1190,9 @@ func (mmDelete *RepositoryMock) Delete(ctx context.Context, id uuid.UUID, delete
 		return (*mm_results).err
 	}
 	if mmDelete.funcDelete != nil {
-		return mmDelete.funcDelete(ctx, id, deletedAt)
+		return mmDelete.funcDelete(ctx, ids)
 	}
-	mmDelete.t.Fatalf("Unexpected call to RepositoryMock.Delete. %v %v %v", ctx, id, deletedAt)
+	mmDelete.t.Fatalf("Unexpected call to RepositoryMock.Delete. %v %v", ctx, ids)
 	return
 }
 
@@ -2312,6 +1919,442 @@ func (m *RepositoryMock) MinimockGetAllInspect() {
 	}
 }
 
+type mRepositoryMockGetHierarchy struct {
+	optional           bool
+	mock               *RepositoryMock
+	defaultExpectation *RepositoryMockGetHierarchyExpectation
+	expectations       []*RepositoryMockGetHierarchyExpectation
+
+	callArgs []*RepositoryMockGetHierarchyParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// RepositoryMockGetHierarchyExpectation specifies expectation struct of the Repository.GetHierarchy
+type RepositoryMockGetHierarchyExpectation struct {
+	mock               *RepositoryMock
+	params             *RepositoryMockGetHierarchyParams
+	paramPtrs          *RepositoryMockGetHierarchyParamPtrs
+	expectationOrigins RepositoryMockGetHierarchyExpectationOrigins
+	results            *RepositoryMockGetHierarchyResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// RepositoryMockGetHierarchyParams contains parameters of the Repository.GetHierarchy
+type RepositoryMockGetHierarchyParams struct {
+	ctx         context.Context
+	permissions []uuid.UUID
+	maxDepth    int
+	userID      *uuid.UUID
+	hType       mm_entity.HierarchyType
+}
+
+// RepositoryMockGetHierarchyParamPtrs contains pointers to parameters of the Repository.GetHierarchy
+type RepositoryMockGetHierarchyParamPtrs struct {
+	ctx         *context.Context
+	permissions *[]uuid.UUID
+	maxDepth    *int
+	userID      **uuid.UUID
+	hType       *mm_entity.HierarchyType
+}
+
+// RepositoryMockGetHierarchyResults contains results of the Repository.GetHierarchy
+type RepositoryMockGetHierarchyResults struct {
+	la1 []mm_entity.ListItem
+	err error
+}
+
+// RepositoryMockGetHierarchyOrigins contains origins of expectations of the Repository.GetHierarchy
+type RepositoryMockGetHierarchyExpectationOrigins struct {
+	origin            string
+	originCtx         string
+	originPermissions string
+	originMaxDepth    string
+	originUserID      string
+	originHType       string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Optional() *mRepositoryMockGetHierarchy {
+	mmGetHierarchy.optional = true
+	return mmGetHierarchy
+}
+
+// Expect sets up expected params for Repository.GetHierarchy
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Expect(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) *mRepositoryMockGetHierarchy {
+	if mmGetHierarchy.mock.funcGetHierarchy != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
+	}
+
+	if mmGetHierarchy.defaultExpectation == nil {
+		mmGetHierarchy.defaultExpectation = &RepositoryMockGetHierarchyExpectation{}
+	}
+
+	if mmGetHierarchy.defaultExpectation.paramPtrs != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by ExpectParams functions")
+	}
+
+	mmGetHierarchy.defaultExpectation.params = &RepositoryMockGetHierarchyParams{ctx, permissions, maxDepth, userID, hType}
+	mmGetHierarchy.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmGetHierarchy.expectations {
+		if minimock.Equal(e.params, mmGetHierarchy.defaultExpectation.params) {
+			mmGetHierarchy.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmGetHierarchy.defaultExpectation.params)
+		}
+	}
+
+	return mmGetHierarchy
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Repository.GetHierarchy
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectCtxParam1(ctx context.Context) *mRepositoryMockGetHierarchy {
+	if mmGetHierarchy.mock.funcGetHierarchy != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
+	}
+
+	if mmGetHierarchy.defaultExpectation == nil {
+		mmGetHierarchy.defaultExpectation = &RepositoryMockGetHierarchyExpectation{}
+	}
+
+	if mmGetHierarchy.defaultExpectation.params != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Expect")
+	}
+
+	if mmGetHierarchy.defaultExpectation.paramPtrs == nil {
+		mmGetHierarchy.defaultExpectation.paramPtrs = &RepositoryMockGetHierarchyParamPtrs{}
+	}
+	mmGetHierarchy.defaultExpectation.paramPtrs.ctx = &ctx
+	mmGetHierarchy.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmGetHierarchy
+}
+
+// ExpectPermissionsParam2 sets up expected param permissions for Repository.GetHierarchy
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectPermissionsParam2(permissions []uuid.UUID) *mRepositoryMockGetHierarchy {
+	if mmGetHierarchy.mock.funcGetHierarchy != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
+	}
+
+	if mmGetHierarchy.defaultExpectation == nil {
+		mmGetHierarchy.defaultExpectation = &RepositoryMockGetHierarchyExpectation{}
+	}
+
+	if mmGetHierarchy.defaultExpectation.params != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Expect")
+	}
+
+	if mmGetHierarchy.defaultExpectation.paramPtrs == nil {
+		mmGetHierarchy.defaultExpectation.paramPtrs = &RepositoryMockGetHierarchyParamPtrs{}
+	}
+	mmGetHierarchy.defaultExpectation.paramPtrs.permissions = &permissions
+	mmGetHierarchy.defaultExpectation.expectationOrigins.originPermissions = minimock.CallerInfo(1)
+
+	return mmGetHierarchy
+}
+
+// ExpectMaxDepthParam3 sets up expected param maxDepth for Repository.GetHierarchy
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectMaxDepthParam3(maxDepth int) *mRepositoryMockGetHierarchy {
+	if mmGetHierarchy.mock.funcGetHierarchy != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
+	}
+
+	if mmGetHierarchy.defaultExpectation == nil {
+		mmGetHierarchy.defaultExpectation = &RepositoryMockGetHierarchyExpectation{}
+	}
+
+	if mmGetHierarchy.defaultExpectation.params != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Expect")
+	}
+
+	if mmGetHierarchy.defaultExpectation.paramPtrs == nil {
+		mmGetHierarchy.defaultExpectation.paramPtrs = &RepositoryMockGetHierarchyParamPtrs{}
+	}
+	mmGetHierarchy.defaultExpectation.paramPtrs.maxDepth = &maxDepth
+	mmGetHierarchy.defaultExpectation.expectationOrigins.originMaxDepth = minimock.CallerInfo(1)
+
+	return mmGetHierarchy
+}
+
+// ExpectUserIDParam4 sets up expected param userID for Repository.GetHierarchy
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectUserIDParam4(userID *uuid.UUID) *mRepositoryMockGetHierarchy {
+	if mmGetHierarchy.mock.funcGetHierarchy != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
+	}
+
+	if mmGetHierarchy.defaultExpectation == nil {
+		mmGetHierarchy.defaultExpectation = &RepositoryMockGetHierarchyExpectation{}
+	}
+
+	if mmGetHierarchy.defaultExpectation.params != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Expect")
+	}
+
+	if mmGetHierarchy.defaultExpectation.paramPtrs == nil {
+		mmGetHierarchy.defaultExpectation.paramPtrs = &RepositoryMockGetHierarchyParamPtrs{}
+	}
+	mmGetHierarchy.defaultExpectation.paramPtrs.userID = &userID
+	mmGetHierarchy.defaultExpectation.expectationOrigins.originUserID = minimock.CallerInfo(1)
+
+	return mmGetHierarchy
+}
+
+// ExpectHTypeParam5 sets up expected param hType for Repository.GetHierarchy
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectHTypeParam5(hType mm_entity.HierarchyType) *mRepositoryMockGetHierarchy {
+	if mmGetHierarchy.mock.funcGetHierarchy != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
+	}
+
+	if mmGetHierarchy.defaultExpectation == nil {
+		mmGetHierarchy.defaultExpectation = &RepositoryMockGetHierarchyExpectation{}
+	}
+
+	if mmGetHierarchy.defaultExpectation.params != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Expect")
+	}
+
+	if mmGetHierarchy.defaultExpectation.paramPtrs == nil {
+		mmGetHierarchy.defaultExpectation.paramPtrs = &RepositoryMockGetHierarchyParamPtrs{}
+	}
+	mmGetHierarchy.defaultExpectation.paramPtrs.hType = &hType
+	mmGetHierarchy.defaultExpectation.expectationOrigins.originHType = minimock.CallerInfo(1)
+
+	return mmGetHierarchy
+}
+
+// Inspect accepts an inspector function that has same arguments as the Repository.GetHierarchy
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Inspect(f func(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType)) *mRepositoryMockGetHierarchy {
+	if mmGetHierarchy.mock.inspectFuncGetHierarchy != nil {
+		mmGetHierarchy.mock.t.Fatalf("Inspect function is already set for RepositoryMock.GetHierarchy")
+	}
+
+	mmGetHierarchy.mock.inspectFuncGetHierarchy = f
+
+	return mmGetHierarchy
+}
+
+// Return sets up results that will be returned by Repository.GetHierarchy
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Return(la1 []mm_entity.ListItem, err error) *RepositoryMock {
+	if mmGetHierarchy.mock.funcGetHierarchy != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
+	}
+
+	if mmGetHierarchy.defaultExpectation == nil {
+		mmGetHierarchy.defaultExpectation = &RepositoryMockGetHierarchyExpectation{mock: mmGetHierarchy.mock}
+	}
+	mmGetHierarchy.defaultExpectation.results = &RepositoryMockGetHierarchyResults{la1, err}
+	mmGetHierarchy.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmGetHierarchy.mock
+}
+
+// Set uses given function f to mock the Repository.GetHierarchy method
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Set(f func(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) (la1 []mm_entity.ListItem, err error)) *RepositoryMock {
+	if mmGetHierarchy.defaultExpectation != nil {
+		mmGetHierarchy.mock.t.Fatalf("Default expectation is already set for the Repository.GetHierarchy method")
+	}
+
+	if len(mmGetHierarchy.expectations) > 0 {
+		mmGetHierarchy.mock.t.Fatalf("Some expectations are already set for the Repository.GetHierarchy method")
+	}
+
+	mmGetHierarchy.mock.funcGetHierarchy = f
+	mmGetHierarchy.mock.funcGetHierarchyOrigin = minimock.CallerInfo(1)
+	return mmGetHierarchy.mock
+}
+
+// When sets expectation for the Repository.GetHierarchy which will trigger the result defined by the following
+// Then helper
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) When(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) *RepositoryMockGetHierarchyExpectation {
+	if mmGetHierarchy.mock.funcGetHierarchy != nil {
+		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
+	}
+
+	expectation := &RepositoryMockGetHierarchyExpectation{
+		mock:               mmGetHierarchy.mock,
+		params:             &RepositoryMockGetHierarchyParams{ctx, permissions, maxDepth, userID, hType},
+		expectationOrigins: RepositoryMockGetHierarchyExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmGetHierarchy.expectations = append(mmGetHierarchy.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Repository.GetHierarchy return parameters for the expectation previously defined by the When method
+func (e *RepositoryMockGetHierarchyExpectation) Then(la1 []mm_entity.ListItem, err error) *RepositoryMock {
+	e.results = &RepositoryMockGetHierarchyResults{la1, err}
+	return e.mock
+}
+
+// Times sets number of times Repository.GetHierarchy should be invoked
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Times(n uint64) *mRepositoryMockGetHierarchy {
+	if n == 0 {
+		mmGetHierarchy.mock.t.Fatalf("Times of RepositoryMock.GetHierarchy mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmGetHierarchy.expectedInvocations, n)
+	mmGetHierarchy.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmGetHierarchy
+}
+
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) invocationsDone() bool {
+	if len(mmGetHierarchy.expectations) == 0 && mmGetHierarchy.defaultExpectation == nil && mmGetHierarchy.mock.funcGetHierarchy == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmGetHierarchy.mock.afterGetHierarchyCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmGetHierarchy.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// GetHierarchy implements mm_entity.Repository
+func (mmGetHierarchy *RepositoryMock) GetHierarchy(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) (la1 []mm_entity.ListItem, err error) {
+	mm_atomic.AddUint64(&mmGetHierarchy.beforeGetHierarchyCounter, 1)
+	defer mm_atomic.AddUint64(&mmGetHierarchy.afterGetHierarchyCounter, 1)
+
+	mmGetHierarchy.t.Helper()
+
+	if mmGetHierarchy.inspectFuncGetHierarchy != nil {
+		mmGetHierarchy.inspectFuncGetHierarchy(ctx, permissions, maxDepth, userID, hType)
+	}
+
+	mm_params := RepositoryMockGetHierarchyParams{ctx, permissions, maxDepth, userID, hType}
+
+	// Record call args
+	mmGetHierarchy.GetHierarchyMock.mutex.Lock()
+	mmGetHierarchy.GetHierarchyMock.callArgs = append(mmGetHierarchy.GetHierarchyMock.callArgs, &mm_params)
+	mmGetHierarchy.GetHierarchyMock.mutex.Unlock()
+
+	for _, e := range mmGetHierarchy.GetHierarchyMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.la1, e.results.err
+		}
+	}
+
+	if mmGetHierarchy.GetHierarchyMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmGetHierarchy.GetHierarchyMock.defaultExpectation.Counter, 1)
+		mm_want := mmGetHierarchy.GetHierarchyMock.defaultExpectation.params
+		mm_want_ptrs := mmGetHierarchy.GetHierarchyMock.defaultExpectation.paramPtrs
+
+		mm_got := RepositoryMockGetHierarchyParams{ctx, permissions, maxDepth, userID, hType}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmGetHierarchy.t.Errorf("RepositoryMock.GetHierarchy got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetHierarchy.GetHierarchyMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.permissions != nil && !minimock.Equal(*mm_want_ptrs.permissions, mm_got.permissions) {
+				mmGetHierarchy.t.Errorf("RepositoryMock.GetHierarchy got unexpected parameter permissions, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetHierarchy.GetHierarchyMock.defaultExpectation.expectationOrigins.originPermissions, *mm_want_ptrs.permissions, mm_got.permissions, minimock.Diff(*mm_want_ptrs.permissions, mm_got.permissions))
+			}
+
+			if mm_want_ptrs.maxDepth != nil && !minimock.Equal(*mm_want_ptrs.maxDepth, mm_got.maxDepth) {
+				mmGetHierarchy.t.Errorf("RepositoryMock.GetHierarchy got unexpected parameter maxDepth, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetHierarchy.GetHierarchyMock.defaultExpectation.expectationOrigins.originMaxDepth, *mm_want_ptrs.maxDepth, mm_got.maxDepth, minimock.Diff(*mm_want_ptrs.maxDepth, mm_got.maxDepth))
+			}
+
+			if mm_want_ptrs.userID != nil && !minimock.Equal(*mm_want_ptrs.userID, mm_got.userID) {
+				mmGetHierarchy.t.Errorf("RepositoryMock.GetHierarchy got unexpected parameter userID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetHierarchy.GetHierarchyMock.defaultExpectation.expectationOrigins.originUserID, *mm_want_ptrs.userID, mm_got.userID, minimock.Diff(*mm_want_ptrs.userID, mm_got.userID))
+			}
+
+			if mm_want_ptrs.hType != nil && !minimock.Equal(*mm_want_ptrs.hType, mm_got.hType) {
+				mmGetHierarchy.t.Errorf("RepositoryMock.GetHierarchy got unexpected parameter hType, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetHierarchy.GetHierarchyMock.defaultExpectation.expectationOrigins.originHType, *mm_want_ptrs.hType, mm_got.hType, minimock.Diff(*mm_want_ptrs.hType, mm_got.hType))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmGetHierarchy.t.Errorf("RepositoryMock.GetHierarchy got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmGetHierarchy.GetHierarchyMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmGetHierarchy.GetHierarchyMock.defaultExpectation.results
+		if mm_results == nil {
+			mmGetHierarchy.t.Fatal("No results are set for the RepositoryMock.GetHierarchy")
+		}
+		return (*mm_results).la1, (*mm_results).err
+	}
+	if mmGetHierarchy.funcGetHierarchy != nil {
+		return mmGetHierarchy.funcGetHierarchy(ctx, permissions, maxDepth, userID, hType)
+	}
+	mmGetHierarchy.t.Fatalf("Unexpected call to RepositoryMock.GetHierarchy. %v %v %v %v %v", ctx, permissions, maxDepth, userID, hType)
+	return
+}
+
+// GetHierarchyAfterCounter returns a count of finished RepositoryMock.GetHierarchy invocations
+func (mmGetHierarchy *RepositoryMock) GetHierarchyAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetHierarchy.afterGetHierarchyCounter)
+}
+
+// GetHierarchyBeforeCounter returns a count of RepositoryMock.GetHierarchy invocations
+func (mmGetHierarchy *RepositoryMock) GetHierarchyBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetHierarchy.beforeGetHierarchyCounter)
+}
+
+// Calls returns a list of arguments used in each call to RepositoryMock.GetHierarchy.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Calls() []*RepositoryMockGetHierarchyParams {
+	mmGetHierarchy.mutex.RLock()
+
+	argCopy := make([]*RepositoryMockGetHierarchyParams, len(mmGetHierarchy.callArgs))
+	copy(argCopy, mmGetHierarchy.callArgs)
+
+	mmGetHierarchy.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockGetHierarchyDone returns true if the count of the GetHierarchy invocations corresponds
+// the number of defined expectations
+func (m *RepositoryMock) MinimockGetHierarchyDone() bool {
+	if m.GetHierarchyMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.GetHierarchyMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.GetHierarchyMock.invocationsDone()
+}
+
+// MinimockGetHierarchyInspect logs each unmet expectation
+func (m *RepositoryMock) MinimockGetHierarchyInspect() {
+	for _, e := range m.GetHierarchyMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to RepositoryMock.GetHierarchy at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterGetHierarchyCounter := mm_atomic.LoadUint64(&m.afterGetHierarchyCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.GetHierarchyMock.defaultExpectation != nil && afterGetHierarchyCounter < 1 {
+		if m.GetHierarchyMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to RepositoryMock.GetHierarchy at\n%s", m.GetHierarchyMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to RepositoryMock.GetHierarchy at\n%s with params: %#v", m.GetHierarchyMock.defaultExpectation.expectationOrigins.origin, *m.GetHierarchyMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcGetHierarchy != nil && afterGetHierarchyCounter < 1 {
+		m.t.Errorf("Expected call to RepositoryMock.GetHierarchy at\n%s", m.funcGetHierarchyOrigin)
+	}
+
+	if !m.GetHierarchyMock.invocationsDone() && afterGetHierarchyCounter > 0 {
+		m.t.Errorf("Expected %d calls to RepositoryMock.GetHierarchy at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.GetHierarchyMock.expectedInvocations), m.GetHierarchyMock.expectedInvocationsOrigin, afterGetHierarchyCounter)
+	}
+}
+
 type mRepositoryMockGetListItem struct {
 	optional           bool
 	mock               *RepositoryMock
@@ -2652,380 +2695,6 @@ func (m *RepositoryMock) MinimockGetListItemInspect() {
 	if !m.GetListItemMock.invocationsDone() && afterGetListItemCounter > 0 {
 		m.t.Errorf("Expected %d calls to RepositoryMock.GetListItem at\n%s but found %d calls",
 			mm_atomic.LoadUint64(&m.GetListItemMock.expectedInvocations), m.GetListItemMock.expectedInvocationsOrigin, afterGetListItemCounter)
-	}
-}
-
-type mRepositoryMockGetPermittedHierarchy struct {
-	optional           bool
-	mock               *RepositoryMock
-	defaultExpectation *RepositoryMockGetPermittedHierarchyExpectation
-	expectations       []*RepositoryMockGetPermittedHierarchyExpectation
-
-	callArgs []*RepositoryMockGetPermittedHierarchyParams
-	mutex    sync.RWMutex
-
-	expectedInvocations       uint64
-	expectedInvocationsOrigin string
-}
-
-// RepositoryMockGetPermittedHierarchyExpectation specifies expectation struct of the Repository.GetPermittedHierarchy
-type RepositoryMockGetPermittedHierarchyExpectation struct {
-	mock               *RepositoryMock
-	params             *RepositoryMockGetPermittedHierarchyParams
-	paramPtrs          *RepositoryMockGetPermittedHierarchyParamPtrs
-	expectationOrigins RepositoryMockGetPermittedHierarchyExpectationOrigins
-	results            *RepositoryMockGetPermittedHierarchyResults
-	returnOrigin       string
-	Counter            uint64
-}
-
-// RepositoryMockGetPermittedHierarchyParams contains parameters of the Repository.GetPermittedHierarchy
-type RepositoryMockGetPermittedHierarchyParams struct {
-	ctx         context.Context
-	permissions []uuid.UUID
-	onlyForRead bool
-}
-
-// RepositoryMockGetPermittedHierarchyParamPtrs contains pointers to parameters of the Repository.GetPermittedHierarchy
-type RepositoryMockGetPermittedHierarchyParamPtrs struct {
-	ctx         *context.Context
-	permissions *[]uuid.UUID
-	onlyForRead *bool
-}
-
-// RepositoryMockGetPermittedHierarchyResults contains results of the Repository.GetPermittedHierarchy
-type RepositoryMockGetPermittedHierarchyResults struct {
-	la1 []mm_entity.ListItem
-	err error
-}
-
-// RepositoryMockGetPermittedHierarchyOrigins contains origins of expectations of the Repository.GetPermittedHierarchy
-type RepositoryMockGetPermittedHierarchyExpectationOrigins struct {
-	origin            string
-	originCtx         string
-	originPermissions string
-	originOnlyForRead string
-}
-
-// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
-// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
-// Optional() makes method check to work in '0 or more' mode.
-// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
-// catch the problems when the expected method call is totally skipped during test run.
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) Optional() *mRepositoryMockGetPermittedHierarchy {
-	mmGetPermittedHierarchy.optional = true
-	return mmGetPermittedHierarchy
-}
-
-// Expect sets up expected params for Repository.GetPermittedHierarchy
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) Expect(ctx context.Context, permissions []uuid.UUID, onlyForRead bool) *mRepositoryMockGetPermittedHierarchy {
-	if mmGetPermittedHierarchy.mock.funcGetPermittedHierarchy != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by Set")
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation == nil {
-		mmGetPermittedHierarchy.defaultExpectation = &RepositoryMockGetPermittedHierarchyExpectation{}
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation.paramPtrs != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by ExpectParams functions")
-	}
-
-	mmGetPermittedHierarchy.defaultExpectation.params = &RepositoryMockGetPermittedHierarchyParams{ctx, permissions, onlyForRead}
-	mmGetPermittedHierarchy.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
-	for _, e := range mmGetPermittedHierarchy.expectations {
-		if minimock.Equal(e.params, mmGetPermittedHierarchy.defaultExpectation.params) {
-			mmGetPermittedHierarchy.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmGetPermittedHierarchy.defaultExpectation.params)
-		}
-	}
-
-	return mmGetPermittedHierarchy
-}
-
-// ExpectCtxParam1 sets up expected param ctx for Repository.GetPermittedHierarchy
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) ExpectCtxParam1(ctx context.Context) *mRepositoryMockGetPermittedHierarchy {
-	if mmGetPermittedHierarchy.mock.funcGetPermittedHierarchy != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by Set")
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation == nil {
-		mmGetPermittedHierarchy.defaultExpectation = &RepositoryMockGetPermittedHierarchyExpectation{}
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation.params != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by Expect")
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation.paramPtrs == nil {
-		mmGetPermittedHierarchy.defaultExpectation.paramPtrs = &RepositoryMockGetPermittedHierarchyParamPtrs{}
-	}
-	mmGetPermittedHierarchy.defaultExpectation.paramPtrs.ctx = &ctx
-	mmGetPermittedHierarchy.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
-
-	return mmGetPermittedHierarchy
-}
-
-// ExpectPermissionsParam2 sets up expected param permissions for Repository.GetPermittedHierarchy
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) ExpectPermissionsParam2(permissions []uuid.UUID) *mRepositoryMockGetPermittedHierarchy {
-	if mmGetPermittedHierarchy.mock.funcGetPermittedHierarchy != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by Set")
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation == nil {
-		mmGetPermittedHierarchy.defaultExpectation = &RepositoryMockGetPermittedHierarchyExpectation{}
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation.params != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by Expect")
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation.paramPtrs == nil {
-		mmGetPermittedHierarchy.defaultExpectation.paramPtrs = &RepositoryMockGetPermittedHierarchyParamPtrs{}
-	}
-	mmGetPermittedHierarchy.defaultExpectation.paramPtrs.permissions = &permissions
-	mmGetPermittedHierarchy.defaultExpectation.expectationOrigins.originPermissions = minimock.CallerInfo(1)
-
-	return mmGetPermittedHierarchy
-}
-
-// ExpectOnlyForReadParam3 sets up expected param onlyForRead for Repository.GetPermittedHierarchy
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) ExpectOnlyForReadParam3(onlyForRead bool) *mRepositoryMockGetPermittedHierarchy {
-	if mmGetPermittedHierarchy.mock.funcGetPermittedHierarchy != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by Set")
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation == nil {
-		mmGetPermittedHierarchy.defaultExpectation = &RepositoryMockGetPermittedHierarchyExpectation{}
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation.params != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by Expect")
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation.paramPtrs == nil {
-		mmGetPermittedHierarchy.defaultExpectation.paramPtrs = &RepositoryMockGetPermittedHierarchyParamPtrs{}
-	}
-	mmGetPermittedHierarchy.defaultExpectation.paramPtrs.onlyForRead = &onlyForRead
-	mmGetPermittedHierarchy.defaultExpectation.expectationOrigins.originOnlyForRead = minimock.CallerInfo(1)
-
-	return mmGetPermittedHierarchy
-}
-
-// Inspect accepts an inspector function that has same arguments as the Repository.GetPermittedHierarchy
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) Inspect(f func(ctx context.Context, permissions []uuid.UUID, onlyForRead bool)) *mRepositoryMockGetPermittedHierarchy {
-	if mmGetPermittedHierarchy.mock.inspectFuncGetPermittedHierarchy != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("Inspect function is already set for RepositoryMock.GetPermittedHierarchy")
-	}
-
-	mmGetPermittedHierarchy.mock.inspectFuncGetPermittedHierarchy = f
-
-	return mmGetPermittedHierarchy
-}
-
-// Return sets up results that will be returned by Repository.GetPermittedHierarchy
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) Return(la1 []mm_entity.ListItem, err error) *RepositoryMock {
-	if mmGetPermittedHierarchy.mock.funcGetPermittedHierarchy != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by Set")
-	}
-
-	if mmGetPermittedHierarchy.defaultExpectation == nil {
-		mmGetPermittedHierarchy.defaultExpectation = &RepositoryMockGetPermittedHierarchyExpectation{mock: mmGetPermittedHierarchy.mock}
-	}
-	mmGetPermittedHierarchy.defaultExpectation.results = &RepositoryMockGetPermittedHierarchyResults{la1, err}
-	mmGetPermittedHierarchy.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
-	return mmGetPermittedHierarchy.mock
-}
-
-// Set uses given function f to mock the Repository.GetPermittedHierarchy method
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) Set(f func(ctx context.Context, permissions []uuid.UUID, onlyForRead bool) (la1 []mm_entity.ListItem, err error)) *RepositoryMock {
-	if mmGetPermittedHierarchy.defaultExpectation != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("Default expectation is already set for the Repository.GetPermittedHierarchy method")
-	}
-
-	if len(mmGetPermittedHierarchy.expectations) > 0 {
-		mmGetPermittedHierarchy.mock.t.Fatalf("Some expectations are already set for the Repository.GetPermittedHierarchy method")
-	}
-
-	mmGetPermittedHierarchy.mock.funcGetPermittedHierarchy = f
-	mmGetPermittedHierarchy.mock.funcGetPermittedHierarchyOrigin = minimock.CallerInfo(1)
-	return mmGetPermittedHierarchy.mock
-}
-
-// When sets expectation for the Repository.GetPermittedHierarchy which will trigger the result defined by the following
-// Then helper
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) When(ctx context.Context, permissions []uuid.UUID, onlyForRead bool) *RepositoryMockGetPermittedHierarchyExpectation {
-	if mmGetPermittedHierarchy.mock.funcGetPermittedHierarchy != nil {
-		mmGetPermittedHierarchy.mock.t.Fatalf("RepositoryMock.GetPermittedHierarchy mock is already set by Set")
-	}
-
-	expectation := &RepositoryMockGetPermittedHierarchyExpectation{
-		mock:               mmGetPermittedHierarchy.mock,
-		params:             &RepositoryMockGetPermittedHierarchyParams{ctx, permissions, onlyForRead},
-		expectationOrigins: RepositoryMockGetPermittedHierarchyExpectationOrigins{origin: minimock.CallerInfo(1)},
-	}
-	mmGetPermittedHierarchy.expectations = append(mmGetPermittedHierarchy.expectations, expectation)
-	return expectation
-}
-
-// Then sets up Repository.GetPermittedHierarchy return parameters for the expectation previously defined by the When method
-func (e *RepositoryMockGetPermittedHierarchyExpectation) Then(la1 []mm_entity.ListItem, err error) *RepositoryMock {
-	e.results = &RepositoryMockGetPermittedHierarchyResults{la1, err}
-	return e.mock
-}
-
-// Times sets number of times Repository.GetPermittedHierarchy should be invoked
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) Times(n uint64) *mRepositoryMockGetPermittedHierarchy {
-	if n == 0 {
-		mmGetPermittedHierarchy.mock.t.Fatalf("Times of RepositoryMock.GetPermittedHierarchy mock can not be zero")
-	}
-	mm_atomic.StoreUint64(&mmGetPermittedHierarchy.expectedInvocations, n)
-	mmGetPermittedHierarchy.expectedInvocationsOrigin = minimock.CallerInfo(1)
-	return mmGetPermittedHierarchy
-}
-
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) invocationsDone() bool {
-	if len(mmGetPermittedHierarchy.expectations) == 0 && mmGetPermittedHierarchy.defaultExpectation == nil && mmGetPermittedHierarchy.mock.funcGetPermittedHierarchy == nil {
-		return true
-	}
-
-	totalInvocations := mm_atomic.LoadUint64(&mmGetPermittedHierarchy.mock.afterGetPermittedHierarchyCounter)
-	expectedInvocations := mm_atomic.LoadUint64(&mmGetPermittedHierarchy.expectedInvocations)
-
-	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
-}
-
-// GetPermittedHierarchy implements mm_entity.Repository
-func (mmGetPermittedHierarchy *RepositoryMock) GetPermittedHierarchy(ctx context.Context, permissions []uuid.UUID, onlyForRead bool) (la1 []mm_entity.ListItem, err error) {
-	mm_atomic.AddUint64(&mmGetPermittedHierarchy.beforeGetPermittedHierarchyCounter, 1)
-	defer mm_atomic.AddUint64(&mmGetPermittedHierarchy.afterGetPermittedHierarchyCounter, 1)
-
-	mmGetPermittedHierarchy.t.Helper()
-
-	if mmGetPermittedHierarchy.inspectFuncGetPermittedHierarchy != nil {
-		mmGetPermittedHierarchy.inspectFuncGetPermittedHierarchy(ctx, permissions, onlyForRead)
-	}
-
-	mm_params := RepositoryMockGetPermittedHierarchyParams{ctx, permissions, onlyForRead}
-
-	// Record call args
-	mmGetPermittedHierarchy.GetPermittedHierarchyMock.mutex.Lock()
-	mmGetPermittedHierarchy.GetPermittedHierarchyMock.callArgs = append(mmGetPermittedHierarchy.GetPermittedHierarchyMock.callArgs, &mm_params)
-	mmGetPermittedHierarchy.GetPermittedHierarchyMock.mutex.Unlock()
-
-	for _, e := range mmGetPermittedHierarchy.GetPermittedHierarchyMock.expectations {
-		if minimock.Equal(*e.params, mm_params) {
-			mm_atomic.AddUint64(&e.Counter, 1)
-			return e.results.la1, e.results.err
-		}
-	}
-
-	if mmGetPermittedHierarchy.GetPermittedHierarchyMock.defaultExpectation != nil {
-		mm_atomic.AddUint64(&mmGetPermittedHierarchy.GetPermittedHierarchyMock.defaultExpectation.Counter, 1)
-		mm_want := mmGetPermittedHierarchy.GetPermittedHierarchyMock.defaultExpectation.params
-		mm_want_ptrs := mmGetPermittedHierarchy.GetPermittedHierarchyMock.defaultExpectation.paramPtrs
-
-		mm_got := RepositoryMockGetPermittedHierarchyParams{ctx, permissions, onlyForRead}
-
-		if mm_want_ptrs != nil {
-
-			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
-				mmGetPermittedHierarchy.t.Errorf("RepositoryMock.GetPermittedHierarchy got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmGetPermittedHierarchy.GetPermittedHierarchyMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
-			}
-
-			if mm_want_ptrs.permissions != nil && !minimock.Equal(*mm_want_ptrs.permissions, mm_got.permissions) {
-				mmGetPermittedHierarchy.t.Errorf("RepositoryMock.GetPermittedHierarchy got unexpected parameter permissions, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmGetPermittedHierarchy.GetPermittedHierarchyMock.defaultExpectation.expectationOrigins.originPermissions, *mm_want_ptrs.permissions, mm_got.permissions, minimock.Diff(*mm_want_ptrs.permissions, mm_got.permissions))
-			}
-
-			if mm_want_ptrs.onlyForRead != nil && !minimock.Equal(*mm_want_ptrs.onlyForRead, mm_got.onlyForRead) {
-				mmGetPermittedHierarchy.t.Errorf("RepositoryMock.GetPermittedHierarchy got unexpected parameter onlyForRead, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmGetPermittedHierarchy.GetPermittedHierarchyMock.defaultExpectation.expectationOrigins.originOnlyForRead, *mm_want_ptrs.onlyForRead, mm_got.onlyForRead, minimock.Diff(*mm_want_ptrs.onlyForRead, mm_got.onlyForRead))
-			}
-
-		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
-			mmGetPermittedHierarchy.t.Errorf("RepositoryMock.GetPermittedHierarchy got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-				mmGetPermittedHierarchy.GetPermittedHierarchyMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
-		}
-
-		mm_results := mmGetPermittedHierarchy.GetPermittedHierarchyMock.defaultExpectation.results
-		if mm_results == nil {
-			mmGetPermittedHierarchy.t.Fatal("No results are set for the RepositoryMock.GetPermittedHierarchy")
-		}
-		return (*mm_results).la1, (*mm_results).err
-	}
-	if mmGetPermittedHierarchy.funcGetPermittedHierarchy != nil {
-		return mmGetPermittedHierarchy.funcGetPermittedHierarchy(ctx, permissions, onlyForRead)
-	}
-	mmGetPermittedHierarchy.t.Fatalf("Unexpected call to RepositoryMock.GetPermittedHierarchy. %v %v %v", ctx, permissions, onlyForRead)
-	return
-}
-
-// GetPermittedHierarchyAfterCounter returns a count of finished RepositoryMock.GetPermittedHierarchy invocations
-func (mmGetPermittedHierarchy *RepositoryMock) GetPermittedHierarchyAfterCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmGetPermittedHierarchy.afterGetPermittedHierarchyCounter)
-}
-
-// GetPermittedHierarchyBeforeCounter returns a count of RepositoryMock.GetPermittedHierarchy invocations
-func (mmGetPermittedHierarchy *RepositoryMock) GetPermittedHierarchyBeforeCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmGetPermittedHierarchy.beforeGetPermittedHierarchyCounter)
-}
-
-// Calls returns a list of arguments used in each call to RepositoryMock.GetPermittedHierarchy.
-// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
-func (mmGetPermittedHierarchy *mRepositoryMockGetPermittedHierarchy) Calls() []*RepositoryMockGetPermittedHierarchyParams {
-	mmGetPermittedHierarchy.mutex.RLock()
-
-	argCopy := make([]*RepositoryMockGetPermittedHierarchyParams, len(mmGetPermittedHierarchy.callArgs))
-	copy(argCopy, mmGetPermittedHierarchy.callArgs)
-
-	mmGetPermittedHierarchy.mutex.RUnlock()
-
-	return argCopy
-}
-
-// MinimockGetPermittedHierarchyDone returns true if the count of the GetPermittedHierarchy invocations corresponds
-// the number of defined expectations
-func (m *RepositoryMock) MinimockGetPermittedHierarchyDone() bool {
-	if m.GetPermittedHierarchyMock.optional {
-		// Optional methods provide '0 or more' call count restriction.
-		return true
-	}
-
-	for _, e := range m.GetPermittedHierarchyMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			return false
-		}
-	}
-
-	return m.GetPermittedHierarchyMock.invocationsDone()
-}
-
-// MinimockGetPermittedHierarchyInspect logs each unmet expectation
-func (m *RepositoryMock) MinimockGetPermittedHierarchyInspect() {
-	for _, e := range m.GetPermittedHierarchyMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			m.t.Errorf("Expected call to RepositoryMock.GetPermittedHierarchy at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
-		}
-	}
-
-	afterGetPermittedHierarchyCounter := mm_atomic.LoadUint64(&m.afterGetPermittedHierarchyCounter)
-	// if default expectation was set then invocations count should be greater than zero
-	if m.GetPermittedHierarchyMock.defaultExpectation != nil && afterGetPermittedHierarchyCounter < 1 {
-		if m.GetPermittedHierarchyMock.defaultExpectation.params == nil {
-			m.t.Errorf("Expected call to RepositoryMock.GetPermittedHierarchy at\n%s", m.GetPermittedHierarchyMock.defaultExpectation.returnOrigin)
-		} else {
-			m.t.Errorf("Expected call to RepositoryMock.GetPermittedHierarchy at\n%s with params: %#v", m.GetPermittedHierarchyMock.defaultExpectation.expectationOrigins.origin, *m.GetPermittedHierarchyMock.defaultExpectation.params)
-		}
-	}
-	// if func was set then invocations count should be greater than zero
-	if m.funcGetPermittedHierarchy != nil && afterGetPermittedHierarchyCounter < 1 {
-		m.t.Errorf("Expected call to RepositoryMock.GetPermittedHierarchy at\n%s", m.funcGetPermittedHierarchyOrigin)
-	}
-
-	if !m.GetPermittedHierarchyMock.invocationsDone() && afterGetPermittedHierarchyCounter > 0 {
-		m.t.Errorf("Expected %d calls to RepositoryMock.GetPermittedHierarchy at\n%s but found %d calls",
-			mm_atomic.LoadUint64(&m.GetPermittedHierarchyMock.expectedInvocations), m.GetPermittedHierarchyMock.expectedInvocationsOrigin, afterGetPermittedHierarchyCounter)
 	}
 }
 
@@ -4461,385 +4130,10 @@ func (m *RepositoryMock) MinimockUpdateDraftInspect() {
 	}
 }
 
-type mRepositoryMockValidateChangedParent struct {
-	optional           bool
-	mock               *RepositoryMock
-	defaultExpectation *RepositoryMockValidateChangedParentExpectation
-	expectations       []*RepositoryMockValidateChangedParentExpectation
-
-	callArgs []*RepositoryMockValidateChangedParentParams
-	mutex    sync.RWMutex
-
-	expectedInvocations       uint64
-	expectedInvocationsOrigin string
-}
-
-// RepositoryMockValidateChangedParentExpectation specifies expectation struct of the Repository.ValidateChangedParent
-type RepositoryMockValidateChangedParentExpectation struct {
-	mock               *RepositoryMock
-	params             *RepositoryMockValidateChangedParentParams
-	paramPtrs          *RepositoryMockValidateChangedParentParamPtrs
-	expectationOrigins RepositoryMockValidateChangedParentExpectationOrigins
-	results            *RepositoryMockValidateChangedParentResults
-	returnOrigin       string
-	Counter            uint64
-}
-
-// RepositoryMockValidateChangedParentParams contains parameters of the Repository.ValidateChangedParent
-type RepositoryMockValidateChangedParentParams struct {
-	ctx      context.Context
-	id       uuid.UUID
-	parentID uuid.UUID
-}
-
-// RepositoryMockValidateChangedParentParamPtrs contains pointers to parameters of the Repository.ValidateChangedParent
-type RepositoryMockValidateChangedParentParamPtrs struct {
-	ctx      *context.Context
-	id       *uuid.UUID
-	parentID *uuid.UUID
-}
-
-// RepositoryMockValidateChangedParentResults contains results of the Repository.ValidateChangedParent
-type RepositoryMockValidateChangedParentResults struct {
-	err error
-}
-
-// RepositoryMockValidateChangedParentOrigins contains origins of expectations of the Repository.ValidateChangedParent
-type RepositoryMockValidateChangedParentExpectationOrigins struct {
-	origin         string
-	originCtx      string
-	originId       string
-	originParentID string
-}
-
-// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
-// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
-// Optional() makes method check to work in '0 or more' mode.
-// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
-// catch the problems when the expected method call is totally skipped during test run.
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) Optional() *mRepositoryMockValidateChangedParent {
-	mmValidateChangedParent.optional = true
-	return mmValidateChangedParent
-}
-
-// Expect sets up expected params for Repository.ValidateChangedParent
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) Expect(ctx context.Context, id uuid.UUID, parentID uuid.UUID) *mRepositoryMockValidateChangedParent {
-	if mmValidateChangedParent.mock.funcValidateChangedParent != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by Set")
-	}
-
-	if mmValidateChangedParent.defaultExpectation == nil {
-		mmValidateChangedParent.defaultExpectation = &RepositoryMockValidateChangedParentExpectation{}
-	}
-
-	if mmValidateChangedParent.defaultExpectation.paramPtrs != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by ExpectParams functions")
-	}
-
-	mmValidateChangedParent.defaultExpectation.params = &RepositoryMockValidateChangedParentParams{ctx, id, parentID}
-	mmValidateChangedParent.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
-	for _, e := range mmValidateChangedParent.expectations {
-		if minimock.Equal(e.params, mmValidateChangedParent.defaultExpectation.params) {
-			mmValidateChangedParent.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmValidateChangedParent.defaultExpectation.params)
-		}
-	}
-
-	return mmValidateChangedParent
-}
-
-// ExpectCtxParam1 sets up expected param ctx for Repository.ValidateChangedParent
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) ExpectCtxParam1(ctx context.Context) *mRepositoryMockValidateChangedParent {
-	if mmValidateChangedParent.mock.funcValidateChangedParent != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by Set")
-	}
-
-	if mmValidateChangedParent.defaultExpectation == nil {
-		mmValidateChangedParent.defaultExpectation = &RepositoryMockValidateChangedParentExpectation{}
-	}
-
-	if mmValidateChangedParent.defaultExpectation.params != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by Expect")
-	}
-
-	if mmValidateChangedParent.defaultExpectation.paramPtrs == nil {
-		mmValidateChangedParent.defaultExpectation.paramPtrs = &RepositoryMockValidateChangedParentParamPtrs{}
-	}
-	mmValidateChangedParent.defaultExpectation.paramPtrs.ctx = &ctx
-	mmValidateChangedParent.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
-
-	return mmValidateChangedParent
-}
-
-// ExpectIdParam2 sets up expected param id for Repository.ValidateChangedParent
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) ExpectIdParam2(id uuid.UUID) *mRepositoryMockValidateChangedParent {
-	if mmValidateChangedParent.mock.funcValidateChangedParent != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by Set")
-	}
-
-	if mmValidateChangedParent.defaultExpectation == nil {
-		mmValidateChangedParent.defaultExpectation = &RepositoryMockValidateChangedParentExpectation{}
-	}
-
-	if mmValidateChangedParent.defaultExpectation.params != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by Expect")
-	}
-
-	if mmValidateChangedParent.defaultExpectation.paramPtrs == nil {
-		mmValidateChangedParent.defaultExpectation.paramPtrs = &RepositoryMockValidateChangedParentParamPtrs{}
-	}
-	mmValidateChangedParent.defaultExpectation.paramPtrs.id = &id
-	mmValidateChangedParent.defaultExpectation.expectationOrigins.originId = minimock.CallerInfo(1)
-
-	return mmValidateChangedParent
-}
-
-// ExpectParentIDParam3 sets up expected param parentID for Repository.ValidateChangedParent
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) ExpectParentIDParam3(parentID uuid.UUID) *mRepositoryMockValidateChangedParent {
-	if mmValidateChangedParent.mock.funcValidateChangedParent != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by Set")
-	}
-
-	if mmValidateChangedParent.defaultExpectation == nil {
-		mmValidateChangedParent.defaultExpectation = &RepositoryMockValidateChangedParentExpectation{}
-	}
-
-	if mmValidateChangedParent.defaultExpectation.params != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by Expect")
-	}
-
-	if mmValidateChangedParent.defaultExpectation.paramPtrs == nil {
-		mmValidateChangedParent.defaultExpectation.paramPtrs = &RepositoryMockValidateChangedParentParamPtrs{}
-	}
-	mmValidateChangedParent.defaultExpectation.paramPtrs.parentID = &parentID
-	mmValidateChangedParent.defaultExpectation.expectationOrigins.originParentID = minimock.CallerInfo(1)
-
-	return mmValidateChangedParent
-}
-
-// Inspect accepts an inspector function that has same arguments as the Repository.ValidateChangedParent
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) Inspect(f func(ctx context.Context, id uuid.UUID, parentID uuid.UUID)) *mRepositoryMockValidateChangedParent {
-	if mmValidateChangedParent.mock.inspectFuncValidateChangedParent != nil {
-		mmValidateChangedParent.mock.t.Fatalf("Inspect function is already set for RepositoryMock.ValidateChangedParent")
-	}
-
-	mmValidateChangedParent.mock.inspectFuncValidateChangedParent = f
-
-	return mmValidateChangedParent
-}
-
-// Return sets up results that will be returned by Repository.ValidateChangedParent
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) Return(err error) *RepositoryMock {
-	if mmValidateChangedParent.mock.funcValidateChangedParent != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by Set")
-	}
-
-	if mmValidateChangedParent.defaultExpectation == nil {
-		mmValidateChangedParent.defaultExpectation = &RepositoryMockValidateChangedParentExpectation{mock: mmValidateChangedParent.mock}
-	}
-	mmValidateChangedParent.defaultExpectation.results = &RepositoryMockValidateChangedParentResults{err}
-	mmValidateChangedParent.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
-	return mmValidateChangedParent.mock
-}
-
-// Set uses given function f to mock the Repository.ValidateChangedParent method
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) Set(f func(ctx context.Context, id uuid.UUID, parentID uuid.UUID) (err error)) *RepositoryMock {
-	if mmValidateChangedParent.defaultExpectation != nil {
-		mmValidateChangedParent.mock.t.Fatalf("Default expectation is already set for the Repository.ValidateChangedParent method")
-	}
-
-	if len(mmValidateChangedParent.expectations) > 0 {
-		mmValidateChangedParent.mock.t.Fatalf("Some expectations are already set for the Repository.ValidateChangedParent method")
-	}
-
-	mmValidateChangedParent.mock.funcValidateChangedParent = f
-	mmValidateChangedParent.mock.funcValidateChangedParentOrigin = minimock.CallerInfo(1)
-	return mmValidateChangedParent.mock
-}
-
-// When sets expectation for the Repository.ValidateChangedParent which will trigger the result defined by the following
-// Then helper
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) When(ctx context.Context, id uuid.UUID, parentID uuid.UUID) *RepositoryMockValidateChangedParentExpectation {
-	if mmValidateChangedParent.mock.funcValidateChangedParent != nil {
-		mmValidateChangedParent.mock.t.Fatalf("RepositoryMock.ValidateChangedParent mock is already set by Set")
-	}
-
-	expectation := &RepositoryMockValidateChangedParentExpectation{
-		mock:               mmValidateChangedParent.mock,
-		params:             &RepositoryMockValidateChangedParentParams{ctx, id, parentID},
-		expectationOrigins: RepositoryMockValidateChangedParentExpectationOrigins{origin: minimock.CallerInfo(1)},
-	}
-	mmValidateChangedParent.expectations = append(mmValidateChangedParent.expectations, expectation)
-	return expectation
-}
-
-// Then sets up Repository.ValidateChangedParent return parameters for the expectation previously defined by the When method
-func (e *RepositoryMockValidateChangedParentExpectation) Then(err error) *RepositoryMock {
-	e.results = &RepositoryMockValidateChangedParentResults{err}
-	return e.mock
-}
-
-// Times sets number of times Repository.ValidateChangedParent should be invoked
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) Times(n uint64) *mRepositoryMockValidateChangedParent {
-	if n == 0 {
-		mmValidateChangedParent.mock.t.Fatalf("Times of RepositoryMock.ValidateChangedParent mock can not be zero")
-	}
-	mm_atomic.StoreUint64(&mmValidateChangedParent.expectedInvocations, n)
-	mmValidateChangedParent.expectedInvocationsOrigin = minimock.CallerInfo(1)
-	return mmValidateChangedParent
-}
-
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) invocationsDone() bool {
-	if len(mmValidateChangedParent.expectations) == 0 && mmValidateChangedParent.defaultExpectation == nil && mmValidateChangedParent.mock.funcValidateChangedParent == nil {
-		return true
-	}
-
-	totalInvocations := mm_atomic.LoadUint64(&mmValidateChangedParent.mock.afterValidateChangedParentCounter)
-	expectedInvocations := mm_atomic.LoadUint64(&mmValidateChangedParent.expectedInvocations)
-
-	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
-}
-
-// ValidateChangedParent implements mm_entity.Repository
-func (mmValidateChangedParent *RepositoryMock) ValidateChangedParent(ctx context.Context, id uuid.UUID, parentID uuid.UUID) (err error) {
-	mm_atomic.AddUint64(&mmValidateChangedParent.beforeValidateChangedParentCounter, 1)
-	defer mm_atomic.AddUint64(&mmValidateChangedParent.afterValidateChangedParentCounter, 1)
-
-	mmValidateChangedParent.t.Helper()
-
-	if mmValidateChangedParent.inspectFuncValidateChangedParent != nil {
-		mmValidateChangedParent.inspectFuncValidateChangedParent(ctx, id, parentID)
-	}
-
-	mm_params := RepositoryMockValidateChangedParentParams{ctx, id, parentID}
-
-	// Record call args
-	mmValidateChangedParent.ValidateChangedParentMock.mutex.Lock()
-	mmValidateChangedParent.ValidateChangedParentMock.callArgs = append(mmValidateChangedParent.ValidateChangedParentMock.callArgs, &mm_params)
-	mmValidateChangedParent.ValidateChangedParentMock.mutex.Unlock()
-
-	for _, e := range mmValidateChangedParent.ValidateChangedParentMock.expectations {
-		if minimock.Equal(*e.params, mm_params) {
-			mm_atomic.AddUint64(&e.Counter, 1)
-			return e.results.err
-		}
-	}
-
-	if mmValidateChangedParent.ValidateChangedParentMock.defaultExpectation != nil {
-		mm_atomic.AddUint64(&mmValidateChangedParent.ValidateChangedParentMock.defaultExpectation.Counter, 1)
-		mm_want := mmValidateChangedParent.ValidateChangedParentMock.defaultExpectation.params
-		mm_want_ptrs := mmValidateChangedParent.ValidateChangedParentMock.defaultExpectation.paramPtrs
-
-		mm_got := RepositoryMockValidateChangedParentParams{ctx, id, parentID}
-
-		if mm_want_ptrs != nil {
-
-			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
-				mmValidateChangedParent.t.Errorf("RepositoryMock.ValidateChangedParent got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmValidateChangedParent.ValidateChangedParentMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
-			}
-
-			if mm_want_ptrs.id != nil && !minimock.Equal(*mm_want_ptrs.id, mm_got.id) {
-				mmValidateChangedParent.t.Errorf("RepositoryMock.ValidateChangedParent got unexpected parameter id, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmValidateChangedParent.ValidateChangedParentMock.defaultExpectation.expectationOrigins.originId, *mm_want_ptrs.id, mm_got.id, minimock.Diff(*mm_want_ptrs.id, mm_got.id))
-			}
-
-			if mm_want_ptrs.parentID != nil && !minimock.Equal(*mm_want_ptrs.parentID, mm_got.parentID) {
-				mmValidateChangedParent.t.Errorf("RepositoryMock.ValidateChangedParent got unexpected parameter parentID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmValidateChangedParent.ValidateChangedParentMock.defaultExpectation.expectationOrigins.originParentID, *mm_want_ptrs.parentID, mm_got.parentID, minimock.Diff(*mm_want_ptrs.parentID, mm_got.parentID))
-			}
-
-		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
-			mmValidateChangedParent.t.Errorf("RepositoryMock.ValidateChangedParent got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-				mmValidateChangedParent.ValidateChangedParentMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
-		}
-
-		mm_results := mmValidateChangedParent.ValidateChangedParentMock.defaultExpectation.results
-		if mm_results == nil {
-			mmValidateChangedParent.t.Fatal("No results are set for the RepositoryMock.ValidateChangedParent")
-		}
-		return (*mm_results).err
-	}
-	if mmValidateChangedParent.funcValidateChangedParent != nil {
-		return mmValidateChangedParent.funcValidateChangedParent(ctx, id, parentID)
-	}
-	mmValidateChangedParent.t.Fatalf("Unexpected call to RepositoryMock.ValidateChangedParent. %v %v %v", ctx, id, parentID)
-	return
-}
-
-// ValidateChangedParentAfterCounter returns a count of finished RepositoryMock.ValidateChangedParent invocations
-func (mmValidateChangedParent *RepositoryMock) ValidateChangedParentAfterCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmValidateChangedParent.afterValidateChangedParentCounter)
-}
-
-// ValidateChangedParentBeforeCounter returns a count of RepositoryMock.ValidateChangedParent invocations
-func (mmValidateChangedParent *RepositoryMock) ValidateChangedParentBeforeCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmValidateChangedParent.beforeValidateChangedParentCounter)
-}
-
-// Calls returns a list of arguments used in each call to RepositoryMock.ValidateChangedParent.
-// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
-func (mmValidateChangedParent *mRepositoryMockValidateChangedParent) Calls() []*RepositoryMockValidateChangedParentParams {
-	mmValidateChangedParent.mutex.RLock()
-
-	argCopy := make([]*RepositoryMockValidateChangedParentParams, len(mmValidateChangedParent.callArgs))
-	copy(argCopy, mmValidateChangedParent.callArgs)
-
-	mmValidateChangedParent.mutex.RUnlock()
-
-	return argCopy
-}
-
-// MinimockValidateChangedParentDone returns true if the count of the ValidateChangedParent invocations corresponds
-// the number of defined expectations
-func (m *RepositoryMock) MinimockValidateChangedParentDone() bool {
-	if m.ValidateChangedParentMock.optional {
-		// Optional methods provide '0 or more' call count restriction.
-		return true
-	}
-
-	for _, e := range m.ValidateChangedParentMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			return false
-		}
-	}
-
-	return m.ValidateChangedParentMock.invocationsDone()
-}
-
-// MinimockValidateChangedParentInspect logs each unmet expectation
-func (m *RepositoryMock) MinimockValidateChangedParentInspect() {
-	for _, e := range m.ValidateChangedParentMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			m.t.Errorf("Expected call to RepositoryMock.ValidateChangedParent at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
-		}
-	}
-
-	afterValidateChangedParentCounter := mm_atomic.LoadUint64(&m.afterValidateChangedParentCounter)
-	// if default expectation was set then invocations count should be greater than zero
-	if m.ValidateChangedParentMock.defaultExpectation != nil && afterValidateChangedParentCounter < 1 {
-		if m.ValidateChangedParentMock.defaultExpectation.params == nil {
-			m.t.Errorf("Expected call to RepositoryMock.ValidateChangedParent at\n%s", m.ValidateChangedParentMock.defaultExpectation.returnOrigin)
-		} else {
-			m.t.Errorf("Expected call to RepositoryMock.ValidateChangedParent at\n%s with params: %#v", m.ValidateChangedParentMock.defaultExpectation.expectationOrigins.origin, *m.ValidateChangedParentMock.defaultExpectation.params)
-		}
-	}
-	// if func was set then invocations count should be greater than zero
-	if m.funcValidateChangedParent != nil && afterValidateChangedParentCounter < 1 {
-		m.t.Errorf("Expected call to RepositoryMock.ValidateChangedParent at\n%s", m.funcValidateChangedParentOrigin)
-	}
-
-	if !m.ValidateChangedParentMock.invocationsDone() && afterValidateChangedParentCounter > 0 {
-		m.t.Errorf("Expected %d calls to RepositoryMock.ValidateChangedParent at\n%s but found %d calls",
-			mm_atomic.LoadUint64(&m.ValidateChangedParentMock.expectedInvocations), m.ValidateChangedParentMock.expectedInvocationsOrigin, afterValidateChangedParentCounter)
-	}
-}
-
 // MinimockFinish checks that all mocked methods have been called the expected number of times
 func (m *RepositoryMock) MinimockFinish() {
 	m.finishOnce.Do(func() {
 		if !m.minimockDone() {
-			m.MinimockCheckParentDepthLimitInspect()
-
 			m.MinimockCreateInspect()
 
 			m.MinimockCreateDraftInspect()
@@ -4850,9 +4144,9 @@ func (m *RepositoryMock) MinimockFinish() {
 
 			m.MinimockGetAllInspect()
 
-			m.MinimockGetListItemInspect()
+			m.MinimockGetHierarchyInspect()
 
-			m.MinimockGetPermittedHierarchyInspect()
+			m.MinimockGetListItemInspect()
 
 			m.MinimockGetVersionInspect()
 
@@ -4861,8 +4155,6 @@ func (m *RepositoryMock) MinimockFinish() {
 			m.MinimockUpdateInspect()
 
 			m.MinimockUpdateDraftInspect()
-
-			m.MinimockValidateChangedParentInspect()
 		}
 	})
 }
@@ -4886,17 +4178,15 @@ func (m *RepositoryMock) MinimockWait(timeout mm_time.Duration) {
 func (m *RepositoryMock) minimockDone() bool {
 	done := true
 	return done &&
-		m.MinimockCheckParentDepthLimitDone() &&
 		m.MinimockCreateDone() &&
 		m.MinimockCreateDraftDone() &&
 		m.MinimockDeleteDone() &&
 		m.MinimockGetDone() &&
 		m.MinimockGetAllDone() &&
+		m.MinimockGetHierarchyDone() &&
 		m.MinimockGetListItemDone() &&
-		m.MinimockGetPermittedHierarchyDone() &&
 		m.MinimockGetVersionDone() &&
 		m.MinimockGetVersionsListDone() &&
 		m.MinimockUpdateDone() &&
-		m.MinimockUpdateDraftDone() &&
-		m.MinimockValidateChangedParentDone()
+		m.MinimockUpdateDraftDone()
 }

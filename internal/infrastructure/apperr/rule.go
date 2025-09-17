@@ -12,4 +12,6 @@ const (
 	RuleDuplicate     Rule = "duplicate"
 	RuleMismatch      Rule = "mismatch"
 	RuleForbidden     Rule = "forbidden"
+	RuleInvalidState  Rule = "invalid_state"
+	RuleNotFound      Rule = "not_found"
 )

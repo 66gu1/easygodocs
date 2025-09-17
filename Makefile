@@ -10,9 +10,7 @@ PKGS     := $(filter-out %/mocks %/mocks/% %/mock %/mock/% %/minimock %/minimock
 COVERPKG := $(shell printf "%s\n" $(PKGS) | paste -sd, -)
 
 # -------- Targets --------
-.PHONY: all build run fmt vet lint test cover cover-html clean tools vuln
-
-all: test
+.PHONY: build run fmt vet lint test cover cover-html clean tools vuln
 
 build:
 	mkdir -p bin

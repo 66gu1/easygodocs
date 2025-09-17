@@ -73,6 +73,7 @@ type entityListItemModel struct {
 	Type     entity.Type
 	Name     string
 	ParentID *uuid.UUID
+	Depth    int
 }
 
 func (m *entityListItemModel) TableName() string {
@@ -85,5 +86,6 @@ func (m entityListItemModel) toDTO() entity.ListItem {
 		Type:     m.Type,
 		Name:     m.Name,
 		ParentID: m.ParentID,
+		Depth:    m.Depth,
 	}
 }

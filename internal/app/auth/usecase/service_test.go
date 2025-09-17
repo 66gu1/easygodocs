@@ -531,7 +531,7 @@ func TestService_Login(t *testing.T) {
 			name: "ok",
 			setup: func(m mock) {
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
-				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(password), []byte(hashedPassword)).Return(nil)
+				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(nil)
 				m.core.IssueTokensMock.Expect(ctx, userID, sessionVersion).Return(tokensExp, nil)
 			},
 		},
@@ -539,7 +539,7 @@ func TestService_Login(t *testing.T) {
 			name: "error - core.IssueTokens",
 			setup: func(m mock) {
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
-				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(password), []byte(hashedPassword)).Return(nil)
+				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(nil)
 				m.core.IssueTokensMock.Expect(ctx, userID, sessionVersion).Return(auth.Tokens{}, errExp)
 			},
 			err: errExp,
@@ -548,7 +548,7 @@ func TestService_Login(t *testing.T) {
 			name: "error - passwordHasher.CheckPasswordHash",
 			setup: func(m mock) {
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
-				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(password), []byte(hashedPassword)).Return(errExp)
+				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(errExp)
 			},
 			err: errExp,
 		},
@@ -556,7 +556,7 @@ func TestService_Login(t *testing.T) {
 			name: "wrong password",
 			setup: func(m mock) {
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
-				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(password), []byte(hashedPassword)).Return(secure.ErrMismatchedHashAndPassword)
+				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(secure.ErrMismatchedHashAndPassword)
 			},
 			err: usecase.ErrInvalidPasswordOrEmail(),
 		},

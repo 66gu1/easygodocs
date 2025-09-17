@@ -12,7 +12,6 @@ import (
 	auth_http "github.com/66gu1/easygodocs/internal/app/auth/transport/http"
 	"github.com/66gu1/easygodocs/internal/app/auth/transport/http/mocks"
 	"github.com/66gu1/easygodocs/internal/app/auth/usecase"
-	user_http "github.com/66gu1/easygodocs/internal/app/user/transport/http"
 	"github.com/gojuno/minimock/v3"
 	"github.com/stretchr/testify/require"
 
@@ -67,9 +66,9 @@ func TestHandler_GetSessionsByUserID(t *testing.T) {
 			h := auth_http.NewHandler(mock)
 			r := chi.NewRouter()
 
-			r.Get("/users/{"+user_http.URLParamUserID+"}/sessions", h.GetSessionsByUserID)
+			r.Get("/sessions", h.GetSessionsByUserID)
 
-			req := httptest.NewRequest(http.MethodGet, "/users/"+tc.userIDStr+"/sessions", nil)
+			req := httptest.NewRequest(http.MethodGet, "/sessions"+"?user_id="+tc.userIDStr, nil)
 			rr := httptest.NewRecorder()
 
 			r.ServeHTTP(rr, req)
@@ -147,9 +146,9 @@ func TestHandler_DeleteSession(t *testing.T) {
 			h := auth_http.NewHandler(mock)
 			r := chi.NewRouter()
 
-			r.Delete("/users/{"+user_http.URLParamUserID+"}/sessions/{"+auth_http.URLParamSessionID+"}", h.DeleteSession)
+			r.Delete("/sessions/{"+auth_http.URLParamSessionID+"}", h.DeleteSession)
 
-			req := httptest.NewRequest(http.MethodDelete, "/users/"+tc.userIDStr+"/sessions/"+tc.sessionIDStr, nil)
+			req := httptest.NewRequest(http.MethodDelete, "/sessions/"+tc.sessionIDStr+"?user_id="+tc.userIDStr, nil)
 			rr := httptest.NewRecorder()
 
 			r.ServeHTTP(rr, req)
@@ -208,9 +207,9 @@ func TestHandler_DeleteSessionsByUserID(t *testing.T) {
 			h := auth_http.NewHandler(mock)
 			r := chi.NewRouter()
 
-			r.Delete("/users/{"+user_http.URLParamUserID+"}/sessions", h.DeleteSessionsByUserID)
+			r.Delete("/sessions", h.DeleteSessionsByUserID)
 
-			req := httptest.NewRequest(http.MethodDelete, "/users/"+tc.userIDStr+"/sessions", nil)
+			req := httptest.NewRequest(http.MethodDelete, "/sessions"+"?user_id="+tc.userIDStr, nil)
 			rr := httptest.NewRecorder()
 
 			r.ServeHTTP(rr, req)
@@ -414,9 +413,9 @@ func TestHandler_ListUserRoles(t *testing.T) {
 			h := auth_http.NewHandler(mock)
 			r := chi.NewRouter()
 
-			r.Get("/users/{"+user_http.URLParamUserID+"}/roles", h.ListUserRoles)
+			r.Get("/roles", h.ListUserRoles)
 
-			req := httptest.NewRequest(http.MethodGet, "/users/"+tc.userIDStr+"/roles", nil)
+			req := httptest.NewRequest(http.MethodGet, "/roles"+"?user_id="+tc.userIDStr, nil)
 			rr := httptest.NewRecorder()
 
 			r.ServeHTTP(rr, req)

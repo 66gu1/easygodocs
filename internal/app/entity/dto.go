@@ -58,6 +58,7 @@ type ListItem struct {
 	Type     Type       `json:"type"`
 	Name     string     `json:"name"`
 	ParentID *uuid.UUID `json:"parent_id,omitempty"`
+	Depth    int        `json:"depth"`
 }
 
 type CreateEntityReq struct {
@@ -77,6 +78,7 @@ type UpdateEntityReq struct {
 	IsDraft       bool       `json:"is_draft"`
 	UserID        uuid.UUID  `json:"user_id"`
 	ParentChanged bool       `json:"parent_changed"`
+	EntityType    Type       `json:"entity_type"`
 }
 
 type Tree []*Node

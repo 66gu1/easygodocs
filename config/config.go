@@ -5,7 +5,6 @@ import (
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	"github.com/66gu1/easygodocs/internal/app/entity"
-	entity_repo "github.com/66gu1/easygodocs/internal/app/entity/repo/gorm"
 	"github.com/66gu1/easygodocs/internal/app/user"
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
@@ -59,18 +58,18 @@ func GetAuthConfigs() auth.Config {
 	return authCfg
 }
 
-func GetEntityConfigs() (entity_repo.Config, entity.ValidationConfig) {
-	var entityCfg entity.ValidationConfig
-	if err := viper.Sub("entity").Unmarshal(&entityCfg); err != nil {
+func GetEntityConfigs() (entity.Config, entity.ValidationConfig) {
+	var entityValidationCfg entity.ValidationConfig
+	if err := viper.Sub("entity").Unmarshal(&entityValidationCfg); err != nil {
 		panic(fmt.Errorf("fatal error entity config: %w", err))
 	}
 
-	var entityRepoCfg entity_repo.Config
-	if err := viper.Sub("entity").Unmarshal(&entityRepoCfg); err != nil {
+	var entityCfg entity.Config
+	if err := viper.Sub("entity").Unmarshal(&entityCfg); err != nil {
 		panic(fmt.Errorf("fatal error entity repo config: %w", err))
 	}
 
-	return entityRepoCfg, entityCfg
+	return entityCfg, entityValidationCfg
 }
 
 type LogLevel string

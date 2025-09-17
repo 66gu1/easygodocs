@@ -22,10 +22,10 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func newEntityRepo(t *testing.T, cfg Config) (*gormRepo, *gorm.DB, func()) {
+func newEntityRepo(t *testing.T) (*gormRepo, *gorm.DB, func()) {
 	gdb, _, cleanup := shared.CreateIsolatedDB(t)
 	t.Cleanup(cleanup)
-	repo, err := NewRepository(gdb, cfg)
+	repo, err := NewRepository(gdb)
 	require.NoError(t, err)
 	return repo, gdb, cleanup
 }
@@ -62,7 +62,7 @@ func compareEntityDTO(t *testing.T, e entity.Entity, eType entity.Type, name, co
 
 func TestEntity_Create_Get_Versions_Update(t *testing.T) {
 	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 4})
+	repo, gdb, cleanup := newEntityRepo(t)
 
 	userID := createUserForEntity(t, gdb)
 	userID2 := createUserForEntity(t, gdb)
@@ -123,7 +123,7 @@ func TestEntity_Create_Get_Versions_Update(t *testing.T) {
 	cleanup()
 	_, err = repo.Get(t.Context(), id)
 	require.Error(t, err)
-	err = repo.Delete(t.Context(), id, time.Now().UTC())
+	err = repo.Delete(t.Context(), []uuid.UUID{id})
 	require.Error(t, err)
 	_, err = repo.GetVersion(t.Context(), id, 1)
 	require.Error(t, err)
@@ -137,7 +137,7 @@ func TestEntity_Create_Get_Versions_Update(t *testing.T) {
 
 func TestEntity_CreateDraft_And_UpdateDraft(t *testing.T) {
 	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 4})
+	repo, gdb, cleanup := newEntityRepo(t)
 
 	userID := createUserForEntity(t, gdb)
 
@@ -204,7 +204,7 @@ func TestEntity_CreateDraft_And_UpdateDraft(t *testing.T) {
 
 func TestEntity_GetListItem_And_GetAll(t *testing.T) {
 	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 4})
+	repo, gdb, cleanup := newEntityRepo(t)
 
 	userID := createUserForEntity(t, gdb)
 
@@ -242,66 +242,84 @@ func TestEntity_GetListItem_And_GetAll(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestEntity_PermittedHierarchy(t *testing.T) {
+func TestEntity_GetHierarchy(t *testing.T) {
 	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 6})
+	repo, gdb, cleanup := newEntityRepo(t)
 	userID := createUserForEntity(t, gdb)
+	userID2 := createUserForEntity(t, gdb)
 
 	// root -> c1 -> gc1 ; root -> c2
 	root := uuid.New()
+	rootItem := entity.ListItem{ID: root, Type: "t", Name: "root", Depth: 2}
 	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "root", Content: "", UserID: userID,
+		Type: rootItem.Type, Name: rootItem.Name, Content: "", UserID: userID,
 	}, root, time.Now().UTC()))
 	c1 := uuid.New()
+	c1Item := entity.ListItem{ID: c1, Type: "t", Name: "c1", ParentID: &root, Depth: 1}
 	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "c1", Content: "", ParentID: &root, UserID: userID,
+		Type: c1Item.Type, Name: c1Item.Name, Content: "", ParentID: c1Item.ParentID, UserID: userID,
 	}, c1, time.Now().UTC()))
 	gc1 := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "gc1", Content: "", ParentID: &c1, UserID: userID,
-	}, gc1, time.Now().UTC()))
+	gc1Item := entity.ListItem{ID: gc1, Type: "t", Name: "gc1", ParentID: &c1, Depth: 2}
+	require.NoError(t, repo.CreateDraft(t.Context(), entity.CreateEntityReq{
+		Type: gc1Item.Type, Name: gc1Item.Name, Content: "", ParentID: gc1Item.ParentID, UserID: userID2,
+	}, gc1))
 	c2 := uuid.New()
 	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
 		Type: "t", Name: "c2", Content: "", ParentID: &root, UserID: userID,
 	}, c2, time.Now().UTC()))
 
 	// empty permissions
-	res, err := repo.GetPermittedHierarchy(t.Context(), []uuid.UUID{}, true)
+	res, err := repo.GetHierarchy(t.Context(), []uuid.UUID{}, 1, nil, entity.HierarchyTypeChildrenAndParents)
 	require.NoError(t, err)
 	require.Equal(t, []entity.ListItem{}, res)
-	// only for read
+	// children and parents
 	// permissions = [c1] → {root, c1, gc1}
-	res, err = repo.GetPermittedHierarchy(t.Context(), []uuid.UUID{c1}, true)
+	res, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 5, nil, entity.HierarchyTypeChildrenAndParents)
 	require.NoError(t, err)
+	require.ElementsMatch(t, []entity.ListItem{rootItem, c1Item, gc1Item}, res)
 
-	ids := map[uuid.UUID]bool{}
-	for _, li := range res {
-		ids[li.ID] = true
-	}
-	require.True(t, ids[root] && ids[c1] && ids[gc1])
-	require.False(t, ids[c2])
-
-	// not only for read
+	// children only
 	// permissions = [c1] → {c1, gc1}
-	res, err = repo.GetPermittedHierarchy(t.Context(), []uuid.UUID{c1}, false)
+	res, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 5, nil, entity.HierarchyTypeChildrenOnly)
 	require.NoError(t, err)
-	ids = map[uuid.UUID]bool{}
-	for _, li := range res {
-		ids[li.ID] = true
-	}
-	require.False(t, ids[root])
-	require.True(t, ids[c1] && ids[gc1])
-	require.False(t, ids[c2])
+	require.ElementsMatch(t, []entity.ListItem{c1Item, gc1Item}, res)
 
-	// негатив
+	// parents only
+	// permissions = [c1] → {root, c1}
+	res, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 5, nil, entity.HierarchyTypeParentsOnly)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []entity.ListItem{c1Item, rootItem}, res)
+
+	// userID not nil
+	// not own draft gc1 must be excluded [c1] → {root, c1}
+	res, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 5, &userID, entity.HierarchyTypeChildrenAndParents)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []entity.ListItem{rootItem, c1Item}, res)
+
+	// own draft gc1 must be included [c1] → {root, c1, gc1}
+	res, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 5, &userID2, entity.HierarchyTypeChildrenAndParents)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []entity.ListItem{rootItem, c1Item, gc1Item}, res)
+
+	// maxDepth = 2 - only item
+	res, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 1, nil, entity.HierarchyTypeChildrenAndParents)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []entity.ListItem{c1Item}, res)
+
+	// invalid hierarchy type
+	_, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 5, nil, entity.HierarchyType(-1))
+	require.Error(t, err)
+
+	// err
 	cleanup()
-	_, err = repo.GetPermittedHierarchy(t.Context(), []uuid.UUID{c1}, true)
+	_, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 5, nil, entity.HierarchyTypeChildrenAndParents)
 	require.Error(t, err)
 }
 
-func TestEntity_Delete_SoftMarksRecursively(t *testing.T) {
+func TestEntity_Delete(t *testing.T) {
 	t.Parallel()
-	repo, gdb, _ := newEntityRepo(t, Config{MaxHierarchyDepth: 6})
+	repo, gdb, _ := newEntityRepo(t)
 	userID := createUserForEntity(t, gdb)
 
 	root := uuid.New()
@@ -312,123 +330,29 @@ func TestEntity_Delete_SoftMarksRecursively(t *testing.T) {
 	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
 		Type: "t", Name: "child", Content: "", ParentID: &root, UserID: userID,
 	}, child, time.Now().UTC()))
+	grandChild := uuid.New()
+	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
+		Type: "t", Name: "grandChild", Content: "", ParentID: &child, UserID: userID,
+	}, grandChild, time.Now().UTC()))
 
-	// delete root → пометятся root и child
-	delAt := time.Now().UTC()
-	require.NoError(t, repo.Delete(t.Context(), root, delAt))
+	// delete child and grandChild
+	require.NoError(t, repo.Delete(t.Context(), []uuid.UUID{child, grandChild}))
 
 	var cnt int
 	err := gdb.WithContext(t.Context()).
-		Raw(`SELECT COUNT(*) FROM entities WHERE id IN ($1,$2) AND deleted_at IS NOT NULL`, root, child).
+		Raw(`SELECT COUNT(*) FROM entities WHERE deleted_at IS NOT NULL`).
 		Scan(&cnt).Error
 	require.NoError(t, err)
 	require.Equal(t, 2, cnt)
 
 	// not found
-	err = repo.Delete(t.Context(), uuid.New(), time.Now().UTC())
+	err = repo.Delete(t.Context(), []uuid.UUID{child})
 	require.ErrorIs(t, err, entity.ErrEntityNotFound())
-}
-
-func TestEntity_ValidateChangedParent_Cycle(t *testing.T) {
-	t.Parallel()
-	repo, gdb, clean := newEntityRepo(t, Config{MaxHierarchyDepth: 6})
-	userID := createUserForEntity(t, gdb)
-
-	a := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "A", Content: "", UserID: userID,
-	}, a, time.Now().UTC()))
-	b := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "B", Content: "", ParentID: &a, UserID: userID,
-	}, b, time.Now().UTC()))
-
-	// success
-	err := repo.ValidateChangedParent(t.Context(), a, uuid.New())
-	require.NoError(t, err)
-
-	// try to set A as child of B → cycle
-	err = repo.ValidateChangedParent(t.Context(), a, b)
-	require.ErrorIs(t, err, entity.ErrParentCycle())
-
-	// err
-	clean()
-	err = repo.ValidateChangedParent(t.Context(), a, uuid.New())
-	require.Error(t, err)
-}
-
-func TestEntity_ValidateChangedParent_MaxDepth(t *testing.T) {
-	t.Parallel()
-	// MaxDepth=3
-	repo, gdb, _ := newEntityRepo(t, Config{MaxHierarchyDepth: 3})
-	userID := createUserForEntity(t, gdb)
-
-	// parent chain: P0 <- P1 <- P2
-	p0 := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "P0", Content: "", UserID: userID,
-	}, p0, time.Now().UTC()))
-	p1 := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "P1", Content: "", ParentID: &p0, UserID: userID,
-	}, p1, time.Now().UTC()))
-	p2 := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "P2", Content: "", ParentID: &p1, UserID: userID,
-	}, p2, time.Now().UTC()))
-
-	// X -> Xc
-	x := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "X", Content: "", UserID: userID,
-	}, x, time.Now().UTC()))
-	xc := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "Xc", Content: "", ParentID: &x, UserID: userID,
-	}, xc, time.Now().UTC()))
-
-	err := repo.ValidateChangedParent(t.Context(), x, p1)
-	require.ErrorIs(t, err, entity.ErrMaxHierarchyDepthExceeded(repo.cfg.MaxHierarchyDepth))
-}
-
-func TestEntity_CheckParentDepthLimit(t *testing.T) {
-	t.Parallel()
-	repo, gdb, cleanup := newEntityRepo(t, Config{MaxHierarchyDepth: 3})
-	userID := createUserForEntity(t, gdb)
-
-	// A <- B <- C
-	a := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "A", Content: "", UserID: userID,
-	}, a, time.Now().UTC()))
-	b := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "B", Content: "", ParentID: &a, UserID: userID,
-	}, b, time.Now().UTC()))
-	c := uuid.New()
-	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
-		Type: "t", Name: "C", Content: "", ParentID: &b, UserID: userID,
-	}, c, time.Now().UTC()))
-
-	// C: MAX(depth)=3 → 3+1 > 3 → err
-	err := repo.CheckParentDepthLimit(t.Context(), c)
-	require.ErrorIs(t, err, entity.ErrMaxHierarchyDepthExceeded(repo.cfg.MaxHierarchyDepth))
-
-	// B: MAX(depth)=3 → 2+1 = 3 → ok
-	require.NoError(t, repo.CheckParentDepthLimit(t.Context(), b))
-
-	// err
-	cleanup()
-	err = repo.CheckParentDepthLimit(t.Context(), b)
-	require.Error(t, err)
 }
 
 func TestNewRepository(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewRepository(nil, Config{MaxHierarchyDepth: 3})
-	require.Error(t, err)
-
-	_, err = NewRepository(&gorm.DB{}, Config{MaxHierarchyDepth: 0})
+	_, err := NewRepository(nil)
 	require.Error(t, err)
 }

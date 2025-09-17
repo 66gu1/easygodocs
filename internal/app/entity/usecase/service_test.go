@@ -331,7 +331,7 @@ func TestService_Create(t *testing.T) {
 		}
 		expErr = fmt.Errorf("exp")
 	)
-	ctx = contextx.SetToContext(ctx, contextx.UserIDKey, userID)
+	ctx = contextx.SetUserID(ctx, userID)
 	tests := []struct {
 		name  string
 		ctx   context.Context
@@ -417,8 +417,14 @@ func TestService_Update(t *testing.T) {
 			IsDraft:  true,
 			ParentID: &parentID,
 		}
-		userID = uuid.New()
-		req    = entity.UpdateEntityReq{
+		userID   = uuid.New()
+		listItem = entity.ListItem{
+			ID:       id,
+			Type:     "type",
+			Name:     "name",
+			ParentID: &oldParentID,
+		}
+		req = entity.UpdateEntityReq{
 			ID:            cmd.ID,
 			Name:          cmd.Name,
 			Content:       cmd.Content,
@@ -426,20 +432,16 @@ func TestService_Update(t *testing.T) {
 			IsDraft:       cmd.IsDraft,
 			UserID:        userID,
 			ParentChanged: true,
+			EntityType:    listItem.Type,
 		}
 		permissions = usecase.EffectivePermissions{
 			IsAdmin: false,
 			IDs:     []uuid.UUID{parentID, id, oldParentID},
 		}
-		listItem = entity.ListItem{
-			ID:       id,
-			Type:     "type",
-			Name:     "name",
-			ParentID: &oldParentID,
-		}
+
 		expErr = fmt.Errorf("exp")
 	)
-	ctx = contextx.SetToContext(ctx, contextx.UserIDKey, userID)
+	ctx = contextx.SetUserID(ctx, userID)
 	tests := []struct {
 		name  string
 		ctx   context.Context
@@ -675,7 +677,7 @@ func TestPermissionChecker_GetEffectivePermissions(t *testing.T) {
 			name: "ok/not admin",
 			setup: func(mock permMocks) {
 				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(ids, false, nil)
-				mock.core.GetPermittedHierarchyMock.Expect(ctx, ids, false).Return(ids, nil)
+				mock.core.GetPermittedIDsMock.Expect(ctx, ids, entity.HierarchyTypeChildrenOnly).Return(ids, nil)
 			},
 			want: usecase.EffectivePermissions{IsAdmin: false, IDs: ids},
 		},
@@ -690,7 +692,7 @@ func TestPermissionChecker_GetEffectivePermissions(t *testing.T) {
 			name: "core.GetPermittedHierarchy error",
 			setup: func(mock permMocks) {
 				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(ids, false, nil)
-				mock.core.GetPermittedHierarchyMock.Expect(ctx, ids, false).Return(nil, expErr)
+				mock.core.GetPermittedIDsMock.Expect(ctx, ids, entity.HierarchyTypeChildrenOnly).Return(nil, expErr)
 			},
 			err: expErr,
 		},
@@ -738,7 +740,7 @@ func TestPermissionChecker_CheckEntityPermission(t *testing.T) {
 			name: "no permission",
 			setup: func(mock permMocks) {
 				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(nil, false, nil)
-				mock.core.GetPermittedHierarchyMock.Expect(ctx, nil, false).Return(nil, nil)
+				mock.core.GetPermittedIDsMock.Expect(ctx, nil, entity.HierarchyTypeChildrenOnly).Return(nil, nil)
 			},
 			err: apperr.ErrForbidden(),
 		},

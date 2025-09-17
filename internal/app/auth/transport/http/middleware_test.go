@@ -151,21 +151,13 @@ func TestAuthMiddleware(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// next–handler-спай: проверяем, что дошли и что в контексте лежат правильные значения
-			var gotUserID, gotSID uuid.UUID
-
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// достаём значения напрямую по ключам, которые использует middleware
-				if v := r.Context().Value(contextx.UserIDKey); v != nil {
-					if id, ok := v.(uuid.UUID); ok {
-						gotUserID = id
-					}
-				}
-				if v := r.Context().Value(contextx.SessionIDKey); v != nil {
-					if id, ok := v.(uuid.UUID); ok {
-						gotSID = id
-					}
-				}
+				got, err := contextx.GetUserID(r.Context())
+				require.NoError(t, err)
+				require.Equal(t, userID, got)
+				got, err = contextx.GetSessionID(r.Context())
+				require.NoError(t, err)
+				require.Equal(t, SID, got)
 				w.WriteHeader(http.StatusOK)
 			})
 
@@ -187,10 +179,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 			require.Equal(t, tc.wantStatus, rr.Code)
 
-			if tc.wantStatus == http.StatusOK {
-				require.Equal(t, userID, gotUserID, "userID in context mismatch")
-				require.Equal(t, SID, gotSID, "sessionID in context mismatch")
-			} else {
+			if tc.wantStatus != http.StatusOK {
 				require.NotEmpty(t, strings.TrimSpace(rr.Body.String()))
 			}
 		})

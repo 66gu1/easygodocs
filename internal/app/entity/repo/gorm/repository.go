@@ -12,23 +12,23 @@ import (
 	"gorm.io/gorm"
 )
 
-type gormRepo struct {
-	db  *gorm.DB
-	cfg Config
-}
-
-type Config struct {
-	MaxHierarchyDepth int `mapstructure:"max_hierarchy_depth" json:"max_hierarchy_depth"`
-}
-
-func NewRepository(db *gorm.DB, cfg Config) (*gormRepo, error) {
-	if cfg.MaxHierarchyDepth <= 0 {
-		return nil, errors.New("max_hierarchy_depth must be positive")
+// buildVisibilityFilter if userID is nil, show all entities, otherwise show only published entities and drafts created by the user.
+func buildVisibilityFilter(userID *uuid.UUID) (string, []any) {
+	if userID == nil {
+		return "TRUE", nil
 	}
+	return "(current_version IS NOT NULL OR updated_by = ?)", []any{*userID}
+}
+
+type gormRepo struct {
+	db *gorm.DB
+}
+
+func NewRepository(db *gorm.DB) (*gormRepo, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
-	return &gormRepo{db: db, cfg: cfg}, nil
+	return &gormRepo{db: db}, nil
 }
 
 func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error) {
@@ -70,30 +70,30 @@ func (r *gormRepo) GetAll(ctx context.Context) ([]entity.ListItem, error) {
 	return lo.Map(models, func(m entityListItemModel, _ int) entity.ListItem { return m.toDTO() }), nil
 }
 
-func (r *gormRepo) GetPermittedHierarchy(ctx context.Context, permissions []uuid.UUID, onlyForRead bool) ([]entity.ListItem, error) {
-	var models []entityListItemModel
-	if len(permissions) == 0 {
+// GetHierarchy if userID is nil, show all entities, otherwise show only published entities and drafts created by the user.
+func (r *gormRepo) GetHierarchy(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType entity.HierarchyType) ([]entity.ListItem, error) {
+	if len(ids) == 0 {
 		return []entity.ListItem{}, nil
 	}
-	query := `/* noinspection SqlNoDataSourceInspection */
-    SELECT *
-    FROM children `
-	rqType := onlyChildren
+	var models []entityListItemModel
 
-	if onlyForRead {
-		rqType = childrenAndParents
-		query += `
-    	UNION
-    	SELECT *
-    	FROM parents`
+	recursiveQuery, args := r.getRecursiveQuery(hType, maxDepth, ids, userID)
+	childrenResult := " SELECT * FROM children "
+	parentsResult := " SELECT * FROM parents "
+	switch hType {
+	case entity.HierarchyTypeChildrenOnly:
+		recursiveQuery += childrenResult
+	case entity.HierarchyTypeParentsOnly:
+		recursiveQuery += parentsResult
+	case entity.HierarchyTypeChildrenAndParents:
+		recursiveQuery += childrenResult + " UNION " + parentsResult
+	default:
+		return nil, fmt.Errorf("gormRepo.GetHierarchy: %w", fmt.Errorf("invalid hierarchy type: %v", hType))
 	}
 
-	recursiveQuery := r.getRecursiveQuery(rqType, r.cfg.MaxHierarchyDepth)
-
-	err := r.db.WithContext(ctx).Raw(recursiveQuery+query,
-		permissions).Scan(&models).Error
+	err := r.db.WithContext(ctx).Raw(recursiveQuery, args...).Scan(&models).Error
 	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetPermittedHierarchy: %w", err)
+		return nil, fmt.Errorf("gormRepo.GetHierarchy: %w", err)
 	}
 
 	return lo.Map(models, func(m entityListItemModel, _ int) entity.ListItem { return m.toDTO() }), nil
@@ -237,17 +237,8 @@ FROM bumped;
 	return nil
 }
 
-func (r *gormRepo) Delete(ctx context.Context, id uuid.UUID, deletedAt time.Time) error {
-	recursiveQuery := r.getRecursiveQuery(onlyChildren, r.cfg.MaxHierarchyDepth)
-
-	resp := r.db.WithContext(ctx).Exec(recursiveQuery+
-		`
-	/* noinspection SqlNoDataSourceInspection */
-	UPDATE entities SET deleted_at = $2
-	WHERE id IN (
-    	SELECT id FROM children
-	);
-`, []uuid.UUID{id}, deletedAt)
+func (r *gormRepo) Delete(ctx context.Context, ids []uuid.UUID) error {
+	resp := r.db.WithContext(ctx).Model(&entityModel{}).Where("id IN ?", ids).Delete(&entityModel{})
 	if resp.Error != nil {
 		return fmt.Errorf("gormRepo.Delete: %w", resp.Error)
 	}
@@ -258,84 +249,21 @@ func (r *gormRepo) Delete(ctx context.Context, id uuid.UUID, deletedAt time.Time
 	return nil
 }
 
-func (r *gormRepo) ValidateChangedParent(ctx context.Context, id, parentID uuid.UUID) error {
-	type validationResult struct {
-		Depth   int
-		IsCycle bool
-	}
-	var result validationResult
+func (r *gormRepo) getRecursiveQuery(hType entity.HierarchyType, maxDepth int, ids []uuid.UUID, userID *uuid.UUID) (string, []any) {
+	vFilter, vArgs := buildVisibilityFilter(userID)
+	args := make([]any, 0, 3+len(vArgs)*3)
 
-	recursiveQuery := r.getRecursiveQuery(onlyChildren, r.cfg.MaxHierarchyDepth)
-
-	err := r.db.WithContext(ctx).Raw(recursiveQuery+`
-	/* noinspection SqlNoDataSourceInspection */
-SELECT
-    COALESCE((SELECT MAX(depth) FROM children), 0) AS depth,
-    EXISTS (SELECT 1 FROM children WHERE id = $2) AS is_cycle;
-	`, []uuid.UUID{id}, parentID).Scan(&result).Error
-	if err != nil {
-		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", err)
-	}
-	if result.IsCycle {
-		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", entity.ErrParentCycle())
-	}
-
-	recursiveQuery = r.getRecursiveQuery(onlyParents, r.cfg.MaxHierarchyDepth)
-
-	var parentDepth int
-	err = r.db.WithContext(ctx).Raw(recursiveQuery+`
-	/* noinspection SqlNoDataSourceInspection */
-SELECT
-    COALESCE((SELECT MAX(depth) FROM parents), 0) AS depth
-	`, []uuid.UUID{parentID}).Scan(&parentDepth).Error
-	if err != nil {
-		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", err)
-	}
-	if result.Depth+parentDepth > r.cfg.MaxHierarchyDepth {
-		return fmt.Errorf("gormRepo.ValidateChangedParent: %w", entity.ErrMaxHierarchyDepthExceeded(r.cfg.MaxHierarchyDepth))
-	}
-
-	return nil
-}
-
-func (r *gormRepo) CheckParentDepthLimit(ctx context.Context, parentID uuid.UUID) error {
-	recursiveQuery := r.getRecursiveQuery(onlyParents, r.cfg.MaxHierarchyDepth)
-	var maxDepthExceeded bool
-
-	err := r.db.WithContext(ctx).Raw(recursiveQuery+`
-	/* noinspection SqlNoDataSourceInspection */
-	SELECT COALESCE((MAX(depth) + 1 > $2), FALSE) AS max_depth_exceeded FROM parents;
-	`, []uuid.UUID{parentID}, r.cfg.MaxHierarchyDepth).Scan(&maxDepthExceeded).Error
-	if err != nil {
-		return fmt.Errorf("gormRepo.CheckParentDepthLimit: %w", err)
-	}
-
-	if maxDepthExceeded {
-		err = entity.ErrMaxHierarchyDepthExceeded(r.cfg.MaxHierarchyDepth)
-		return fmt.Errorf("gormRepo.CheckParentDepthLimit: %w", err)
-	}
-
-	return nil
-}
-
-type recursiveQueryType string
-
-const (
-	onlyChildren       recursiveQueryType = "only_children"
-	onlyParents        recursiveQueryType = "only_parents"
-	childrenAndParents recursiveQueryType = "children_and_parents"
-)
-
-func (r *gormRepo) getRecursiveQuery(rqType recursiveQueryType, maxDepth int) string {
-	maxDepth++ // Traverse up to maxDepth + 1 to detect if actual depth exceeds the allowed maxDepth.
-	base := `
+	args = append(args, ids)
+	args = append(args, vArgs...)
+	base := fmt.Sprintf(`
 WITH RECURSIVE
     base AS (
         SELECT id, type, parent_id, name, 1 as depth
         FROM entities 
-        WHERE id = ANY($1) AND deleted_at ISNULL
+        WHERE id IN (?) AND deleted_at ISNULL AND %s
     )
-`
+`, vFilter)
+
 	childrenQuery := fmt.Sprintf(`,
     children AS (
         SELECT *
@@ -345,10 +273,11 @@ WITH RECURSIVE
 
         SELECT e.id, e.type, e.parent_id, e.name, c.depth + 1 as depth
         FROM children c
-        JOIN entities e ON c.id = e.parent_id AND e.deleted_at ISNULL
-		WHERE c.depth <= %d
+        JOIN entities e ON c.id = e.parent_id AND e.deleted_at ISNULL  AND %s
+		WHERE c.depth < ?
     )
-`, maxDepth)
+`, vFilter)
+
 	parentsQuery := fmt.Sprintf(`,
     parents AS (
         SELECT *
@@ -358,18 +287,23 @@ WITH RECURSIVE
 
         SELECT e.id, e.type, e.parent_id, e.name, p.depth + 1 as depth
         FROM parents p
-        JOIN entities e ON p.parent_id = e.id AND e.deleted_at ISNULL
-		WHERE p.depth <= %d
+        JOIN entities e ON p.parent_id = e.id AND e.deleted_at ISNULL AND %s
+		WHERE p.depth < ?
     )
-`, maxDepth)
-	switch rqType {
-	case onlyChildren:
-		return base + childrenQuery
-	case onlyParents:
-		return base + parentsQuery
-	case childrenAndParents:
-		return base + childrenQuery + parentsQuery
+`, vFilter)
+
+	args = append(args, vArgs...)
+	args = append(args, maxDepth)
+	switch hType {
+	case entity.HierarchyTypeChildrenOnly:
+		return base + childrenQuery, args
+	case entity.HierarchyTypeParentsOnly:
+		return base + parentsQuery, args
+	case entity.HierarchyTypeChildrenAndParents:
+		args = append(args, vArgs...)
+		args = append(args, maxDepth)
+		return base + childrenQuery + parentsQuery, args
 	default:
-		return ""
+		return "", nil
 	}
 }

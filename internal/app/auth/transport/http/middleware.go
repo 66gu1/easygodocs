@@ -80,8 +80,8 @@ func AuthMiddleware(codec TokenCodec) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx = contextx.SetToContext(ctx, contextx.UserIDKey, userID)
-			ctx = contextx.SetToContext(ctx, contextx.SessionIDKey, sessionID)
+			ctx = contextx.SetUserID(ctx, userID)
+			ctx = contextx.SetSessionID(ctx, sessionID)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

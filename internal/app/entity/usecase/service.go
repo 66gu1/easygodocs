@@ -15,7 +15,7 @@ import (
 
 type Core interface {
 	GetTree(ctx context.Context, permissions []uuid.UUID, isAdmin bool) (entity.Tree, error)
-	GetPermittedHierarchy(ctx context.Context, directPermissions []uuid.UUID, onlyForRead bool) ([]uuid.UUID, error)
+	GetPermittedIDs(ctx context.Context, directPermissions []uuid.UUID, hType entity.HierarchyType) ([]uuid.UUID, error)
 	Get(ctx context.Context, id uuid.UUID) (entity.Entity, error)
 	GetVersion(ctx context.Context, id uuid.UUID, version int) (entity.Entity, error)
 	GetVersionsList(ctx context.Context, id uuid.UUID) ([]entity.Entity, error)
@@ -226,6 +226,7 @@ func (s *service) Update(ctx context.Context, cmd UpdateEntityCmd) error {
 		IsDraft:       cmd.IsDraft,
 		UserID:        userID,
 		ParentChanged: parentChanged,
+		EntityType:    oldEntity.Type,
 	}
 
 	if err = s.core.Update(ctx, req); err != nil {
@@ -294,7 +295,11 @@ func (p *permissionChecker) GetEffectivePermissions(ctx context.Context, role au
 		return EffectivePermissions{IsAdmin: true}, nil
 	}
 
-	effectiveIDs, err := p.core.GetPermittedHierarchy(ctx, ids, role.IsOnlyForRead())
+	hType := entity.HierarchyTypeChildrenOnly
+	if role.IsOnlyForRead() {
+		hType = entity.HierarchyTypeChildrenAndParents
+	}
+	effectiveIDs, err := p.core.GetPermittedIDs(ctx, ids, hType)
 	if err != nil {
 		return EffectivePermissions{}, fmt.Errorf("permissionChecker.GetEffectivePermissions: %w", err)
 	}

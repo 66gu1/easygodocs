@@ -846,7 +846,7 @@ func TestCore_GetCurrentUserDirectPermissions(t *testing.T) {
 		ids    = []uuid.UUID{entityID1, entityID2}
 		errExp = fmt.Errorf("expected")
 	)
-	ctx = contextx.SetToContext(ctx, contextx.UserIDKey, userID)
+	ctx = contextx.SetUserID(ctx, userID)
 	tests := []struct {
 		name    string
 		ctx     context.Context
@@ -937,7 +937,7 @@ func TestCore_IsSelf(t *testing.T) {
 	t.Parallel()
 	userID := uuid.New()
 
-	ctx := contextx.SetToContext(context.Background(), contextx.UserIDKey, userID)
+	ctx := contextx.SetUserID(context.Background(), userID)
 	tests := []struct {
 		name    string
 		ctx     context.Context
