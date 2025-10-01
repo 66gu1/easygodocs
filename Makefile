@@ -47,8 +47,7 @@ cover-html: cover
 
 generate:
 	go generate ./...
-	# minimock примеры:
-	# minimock -o ./internal/app/user/usecase/mocks -i github.com/66gu1/easygodocs/internal/app/user/usecase.Service
+	swag init -g cmd/server/main.go
 
 tools:
 	go install mvdan.cc/gofumpt@latest

@@ -1,0 +1,781 @@
+basePath: /api/v1
+definitions:
+  apperr.Code:
+    enum:
+    - core/bad_request
+    - core/unauthorized
+    - core/forbidden
+    - core/internal_error
+    type: string
+    x-enum-varnames:
+    - CodeBadRequest
+    - CodeUnauthorized
+    - CodeForbidden
+    - CodeInternal
+  apperr.Field:
+    enum:
+    - request
+    type: string
+    x-enum-varnames:
+    - FieldRequest
+  apperr.Rule:
+    enum:
+    - required
+    - too_long
+    - cycle
+    - max_hierarchy_depth
+    - invalid_format
+    - too_short
+    - duplicate
+    - mismatch
+    - forbidden
+    - invalid_state
+    - not_found
+    type: string
+    x-enum-varnames:
+    - RuleRequired
+    - RuleTooLong
+    - RuleCycle
+    - RuleMaxHierarchy
+    - RuleInvalidFormat
+    - RuleTooShort
+    - RuleDuplicate
+    - RuleMismatch
+    - RuleForbidden
+    - RuleInvalidState
+    - RuleNotFound
+  apperr.Violation:
+    properties:
+      field:
+        $ref: '#/definitions/apperr.Field'
+      params:
+        additionalProperties: {}
+        type: object
+      rule:
+        $ref: '#/definitions/apperr.Rule'
+    type: object
+  apperr.appError:
+    properties:
+      code:
+        $ref: '#/definitions/apperr.Code'
+      message:
+        description: Message for user
+        type: string
+      violations:
+        items:
+          $ref: '#/definitions/apperr.Violation'
+        type: array
+    type: object
+  auth.RefreshToken:
+    properties:
+      session_id:
+        type: string
+      token:
+        type: string
+    type: object
+  auth.Role:
+    enum:
+    - admin
+    - read
+    - write
+    type: string
+    x-enum-varnames:
+    - RoleAdmin
+    - RoleRead
+    - RoleWrite
+  auth.Session:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      session_version:
+        type: integer
+      user_id:
+        type: string
+    type: object
+  auth.Tokens:
+    properties:
+      access_token:
+        type: string
+      refresh_token:
+        $ref: '#/definitions/auth.RefreshToken'
+    type: object
+  auth.UserRole:
+    properties:
+      entity_id:
+        type: string
+      role:
+        $ref: '#/definitions/auth.Role'
+      user_id:
+        type: string
+    type: object
+  entity.Entity:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      current_version:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      parent_id:
+        type: string
+      type:
+        $ref: '#/definitions/entity.Type'
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
+  entity.Node:
+    properties:
+      children:
+        items:
+          $ref: '#/definitions/entity.Node'
+        type: array
+      id:
+        type: string
+      name:
+        type: string
+      parent_id:
+        type: string
+      type:
+        $ref: '#/definitions/entity.Type'
+    type: object
+  entity.Type:
+    enum:
+    - article
+    - department
+    type: string
+    x-enum-varnames:
+    - TypeArticle
+    - TypeDepartment
+  http.ChangePasswordInput:
+    properties:
+      new_password:
+        type: string
+      old_password:
+        type: string
+    type: object
+  http.CreateEntityResp:
+    properties:
+      id:
+        type: string
+    type: object
+  http.CreateUserInput:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+      password:
+        type: string
+    type: object
+  http.LoginInput:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  http.UpdateEntityInput:
+    properties:
+      content:
+        type: string
+      is_draft:
+        type: boolean
+      name:
+        type: string
+      parent_id:
+        type: string
+    type: object
+  http.UpdateUserInput:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+    type: object
+  usecase.CreateEntityCmd:
+    properties:
+      content:
+        type: string
+      is_draft:
+        type: boolean
+      name:
+        type: string
+      parent_id:
+        type: string
+      type:
+        $ref: '#/definitions/entity.Type'
+    type: object
+  user.User:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      session_version:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Demo wiki backend in Go
+  title: EasyGoDocs API
+  version: "1.0"
+paths:
+  /entities:
+    get:
+      description: Returns the hierarchical tree of all permitted entities.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/entity.Node'
+            type: array
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Get full entity tree
+      tags:
+      - entities
+    post:
+      consumes:
+      - application/json
+      description: Creates a new entity. Requires write permission for the parent
+        entity. if root entity, requires admin role.
+      parameters:
+      - description: Create entity payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateEntityCmd'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.CreateEntityResp'
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Create entity
+      tags:
+      - entities
+  /entities/{entity_id}:
+    delete:
+      description: Deletes an entity by ID. Requires write permission for the entity.
+      parameters:
+      - description: Entity ID
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Delete entity
+      tags:
+      - entities
+    get:
+      description: Returns a single entity by its ID. Requires read permission.
+      parameters:
+      - description: Entity ID
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/entity.Entity'
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Get entity by ID
+      tags:
+      - entities
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing entity. Requires write permission. If changes
+        parent, requires write permission for the new and old parents as well.
+      parameters:
+      - description: Entity ID
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      - description: Update entity payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdateEntityInput'
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Update entity
+      tags:
+      - entities
+  /entities/{entity_id}/versions:
+    get:
+      description: Returns list of all versions for an entity. Requires read permission.
+      parameters:
+      - description: Entity ID
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/entity.Entity'
+            type: array
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: List entity versions
+      tags:
+      - entities
+  /entities/{entity_id}/versions/{version}:
+    get:
+      description: Returns a specific version of an entity. Requires read permission.
+      parameters:
+      - description: Entity ID
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/entity.Entity'
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Get specific entity version
+      tags:
+      - entities
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and get tokens
+      parameters:
+      - description: credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.LoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.Tokens'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      summary: Login
+      tags:
+      - auth
+  /refresh:
+    post:
+      consumes:
+      - application/json
+      description: Refreshes the access and refresh tokens using a valid refresh token
+      parameters:
+      - description: Refresh token payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RefreshToken'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.Tokens'
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      summary: Refresh access token
+      tags:
+      - auth
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user.
+      parameters:
+      - description: Create user payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.CreateUserInput'
+      responses:
+        "201":
+          description: Created
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Create user
+      tags:
+      - users
+  /roles:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a user role assignment for an entity. Requires admin privileges.
+      parameters:
+      - description: User role payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.UserRole'
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Remove role from user
+      tags:
+      - roles
+    get:
+      description: Returns a list of roles for the specified user ID. Requires admin
+        privileges or self-access.
+      parameters:
+      - description: User ID
+        in: query
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/auth.UserRole'
+            type: array
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: List roles assigned to a user
+      tags:
+      - roles
+    post:
+      consumes:
+      - application/json
+      description: Adds a role for a user in relation to an entity. Requires admin
+        privileges.
+      parameters:
+      - description: User role payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.UserRole'
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Assign role to user
+      tags:
+      - roles
+  /sessions:
+    delete:
+      description: Deletes all active sessions for the specified user. Requires admin
+        privileges or self-access.
+      parameters:
+      - description: User ID
+        in: query
+        name: user_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Delete all sessions for user
+      tags:
+      - sessions
+    get:
+      description: Returns all active sessions for the specified user. Requires admin
+        privileges or self-access.
+      parameters:
+      - description: User ID
+        in: query
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/auth.Session'
+            type: array
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: List sessions by user ID
+      tags:
+      - sessions
+  /sessions/{session_id}:
+    delete:
+      description: Deletes a specific session for a given user. Requires admin privileges
+        or self-access.
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: User ID
+        in: query
+        name: user_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Delete session by ID
+      tags:
+      - sessions
+  /users:
+    get:
+      description: Returns all users. Requires admin role.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/user.User'
+            type: array
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: List users
+      tags:
+      - users
+  /users/{user_id}:
+    delete:
+      description: Deletes a user by ID. Requires admin role.
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Delete user
+      tags:
+      - users
+    get:
+      description: Returns a single user by ID. Requires admin role or self.
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.User'
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Get user by ID
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      description: Updates user's basic fields. Requires admin role or self.
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Update user payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdateUserInput'
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Update user
+      tags:
+      - users
+  /users/{user_id}/password:
+    post:
+      consumes:
+      - application/json
+      description: Changes password for the specified user (old -> new). Requires
+        admin role or self. If admin changes password, old password is not checked.
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Change password payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.ChangePasswordInput'
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.appError'
+      security:
+      - BearerAuth: []
+      summary: Change user password
+      tags:
+      - users
+schemes:
+- http
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

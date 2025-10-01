@@ -56,9 +56,9 @@ type RepositoryMock struct {
 	beforeGetAllCounter uint64
 	GetAllMock          mRepositoryMockGetAll
 
-	funcGetHierarchy          func(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) (la1 []mm_entity.ListItem, err error)
+	funcGetHierarchy          func(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) (la1 []mm_entity.ListItem, err error)
 	funcGetHierarchyOrigin    string
-	inspectFuncGetHierarchy   func(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType)
+	inspectFuncGetHierarchy   func(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType)
 	afterGetHierarchyCounter  uint64
 	beforeGetHierarchyCounter uint64
 	GetHierarchyMock          mRepositoryMockGetHierarchy
@@ -1945,20 +1945,20 @@ type RepositoryMockGetHierarchyExpectation struct {
 
 // RepositoryMockGetHierarchyParams contains parameters of the Repository.GetHierarchy
 type RepositoryMockGetHierarchyParams struct {
-	ctx         context.Context
-	permissions []uuid.UUID
-	maxDepth    int
-	userID      *uuid.UUID
-	hType       mm_entity.HierarchyType
+	ctx      context.Context
+	ids      []uuid.UUID
+	maxDepth int
+	userID   *uuid.UUID
+	hType    mm_entity.HierarchyType
 }
 
 // RepositoryMockGetHierarchyParamPtrs contains pointers to parameters of the Repository.GetHierarchy
 type RepositoryMockGetHierarchyParamPtrs struct {
-	ctx         *context.Context
-	permissions *[]uuid.UUID
-	maxDepth    *int
-	userID      **uuid.UUID
-	hType       *mm_entity.HierarchyType
+	ctx      *context.Context
+	ids      *[]uuid.UUID
+	maxDepth *int
+	userID   **uuid.UUID
+	hType    *mm_entity.HierarchyType
 }
 
 // RepositoryMockGetHierarchyResults contains results of the Repository.GetHierarchy
@@ -1969,12 +1969,12 @@ type RepositoryMockGetHierarchyResults struct {
 
 // RepositoryMockGetHierarchyOrigins contains origins of expectations of the Repository.GetHierarchy
 type RepositoryMockGetHierarchyExpectationOrigins struct {
-	origin            string
-	originCtx         string
-	originPermissions string
-	originMaxDepth    string
-	originUserID      string
-	originHType       string
+	origin         string
+	originCtx      string
+	originIds      string
+	originMaxDepth string
+	originUserID   string
+	originHType    string
 }
 
 // Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
@@ -1988,7 +1988,7 @@ func (mmGetHierarchy *mRepositoryMockGetHierarchy) Optional() *mRepositoryMockGe
 }
 
 // Expect sets up expected params for Repository.GetHierarchy
-func (mmGetHierarchy *mRepositoryMockGetHierarchy) Expect(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) *mRepositoryMockGetHierarchy {
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Expect(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) *mRepositoryMockGetHierarchy {
 	if mmGetHierarchy.mock.funcGetHierarchy != nil {
 		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
 	}
@@ -2001,7 +2001,7 @@ func (mmGetHierarchy *mRepositoryMockGetHierarchy) Expect(ctx context.Context, p
 		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by ExpectParams functions")
 	}
 
-	mmGetHierarchy.defaultExpectation.params = &RepositoryMockGetHierarchyParams{ctx, permissions, maxDepth, userID, hType}
+	mmGetHierarchy.defaultExpectation.params = &RepositoryMockGetHierarchyParams{ctx, ids, maxDepth, userID, hType}
 	mmGetHierarchy.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
 	for _, e := range mmGetHierarchy.expectations {
 		if minimock.Equal(e.params, mmGetHierarchy.defaultExpectation.params) {
@@ -2035,8 +2035,8 @@ func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectCtxParam1(ctx context.C
 	return mmGetHierarchy
 }
 
-// ExpectPermissionsParam2 sets up expected param permissions for Repository.GetHierarchy
-func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectPermissionsParam2(permissions []uuid.UUID) *mRepositoryMockGetHierarchy {
+// ExpectIdsParam2 sets up expected param ids for Repository.GetHierarchy
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectIdsParam2(ids []uuid.UUID) *mRepositoryMockGetHierarchy {
 	if mmGetHierarchy.mock.funcGetHierarchy != nil {
 		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
 	}
@@ -2052,8 +2052,8 @@ func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectPermissionsParam2(permi
 	if mmGetHierarchy.defaultExpectation.paramPtrs == nil {
 		mmGetHierarchy.defaultExpectation.paramPtrs = &RepositoryMockGetHierarchyParamPtrs{}
 	}
-	mmGetHierarchy.defaultExpectation.paramPtrs.permissions = &permissions
-	mmGetHierarchy.defaultExpectation.expectationOrigins.originPermissions = minimock.CallerInfo(1)
+	mmGetHierarchy.defaultExpectation.paramPtrs.ids = &ids
+	mmGetHierarchy.defaultExpectation.expectationOrigins.originIds = minimock.CallerInfo(1)
 
 	return mmGetHierarchy
 }
@@ -2128,7 +2128,7 @@ func (mmGetHierarchy *mRepositoryMockGetHierarchy) ExpectHTypeParam5(hType mm_en
 }
 
 // Inspect accepts an inspector function that has same arguments as the Repository.GetHierarchy
-func (mmGetHierarchy *mRepositoryMockGetHierarchy) Inspect(f func(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType)) *mRepositoryMockGetHierarchy {
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Inspect(f func(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType)) *mRepositoryMockGetHierarchy {
 	if mmGetHierarchy.mock.inspectFuncGetHierarchy != nil {
 		mmGetHierarchy.mock.t.Fatalf("Inspect function is already set for RepositoryMock.GetHierarchy")
 	}
@@ -2153,7 +2153,7 @@ func (mmGetHierarchy *mRepositoryMockGetHierarchy) Return(la1 []mm_entity.ListIt
 }
 
 // Set uses given function f to mock the Repository.GetHierarchy method
-func (mmGetHierarchy *mRepositoryMockGetHierarchy) Set(f func(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) (la1 []mm_entity.ListItem, err error)) *RepositoryMock {
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) Set(f func(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) (la1 []mm_entity.ListItem, err error)) *RepositoryMock {
 	if mmGetHierarchy.defaultExpectation != nil {
 		mmGetHierarchy.mock.t.Fatalf("Default expectation is already set for the Repository.GetHierarchy method")
 	}
@@ -2169,14 +2169,14 @@ func (mmGetHierarchy *mRepositoryMockGetHierarchy) Set(f func(ctx context.Contex
 
 // When sets expectation for the Repository.GetHierarchy which will trigger the result defined by the following
 // Then helper
-func (mmGetHierarchy *mRepositoryMockGetHierarchy) When(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) *RepositoryMockGetHierarchyExpectation {
+func (mmGetHierarchy *mRepositoryMockGetHierarchy) When(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) *RepositoryMockGetHierarchyExpectation {
 	if mmGetHierarchy.mock.funcGetHierarchy != nil {
 		mmGetHierarchy.mock.t.Fatalf("RepositoryMock.GetHierarchy mock is already set by Set")
 	}
 
 	expectation := &RepositoryMockGetHierarchyExpectation{
 		mock:               mmGetHierarchy.mock,
-		params:             &RepositoryMockGetHierarchyParams{ctx, permissions, maxDepth, userID, hType},
+		params:             &RepositoryMockGetHierarchyParams{ctx, ids, maxDepth, userID, hType},
 		expectationOrigins: RepositoryMockGetHierarchyExpectationOrigins{origin: minimock.CallerInfo(1)},
 	}
 	mmGetHierarchy.expectations = append(mmGetHierarchy.expectations, expectation)
@@ -2211,17 +2211,17 @@ func (mmGetHierarchy *mRepositoryMockGetHierarchy) invocationsDone() bool {
 }
 
 // GetHierarchy implements mm_entity.Repository
-func (mmGetHierarchy *RepositoryMock) GetHierarchy(ctx context.Context, permissions []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) (la1 []mm_entity.ListItem, err error) {
+func (mmGetHierarchy *RepositoryMock) GetHierarchy(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType mm_entity.HierarchyType) (la1 []mm_entity.ListItem, err error) {
 	mm_atomic.AddUint64(&mmGetHierarchy.beforeGetHierarchyCounter, 1)
 	defer mm_atomic.AddUint64(&mmGetHierarchy.afterGetHierarchyCounter, 1)
 
 	mmGetHierarchy.t.Helper()
 
 	if mmGetHierarchy.inspectFuncGetHierarchy != nil {
-		mmGetHierarchy.inspectFuncGetHierarchy(ctx, permissions, maxDepth, userID, hType)
+		mmGetHierarchy.inspectFuncGetHierarchy(ctx, ids, maxDepth, userID, hType)
 	}
 
-	mm_params := RepositoryMockGetHierarchyParams{ctx, permissions, maxDepth, userID, hType}
+	mm_params := RepositoryMockGetHierarchyParams{ctx, ids, maxDepth, userID, hType}
 
 	// Record call args
 	mmGetHierarchy.GetHierarchyMock.mutex.Lock()
@@ -2240,7 +2240,7 @@ func (mmGetHierarchy *RepositoryMock) GetHierarchy(ctx context.Context, permissi
 		mm_want := mmGetHierarchy.GetHierarchyMock.defaultExpectation.params
 		mm_want_ptrs := mmGetHierarchy.GetHierarchyMock.defaultExpectation.paramPtrs
 
-		mm_got := RepositoryMockGetHierarchyParams{ctx, permissions, maxDepth, userID, hType}
+		mm_got := RepositoryMockGetHierarchyParams{ctx, ids, maxDepth, userID, hType}
 
 		if mm_want_ptrs != nil {
 
@@ -2249,9 +2249,9 @@ func (mmGetHierarchy *RepositoryMock) GetHierarchy(ctx context.Context, permissi
 					mmGetHierarchy.GetHierarchyMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
 			}
 
-			if mm_want_ptrs.permissions != nil && !minimock.Equal(*mm_want_ptrs.permissions, mm_got.permissions) {
-				mmGetHierarchy.t.Errorf("RepositoryMock.GetHierarchy got unexpected parameter permissions, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmGetHierarchy.GetHierarchyMock.defaultExpectation.expectationOrigins.originPermissions, *mm_want_ptrs.permissions, mm_got.permissions, minimock.Diff(*mm_want_ptrs.permissions, mm_got.permissions))
+			if mm_want_ptrs.ids != nil && !minimock.Equal(*mm_want_ptrs.ids, mm_got.ids) {
+				mmGetHierarchy.t.Errorf("RepositoryMock.GetHierarchy got unexpected parameter ids, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetHierarchy.GetHierarchyMock.defaultExpectation.expectationOrigins.originIds, *mm_want_ptrs.ids, mm_got.ids, minimock.Diff(*mm_want_ptrs.ids, mm_got.ids))
 			}
 
 			if mm_want_ptrs.maxDepth != nil && !minimock.Equal(*mm_want_ptrs.maxDepth, mm_got.maxDepth) {
@@ -2281,9 +2281,9 @@ func (mmGetHierarchy *RepositoryMock) GetHierarchy(ctx context.Context, permissi
 		return (*mm_results).la1, (*mm_results).err
 	}
 	if mmGetHierarchy.funcGetHierarchy != nil {
-		return mmGetHierarchy.funcGetHierarchy(ctx, permissions, maxDepth, userID, hType)
+		return mmGetHierarchy.funcGetHierarchy(ctx, ids, maxDepth, userID, hType)
 	}
-	mmGetHierarchy.t.Fatalf("Unexpected call to RepositoryMock.GetHierarchy. %v %v %v %v %v", ctx, permissions, maxDepth, userID, hType)
+	mmGetHierarchy.t.Fatalf("Unexpected call to RepositoryMock.GetHierarchy. %v %v %v %v %v", ctx, ids, maxDepth, userID, hType)
 	return
 }
 

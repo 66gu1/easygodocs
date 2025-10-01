@@ -1,3 +1,14 @@
+// @title        EasyGoDocs API
+// @version      1.0
+// @description  Demo wiki backend in Go
+// @BasePath     /api/v1
+// @schemes       http
+
+// @securityDefinitions.apikey BearerAuth
+// @type          apiKey
+// @in header
+// @name Authorization
+// (format: "Bearer <token>")
 package main
 
 import (
@@ -8,6 +19,7 @@ import (
 	"time"
 
 	"github.com/66gu1/easygodocs/config"
+	"github.com/66gu1/easygodocs/docs"
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	authrepo "github.com/66gu1/easygodocs/internal/app/auth/repo/gorm"
 	authhttp "github.com/66gu1/easygodocs/internal/app/auth/transport/http"
@@ -28,8 +40,10 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func main() {
@@ -52,6 +66,7 @@ func main() {
 		NowFunc: func() time.Time {
 			return time.Now().UTC()
 		},
+		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		panic(err)
@@ -115,6 +130,7 @@ func main() {
 	entityService := entityusecase.NewService(entityCore, entityusecase.NewPermissionChecker(entityCore, authCore))
 	entityHandler := entityhttp.NewHandler(entityService)
 
+	docs.SwaggerInfo.BasePath = "/api/v1"
 	// --- set up chi router
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -123,64 +139,70 @@ func main() {
 	r.Use(httpx.Logger)
 	r.Use(httpx.MaxBodyBytes(cfg.MaxBodySize))
 
-	// with auth
-	r.Group(func(r chi.Router) {
-		r.Use(authhttp.AuthMiddleware(jwtCodec))
-		// --- user routes
-		r.Route("/api/v1/users", func(r chi.Router) {
-			r.Get("/", userHandler.GetAllUsers) // GET    /users
+	r.Route("/api/v1", func(r chi.Router) {
+		// with auth
+		r.Group(func(r chi.Router) {
+			r.Use(authhttp.AuthMiddleware(jwtCodec))
+			// --- user routes
+			r.Route("/users", func(r chi.Router) {
+				r.Get("/", userHandler.GetAllUsers) // GET    /users
 
-			r.Route(fmt.Sprintf("/{%s}", userhttp.URLParamUserID), func(r chi.Router) {
-				r.Get("/", userHandler.GetUser)                 // GET    /users/{user_id}
-				r.Put("/", userHandler.UpdateUser)              // PUT    /users/{user_id}
-				r.Delete("/", userHandler.DeleteUser)           // DELETE /users/{user_id}
-				r.Post("/password", userHandler.ChangePassword) // POST   /users/{user_id}/password
+				r.Route(fmt.Sprintf("/{%s}", userhttp.URLParamUserID), func(r chi.Router) {
+					r.Get("/", userHandler.GetUser)                 // GET    /users/{user_id}
+					r.Put("/", userHandler.UpdateUser)              // PUT    /users/{user_id}
+					r.Delete("/", userHandler.DeleteUser)           // DELETE /users/{user_id}
+					r.Post("/password", userHandler.ChangePassword) // POST   /users/{user_id}/password
+				})
 			})
-		})
 
-		// --- session routes
-		r.Route("/api/v1/sessions", func(r chi.Router) {
-			r.Get("/", authHandler.GetSessionsByUserID)       // GET    /sessions?user_id={user_id}
-			r.Delete("/", authHandler.DeleteSessionsByUserID) // DELETE /sessions?user_id={user_id}
+			// --- session routes
+			r.Route("/sessions", func(r chi.Router) {
+				r.Get("/", authHandler.GetSessionsByUserID)       // GET    /sessions?user_id={user_id}
+				r.Delete("/", authHandler.DeleteSessionsByUserID) // DELETE /sessions?user_id={user_id}
 
-			r.Route(fmt.Sprintf("/{%s}", authhttp.URLParamSessionID), func(r chi.Router) {
-				r.Delete("/", authHandler.DeleteSession) // DELETE /sessions/{session_id}?user_id={user_id}
+				r.Route(fmt.Sprintf("/{%s}", authhttp.URLParamSessionID), func(r chi.Router) {
+					r.Delete("/", authHandler.DeleteSession) // DELETE /sessions/{session_id}?user_id={user_id}
+				})
 			})
-		})
 
-		// --- roles routes
-		r.Route("/api/v1/roles", func(r chi.Router) {
-			r.Get("/", authHandler.ListUserRoles)     // GET /roles
-			r.Post("/", authHandler.AddUserRole)      // POST /roles
-			r.Delete("/", authHandler.DeleteUserRole) // DELETE /roles
-		})
+			// --- roles routes
+			r.Route("/roles", func(r chi.Router) {
+				r.Get("/", authHandler.ListUserRoles)     // GET /roles
+				r.Post("/", authHandler.AddUserRole)      // POST /roles
+				r.Delete("/", authHandler.DeleteUserRole) // DELETE /roles
+			})
 
-		// --- entity routes
-		r.Route("/api/v1/entities", func(r chi.Router) {
-			r.Post("/", entityHandler.Create) // POST /entities
-			r.Get("/", entityHandler.GetTree) // GET /entities
+			// --- entity routes
+			r.Route("/entities", func(r chi.Router) {
+				r.Post("/", entityHandler.Create) // POST /entities
+				r.Get("/", entityHandler.GetTree) // GET /entities
 
-			r.Route(fmt.Sprintf("/{%s}", entityhttp.URLParamEntityID), func(r chi.Router) {
-				r.Get("/", entityHandler.Get)       // GET    /entities/{entity_id}
-				r.Put("/", entityHandler.Update)    // PUT    /entities/{entity_id}
-				r.Delete("/", entityHandler.Delete) // DELETE /entities/{entity_id}
+				r.Route(fmt.Sprintf("/{%s}", entityhttp.URLParamEntityID), func(r chi.Router) {
+					r.Get("/", entityHandler.Get)       // GET    /entities/{entity_id}
+					r.Put("/", entityHandler.Update)    // PUT    /entities/{entity_id}
+					r.Delete("/", entityHandler.Delete) // DELETE /entities/{entity_id}
 
-				r.Route("/versions", func(r chi.Router) {
-					r.Get("/", entityHandler.GetVersionsList) // GET /entities/{entity_id}/versions
+					r.Route("/versions", func(r chi.Router) {
+						r.Get("/", entityHandler.GetVersionsList) // GET /entities/{entity_id}/versions
 
-					r.Route(fmt.Sprintf("/{%s}", entityhttp.URLParamVersion), func(r chi.Router) {
-						r.Get("/", entityHandler.GetVersion) // GET /entities/{entity_id}/versions/{version}
+						r.Route(fmt.Sprintf("/{%s}", entityhttp.URLParamVersion), func(r chi.Router) {
+							r.Get("/", entityHandler.GetVersion) // GET /entities/{entity_id}/versions/{version}
+						})
 					})
 				})
 			})
 		})
-	})
 
-	// without auth
-	r.Group(func(r chi.Router) {
-		r.Post("/api/v1/login", authHandler.Login)           // POST /login
-		r.Post("/api/v1/refresh", authHandler.RefreshTokens) // POST /refresh
-		r.Post("/api/v1/register", userHandler.CreateUser)   // POST /register
+		// without auth
+		r.Group(func(r chi.Router) {
+			r.Post("/login", authHandler.Login)           // POST /login
+			r.Post("/refresh", authHandler.RefreshTokens) // POST /refresh
+			r.Post("/register", userHandler.CreateUser)   // POST /register
+		})
+
+		r.Get("/swagger/*", httpSwagger.Handler(
+			httpSwagger.URL("/api/v1/swagger/doc.json"), // относительный путь — безопаснее
+		))
 	})
 
 	srv := &http.Server{

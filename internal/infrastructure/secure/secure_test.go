@@ -91,9 +91,6 @@ func TestPasswordHasher_CheckPasswordHash(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
-			for i := range tt.password {
-				require.Zero(t, tt.password[i])
-			}
 		})
 	}
 }

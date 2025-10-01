@@ -53,6 +53,15 @@ func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// GetTree godoc
+// @Summary      Get full entity tree
+// @Description  Returns the hierarchical tree of all permitted entities.
+// @Tags         entities
+// @Security     BearerAuth
+// @Produce      json
+// @Success      200 {object} entity.Tree
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /entities [get]
 func (h *Handler) GetTree(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -65,6 +74,16 @@ func (h *Handler) GetTree(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusOK, tree)
 }
 
+// Get godoc
+// @Summary      Get entity by ID
+// @Description  Returns a single entity by its ID. Requires read permission.
+// @Tags         entities
+// @Security     BearerAuth
+// @Produce      json
+// @Param        entity_id path string true "Entity ID"
+// @Success      200 {object} entity.Entity
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /entities/{entity_id} [get]
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -87,6 +106,17 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusOK, ent)
 }
 
+// GetVersion godoc
+// @Summary      Get specific entity version
+// @Description  Returns a specific version of an entity. Requires read permission.
+// @Tags         entities
+// @Security     BearerAuth
+// @Produce      json
+// @Param        entity_id path string true "Entity ID"
+// @Param        version   path int    true "Version number"
+// @Success      200 {object} entity.Entity
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /entities/{entity_id}/versions/{version} [get]
 func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -120,6 +150,16 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusOK, ent)
 }
 
+// GetVersionsList godoc
+// @Summary      List entity versions
+// @Description  Returns list of all versions for an entity. Requires read permission.
+// @Tags         entities
+// @Security     BearerAuth
+// @Produce      json
+// @Param        entity_id path string true "Entity ID"
+// @Success      200 {array} entity.Entity
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /entities/{entity_id}/versions [get]
 func (h *Handler) GetVersionsList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -142,6 +182,17 @@ func (h *Handler) GetVersionsList(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusOK, versions)
 }
 
+// Create godoc
+// @Summary      Create entity
+// @Description  Creates a new entity. Requires write permission for the parent entity. if root entity, requires admin role.
+// @Tags         entities
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        request body usecase.CreateEntityCmd true "Create entity payload"
+// @Success      201 {object} CreateEntityResp
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /entities [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -164,6 +215,17 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusCreated, CreateEntityResp{ID: id})
 }
 
+// Update godoc
+// @Summary      Update entity
+// @Description  Updates an existing entity. Requires write permission. If changes parent, requires write permission for the new and old parents as well.
+// @Tags         entities
+// @Security     BearerAuth
+// @Accept       json
+// @Param        entity_id path string true "Entity ID"
+// @Param        request body UpdateEntityInput true "Update entity payload"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /entities/{entity_id} [put]
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -199,6 +261,15 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Delete godoc
+// @Summary      Delete entity
+// @Description  Deletes an entity by ID. Requires write permission for the entity.
+// @Tags         entities
+// @Security     BearerAuth
+// @Param        entity_id path string true "Entity ID"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /entities/{entity_id} [delete]
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

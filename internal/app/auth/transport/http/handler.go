@@ -47,6 +47,16 @@ func NewHandler(svc AuthService) *Handler {
 	return &Handler{svc: svc}
 }
 
+// GetSessionsByUserID godoc
+// @Summary      List sessions by user ID
+// @Description  Returns all active sessions for the specified user. Requires admin privileges or self-access.
+// @Tags         sessions
+// @Security     BearerAuth
+// @Produce      json
+// @Param        user_id query string true "User ID"
+// @Success      200 {array} auth.Session
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /sessions [get]
 func (h *Handler) GetSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -69,6 +79,16 @@ func (h *Handler) GetSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusOK, sessions)
 }
 
+// DeleteSession godoc
+// @Summary      Delete session by ID
+// @Description  Deletes a specific session for a given user. Requires admin privileges or self-access.
+// @Tags         sessions
+// @Security     BearerAuth
+// @Param        session_id path string true "Session ID"
+// @Param        user_id    query string true "User ID"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /sessions/{session_id} [delete]
 func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -101,6 +121,15 @@ func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// DeleteSessionsByUserID godoc
+// @Summary      Delete all sessions for user
+// @Description  Deletes all active sessions for the specified user. Requires admin privileges or self-access.
+// @Tags         sessions
+// @Security     BearerAuth
+// @Param        user_id query string true "User ID"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /sessions [delete]
 func (h *Handler) DeleteSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -122,6 +151,16 @@ func (h *Handler) DeleteSessionsByUserID(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// AddUserRole godoc
+// @Summary      Assign role to user
+// @Description  Adds a role for a user in relation to an entity. Requires admin privileges.
+// @Tags         roles
+// @Security     BearerAuth
+// @Accept       json
+// @Param        request body auth.UserRole true "User role payload"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /roles [post]
 func (h *Handler) AddUserRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -140,6 +179,16 @@ func (h *Handler) AddUserRole(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// DeleteUserRole godoc
+// @Summary      Remove role from user
+// @Description  Deletes a user role assignment for an entity. Requires admin privileges.
+// @Tags         roles
+// @Security     BearerAuth
+// @Accept       json
+// @Param        request body auth.UserRole true "User role payload"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /roles [delete]
 func (h *Handler) DeleteUserRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -159,6 +208,16 @@ func (h *Handler) DeleteUserRole(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ListUserRoles godoc
+// @Summary      List roles assigned to a user
+// @Description  Returns a list of roles for the specified user ID. Requires admin privileges or self-access.
+// @Tags         roles
+// @Security     BearerAuth
+// @Produce      json
+// @Param        user_id query string true "User ID"
+// @Success      200 {array} auth.UserRole
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /roles [get]
 func (h *Handler) ListUserRoles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -181,6 +240,16 @@ func (h *Handler) ListUserRoles(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusOK, roles)
 }
 
+// RefreshTokens godoc
+// @Summary      Refresh access token
+// @Description  Refreshes the access and refresh tokens using a valid refresh token
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body auth.RefreshToken true "Refresh token payload"
+// @Success      200 {object} auth.Tokens
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /refresh [post]
 func (h *Handler) RefreshTokens(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -200,6 +269,16 @@ func (h *Handler) RefreshTokens(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusOK, resp)
 }
 
+// Login godoc
+// @Summary      Login
+// @Description  Authenticate user and get tokens
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body LoginInput true "credentials"
+// @Success      200 {object} auth.Tokens
+// @Failure      400 {object} apperr.appError
+// @Router       /login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

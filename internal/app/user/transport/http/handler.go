@@ -56,6 +56,16 @@ func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// CreateUser godoc
+// @Summary      Create user
+// @Description  Creates a new user.
+// @Tags         users
+// @Security     BearerAuth
+// @Accept       json
+// @Param        request body CreateUserInput true "Create user payload"
+// @Success      201 "Created"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /register [post]
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -83,6 +93,16 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+// GetUser godoc
+// @Summary      Get user by ID
+// @Description  Returns a single user by ID. Requires admin role or self.
+// @Tags         users
+// @Security     BearerAuth
+// @Produce      json
+// @Param        user_id path string true "User ID"
+// @Success      200 {object} user.User
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /users/{user_id} [get]
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -104,6 +124,15 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusOK, usr)
 }
 
+// GetAllUsers godoc
+// @Summary      List users
+// @Description  Returns all users. Requires admin role.
+// @Tags         users
+// @Security     BearerAuth
+// @Produce      json
+// @Success      200 {array} user.User
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /users [get]
 func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	users, err := h.svc.GetAllUsers(ctx)
@@ -115,6 +144,17 @@ func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(ctx, w, http.StatusOK, users)
 }
 
+// UpdateUser godoc
+// @Summary      Update user
+// @Description  Updates user's basic fields. Requires admin role or self.
+// @Tags         users
+// @Security     BearerAuth
+// @Accept       json
+// @Param        user_id path string true "User ID"
+// @Param        request body UpdateUserInput true "Update user payload"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /users/{user_id} [put]
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -151,6 +191,15 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// DeleteUser godoc
+// @Summary      Delete user
+// @Description  Deletes a user by ID. Requires admin role.
+// @Tags         users
+// @Security     BearerAuth
+// @Param        user_id path string true "User ID"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /users/{user_id} [delete]
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -172,6 +221,17 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ChangePassword godoc
+// @Summary      Change user password
+// @Description  Changes password for the specified user (old -> new). Requires admin role or self. If admin changes password, old password is not checked.
+// @Tags         users
+// @Security     BearerAuth
+// @Accept       json
+// @Param        user_id path string true "User ID"
+// @Param        request body ChangePasswordInput true "Change password payload"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.appError "Error"
+// @Router       /users/{user_id}/password [post]
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

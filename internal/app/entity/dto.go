@@ -58,7 +58,7 @@ type ListItem struct {
 	Type     Type       `json:"type"`
 	Name     string     `json:"name"`
 	ParentID *uuid.UUID `json:"parent_id,omitempty"`
-	Depth    int        `json:"depth"`
+	Depth    int        `json:"-"`
 }
 
 type CreateEntityReq struct {

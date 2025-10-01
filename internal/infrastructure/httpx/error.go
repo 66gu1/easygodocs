@@ -22,9 +22,7 @@ func ReturnError(ctx context.Context, w http.ResponseWriter, returningErr error)
 	}
 	w.WriteHeader(code)
 
-	err := json.NewEncoder(w).Encode(map[string]any{
-		"error": appError,
-	})
+	err := json.NewEncoder(w).Encode(appError)
 	if err != nil {
 		logger.Error(ctx, err).Str("returning_error", returningErr.Error()).Msg("error encode failed")
 	}
