@@ -33,15 +33,6 @@ func (p *PasswordHasher) HashPassword(password []byte, cost int) ([]byte, error)
 	return hash, nil
 }
 
-func (p *PasswordHasher) HashRefreshToken(token []byte) ([]byte, error) {
-	hash, err := p.HashPassword(token, bcrypt.MinCost)
-	if err != nil {
-		return nil, fmt.Errorf("secure.HashRefreshToken: %w", err)
-	}
-
-	return hash, nil
-}
-
 func (p *PasswordHasher) CheckPasswordHash(hash, password []byte) error {
 	if err := bcrypt.CompareHashAndPassword(hash, password); err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {

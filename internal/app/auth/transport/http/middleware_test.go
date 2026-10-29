@@ -10,6 +10,7 @@ import (
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	"github.com/66gu1/easygodocs/internal/app/auth/transport/http/mocks"
+	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/contextx"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
@@ -23,11 +24,24 @@ func TestAuthMiddleware(t *testing.T) {
 	userID := uuid.New()
 	SID := uuid.New()
 	token := "token"
+	validClaims := func(mock *mocks.TokenCodecMock) {
+		mock.ParseTokenMock.Set(func(tokenStr string, claims jwt.Claims) error {
+			c, ok := claims.(*auth.AccessTokenClaims)
+			if !ok {
+				return fmt.Errorf("unexpected claims type %T", claims)
+			}
+			c.Subject = userID.String()
+			c.SID = SID.String()
+			c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
+			return nil
+		})
+	}
 	tests := []struct {
-		name       string
-		header     string
-		setup      func(mock *mocks.TokenCodecMock)
-		wantStatus int
+		name          string
+		header        string
+		setup         func(mock *mocks.TokenCodecMock)
+		sessionsSetup func(mock *mocks.SessionValidatorMock)
+		wantStatus    int
 	}{
 		{
 			name:       "missing Authorization -> 401",
@@ -129,7 +143,7 @@ func TestAuthMiddleware(t *testing.T) {
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
-			name:   "ok -> next called, context has user_id & session_id",
+			name:   "missing exp -> 401",
 			header: "Bearer token",
 			setup: func(mock *mocks.TokenCodecMock) {
 				mock.ParseTokenMock.Set(func(tokenStr string, claims jwt.Claims) error {
@@ -139,9 +153,37 @@ func TestAuthMiddleware(t *testing.T) {
 					}
 					c.Subject = userID.String()
 					c.SID = SID.String()
-					c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
 					return nil
 				})
+			},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:   "session revoked -> 401",
+			header: "Bearer token",
+			setup:  validClaims,
+			sessionsSetup: func(mock *mocks.SessionValidatorMock) {
+				mock.ValidateSessionMock.ExpectUserIDParam2(userID).ExpectSessionIDParam3(SID).
+					Return(apperr.New("session not found", auth.CodeSessionNotFound, apperr.ClassNotFound, apperr.LogLevelWarn))
+			},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:   "session check internal error -> 500",
+			header: "Bearer token",
+			setup:  validClaims,
+			sessionsSetup: func(mock *mocks.SessionValidatorMock) {
+				mock.ValidateSessionMock.ExpectUserIDParam2(userID).ExpectSessionIDParam3(SID).
+					Return(fmt.Errorf("db is down"))
+			},
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:   "ok -> next called, context has user_id & session_id",
+			header: "Bearer token",
+			setup:  validClaims,
+			sessionsSetup: func(mock *mocks.SessionValidatorMock) {
+				mock.ValidateSessionMock.ExpectUserIDParam2(userID).ExpectSessionIDParam3(SID).Return(nil)
 			},
 			wantStatus: http.StatusOK,
 		},
@@ -165,8 +207,12 @@ func TestAuthMiddleware(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(mock)
 			}
+			sessions := mocks.NewSessionValidatorMock(t)
+			if tc.sessionsSetup != nil {
+				tc.sessionsSetup(sessions)
+			}
 			r := chi.NewRouter()
-			r.Use(AuthMiddleware(mock))
+			r.Use(AuthMiddleware(mock, sessions))
 			r.Get("/protected", next)
 
 			req := httptest.NewRequest(http.MethodGet, "/protected", nil)

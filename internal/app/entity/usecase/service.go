@@ -227,6 +227,8 @@ func (s *service) Update(ctx context.Context, cmd UpdateEntityCmd) error {
 		UserID:        userID,
 		ParentChanged: parentChanged,
 		EntityType:    oldEntity.Type,
+
+		ExpectedParentID: oldEntity.ParentID,
 	}
 
 	if err = s.core.Update(ctx, req); err != nil {

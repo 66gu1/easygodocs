@@ -23,6 +23,12 @@ type Repository interface {
 	Delete(ctx context.Context, ids []uuid.UUID) error
 	GetAll(ctx context.Context) ([]ListItem, error)
 	GetListItem(ctx context.Context, id uuid.UUID) (ListItem, error)
+	GetListItemForUpdate(ctx context.Context, id uuid.UUID) (ListItem, error)
+	LockHierarchy(ctx context.Context) error
+}
+
+type TxManager interface {
+	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 type IDGenerator interface {
@@ -56,13 +62,14 @@ type Config struct {
 }
 type core struct {
 	repo      Repository
+	tx        TxManager
 	gen       Generators
 	validator Validator
 	cfg       Config
 }
 
-func NewCore(repo Repository, generators Generators, validator Validator, cfg Config) (*core, error) {
-	if repo == nil || generators.ID == nil || generators.Time == nil || validator == nil {
+func NewCore(repo Repository, tx TxManager, generators Generators, validator Validator, cfg Config) (*core, error) {
+	if repo == nil || tx == nil || generators.ID == nil || generators.Time == nil || validator == nil {
 		return nil, fmt.Errorf("entity.NewCore: %w", fmt.Errorf("nil dependency"))
 	}
 	if cfg.MaxHierarchyDepth <= 0 {
@@ -70,6 +77,7 @@ func NewCore(repo Repository, generators Generators, validator Validator, cfg Co
 	}
 	return &core{
 		repo:      repo,
+		tx:        tx,
 		gen:       generators,
 		validator: validator,
 		cfg:       cfg,
@@ -185,51 +193,63 @@ func (c *core) Create(ctx context.Context, req CreateEntityReq) (uuid.UUID, erro
 	if err := c.validator.ValidateName(req.Name); err != nil {
 		return uuid.Nil, fmt.Errorf("entity.core.Create: %w", err)
 	}
-
-	if req.ParentID != nil {
-		list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{*req.ParentID}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeParentsOnly)
-		if err != nil {
-			return uuid.Nil, fmt.Errorf("entity.core.Create: %w", err)
-		}
-		if len(list)+1 > c.cfg.MaxHierarchyDepth {
-			return uuid.Nil, fmt.Errorf("entity.core.Create: %w", ErrMaxHierarchyDepthExceeded(c.cfg.MaxHierarchyDepth))
-		}
-		var (
-			parent ListItem
-			found  bool
-		)
-		for _, item := range list {
-			if item.ID == *req.ParentID {
-				found = true
-				parent = item
-				break
-			}
-		}
-		if !found {
-			return uuid.Nil, fmt.Errorf("entity.core.Create: %w", ErrParentNotFound())
-		}
-		if err = req.Type.ValidateParentTypeCompatibility(parent.Type); err != nil {
-			return uuid.Nil, fmt.Errorf("entity.core.Create: %w", err)
-		}
-	} else if req.Type == TypeArticle {
+	if req.ParentID == nil && req.Type == TypeArticle {
 		return uuid.Nil, fmt.Errorf("entity.core.Create: %w", ErrParentRequired())
 	}
 
-	now := c.gen.Time.Now()
-	id, err := c.gen.ID.New()
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("entity.core.Create: %w", err)
-	}
-	if req.IsDraft {
-		err = c.repo.CreateDraft(ctx, req, id)
-	} else {
-		err = c.repo.Create(ctx, req, id, now)
-	}
+	var id uuid.UUID
+	err := c.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if req.ParentID != nil {
+			// The parent's depth and existence must not change until the child is inserted.
+			if err := c.repo.LockHierarchy(ctx); err != nil {
+				return fmt.Errorf("lock hierarchy: %w", err)
+			}
+			if err := c.validateParentForCreate(ctx, req); err != nil {
+				return fmt.Errorf("validate parent: %w", err)
+			}
+		}
+
+		now := c.gen.Time.Now()
+		var err error
+		id, err = c.gen.ID.New()
+		if err != nil {
+			return fmt.Errorf("generate id: %w", err)
+		}
+		if req.IsDraft {
+			err = c.repo.CreateDraft(ctx, req, id)
+		} else {
+			err = c.repo.Create(ctx, req, id, now)
+		}
+		if err != nil {
+			return fmt.Errorf("create: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("entity.core.Create: %w", err)
 	}
 
 	return id, nil
+}
+
+func (c *core) validateParentForCreate(ctx context.Context, req CreateEntityReq) error {
+	list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{*req.ParentID}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeParentsOnly)
+	if err != nil {
+		return fmt.Errorf("validateParentForCreate: %w", err)
+	}
+	if len(list)+1 > c.cfg.MaxHierarchyDepth {
+		return fmt.Errorf("validateParentForCreate: %w", ErrMaxHierarchyDepthExceeded(c.cfg.MaxHierarchyDepth))
+	}
+	for _, item := range list {
+		if item.ID == *req.ParentID {
+			if err = req.Type.ValidateParentTypeCompatibility(item.Type); err != nil {
+				return fmt.Errorf("validateParentForCreate: %w", err)
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("validateParentForCreate: %w", ErrParentNotFound())
 }
 
 func (c *core) Update(ctx context.Context, req UpdateEntityReq) error {
@@ -243,62 +263,98 @@ func (c *core) Update(ctx context.Context, req UpdateEntityReq) error {
 	if err := c.validator.ValidateName(req.Name); err != nil {
 		return fmt.Errorf("entity.core.Update: %w", err)
 	}
-	var (
-		hasChildren         bool
-		hasChildrenComputed bool
-		err                 error
-	)
-	if req.ParentChanged {
-		hasChildren, err = c.validateNewParentForUpdate(ctx, req)
-		if err != nil {
-			return fmt.Errorf("entity.core.Update: %w", err)
-		}
-		hasChildrenComputed = true
-	}
 
-	if req.IsDraft {
-		if !hasChildrenComputed {
-			list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{req.ID}, 2, nil, HierarchyTypeChildrenOnly)
-			if err != nil {
-				return fmt.Errorf("entity.core.Update: %w", err)
-			}
-			hasChildren = len(list) > 1
-		}
-		if hasChildren {
-			return fmt.Errorf("entity.core.Update: %w", ErrCannotDraftEntityWithChildren())
-		}
-		err = c.repo.UpdateDraft(ctx, req)
-	} else {
-		now := c.gen.Time.Now()
-		err = c.repo.Update(ctx, req, now)
-	}
-	if err != nil {
+	if err := c.tx.WithinTx(ctx, func(ctx context.Context) error { return c.update(ctx, req) }); err != nil {
 		return fmt.Errorf("entity.core.Update: %w", err)
 	}
 	return nil
 }
 
-func (c *core) Delete(ctx context.Context, id uuid.UUID) error {
-	list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{id}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeChildrenOnly)
-	if err != nil {
-		return fmt.Errorf("entity.core.Delete: %w", err)
-	}
-	if len(list) == 0 {
-		return fmt.Errorf("entity.core.Delete: %w", ErrEntityNotFound())
-	}
-	ids := make([]uuid.UUID, 0, len(list))
-	maxDepth := 0
-	for _, item := range list {
-		if item.Depth > maxDepth {
-			maxDepth = item.Depth
+func (c *core) update(ctx context.Context, req UpdateEntityReq) error {
+	// Moving changes the tree structure, and an entity may become a draft only
+	// while it has no children, so both must not interleave with other structural changes.
+	if req.ParentChanged || req.IsDraft {
+		if err := c.repo.LockHierarchy(ctx); err != nil {
+			return fmt.Errorf("entity.core.update: %w", err)
 		}
-		ids = append(ids, item.ID)
 	}
-	if maxDepth > c.cfg.MaxHierarchyDepth {
-		return fmt.Errorf("entity.core.Delete: %w", ErrMaxHierarchyDepthExceeded(c.cfg.MaxHierarchyDepth))
+	// The row lock makes concurrent updates of the same entity run one after another,
+	// so each of them gets its own version number.
+	current, err := c.repo.GetListItemForUpdate(ctx, req.ID)
+	if err != nil {
+		return fmt.Errorf("entity.core.update: %w", err)
+	}
+	// Permissions and ParentChanged were computed from the parent the caller saw.
+	if !equalUUIDPtr(current.ParentID, req.ExpectedParentID) {
+		return fmt.Errorf("entity.core.update: %w", ErrConcurrentModification())
 	}
 
-	if err = c.repo.Delete(ctx, ids); err != nil {
+	var (
+		hasChildren         bool
+		hasChildrenComputed bool
+	)
+	if req.ParentChanged {
+		hasChildren, err = c.validateNewParentForUpdate(ctx, req)
+		if err != nil {
+			return fmt.Errorf("entity.core.update: %w", err)
+		}
+		hasChildrenComputed = true
+	}
+
+	if !req.IsDraft {
+		if err = c.repo.Update(ctx, req, c.gen.Time.Now()); err != nil {
+			return fmt.Errorf("entity.core.update: %w", err)
+		}
+		return nil
+	}
+
+	if !hasChildrenComputed {
+		list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{req.ID}, 2, nil, HierarchyTypeChildrenOnly)
+		if err != nil {
+			return fmt.Errorf("entity.core.update: %w", err)
+		}
+		hasChildren = len(list) > 1
+	}
+	if hasChildren {
+		return fmt.Errorf("entity.core.update: %w", ErrCannotDraftEntityWithChildren())
+	}
+	if err = c.repo.UpdateDraft(ctx, req); err != nil {
+		return fmt.Errorf("entity.core.update: %w", err)
+	}
+	return nil
+}
+
+func (c *core) Delete(ctx context.Context, id uuid.UUID) error {
+	err := c.tx.WithinTx(ctx, func(ctx context.Context) error {
+		// Children must not be added to the subtree while it is being deleted.
+		if err := c.repo.LockHierarchy(ctx); err != nil {
+			return fmt.Errorf("lock hierarchy: %w", err)
+		}
+		list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{id}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeChildrenOnly)
+		if err != nil {
+			return fmt.Errorf("get subtree: %w", err)
+		}
+		if len(list) == 0 {
+			return ErrEntityNotFound()
+		}
+		ids := make([]uuid.UUID, 0, len(list))
+		maxDepth := 0
+		for _, item := range list {
+			if item.Depth > maxDepth {
+				maxDepth = item.Depth
+			}
+			ids = append(ids, item.ID)
+		}
+		if maxDepth > c.cfg.MaxHierarchyDepth {
+			return ErrMaxHierarchyDepthExceeded(c.cfg.MaxHierarchyDepth)
+		}
+
+		if err = c.repo.Delete(ctx, ids); err != nil {
+			return fmt.Errorf("delete: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		return fmt.Errorf("entity.core.Delete: %w", err)
 	}
 
@@ -308,11 +364,11 @@ func (c *core) Delete(ctx context.Context, id uuid.UUID) error {
 func (c *core) validateNewParentForUpdate(ctx context.Context, req UpdateEntityReq) (bool, error) {
 	if req.ParentID != nil {
 		if *req.ParentID == req.ID {
-			return false, fmt.Errorf("entity.core.Update: %w", ErrParentCycle())
+			return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrParentCycle())
 		}
 		list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{*req.ParentID}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeParentsOnly)
 		if err != nil {
-			return false, fmt.Errorf("entity.core.Update: %w", err)
+			return false, fmt.Errorf("validateNewParentForUpdate: %w", err)
 		}
 		var (
 			parent ListItem
@@ -324,20 +380,20 @@ func (c *core) validateNewParentForUpdate(ctx context.Context, req UpdateEntityR
 				parent = item
 			}
 			if item.ID == req.ID {
-				return false, fmt.Errorf("entity.core.Update: %w", ErrParentCycle())
+				return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrParentCycle())
 			}
 		}
 		if !found {
-			return false, fmt.Errorf("entity.core.Update: %w", ErrParentNotFound())
+			return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrParentNotFound())
 		}
 		if err = req.EntityType.ValidateParentTypeCompatibility(parent.Type); err != nil {
-			return false, fmt.Errorf("entity.core.Update: %w", err)
+			return false, fmt.Errorf("validateNewParentForUpdate: %w", err)
 		}
 		parentDepth := len(list)
 
 		list, err = c.repo.GetHierarchy(ctx, []uuid.UUID{req.ID}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeChildrenOnly)
 		if err != nil {
-			return false, fmt.Errorf("entity.core.Update: %w", err)
+			return false, fmt.Errorf("validateNewParentForUpdate: %w", err)
 		}
 		var maxChildDepth int
 		for _, item := range list {
@@ -347,16 +403,27 @@ func (c *core) validateNewParentForUpdate(ctx context.Context, req UpdateEntityR
 		}
 
 		if parentDepth+maxChildDepth > c.cfg.MaxHierarchyDepth {
-			return false, fmt.Errorf("entity.core.Update: %w", ErrMaxHierarchyDepthExceeded(c.cfg.MaxHierarchyDepth))
+			return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrMaxHierarchyDepthExceeded(c.cfg.MaxHierarchyDepth))
 		}
 
 		return len(list) > 1, nil
 
 	} else if req.EntityType == TypeArticle {
-		return false, fmt.Errorf("entity.core.Update: %w", ErrParentRequired())
+		return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrParentRequired())
 	}
 
 	return false, nil
+}
+
+func equalUUIDPtr(a, b *uuid.UUID) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return *a == *b
+	}
 }
 
 type ValidationConfig struct {

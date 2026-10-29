@@ -21,6 +21,10 @@ func ErrMaxHierarchyDepthExceeded(maxDepth int) error {
 		})
 }
 
+func ErrConcurrentModification() error {
+	return apperr.New("Entity was modified by another request, please retry", CodeConflict, apperr.ClassConflict, apperr.LogLevelWarn)
+}
+
 func ErrCannotDraftEntityWithChildren() error {
 	return apperr.New("Cannot create draft for entity with children", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
 		WithViolation(apperr.Violation{
@@ -33,6 +37,7 @@ const (
 	CodeNotFound         apperr.Code = "entity/not_found"
 	CodeParentCycle      apperr.Code = "entity/parent_cycle"
 	CodeMaxDepthExceeded apperr.Code = "entity/max_depth_exceeded"
+	CodeConflict         apperr.Code = "entity/conflict"
 )
 
 const (

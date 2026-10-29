@@ -433,6 +433,8 @@ func TestService_Update(t *testing.T) {
 			UserID:        userID,
 			ParentChanged: true,
 			EntityType:    listItem.Type,
+
+			ExpectedParentID: listItem.ParentID,
 		}
 		permissions = usecase.EffectivePermissions{
 			IsAdmin: false,

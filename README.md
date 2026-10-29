@@ -128,7 +128,7 @@ The following environment variables are required:
 - `DATABASE_DSN` – PostgreSQL connection string
 - `ADMIN_EMAIL` – initial admin user email
 - `ADMIN_PASSWORD` – initial admin user password
-- `JWT_SECRET` – secret key for signing JWT tokens
+- `JWT_SECRET` – secret key for signing JWT tokens (at least 32 bytes, the server refuses to start otherwise)
 
 ⚠️ Default values are provided in `docker-compose.yml` for demo purposes only.  
 In a real deployment, always override them with secure values.

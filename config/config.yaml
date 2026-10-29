@@ -1,6 +1,12 @@
 app_name: EasyGoDocs
 port: 8080
-log_level: debug
+log_level: info
+rate_limit:
+  public_requests_per_minute: 20
+db_pool:
+  max_open_conns: 20
+  max_idle_conns: 20
+  conn_max_lifetime_minutes: 5
 database_dsn: "host=localhost user=postgres dbname=easy_go_docs port=5432 sslmode=disable"
 auth:
   session_ttl_minutes: 6000
@@ -8,7 +14,7 @@ auth:
 user:
   max_email_length: 254
   max_name_length: 30
-  min_password_length: 4
+  min_password_length: 8
   max_password_length: 50
   password_hash_cost: 12
 entity:

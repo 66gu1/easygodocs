@@ -7,10 +7,15 @@ import (
 	"time"
 
 	"github.com/66gu1/easygodocs/internal/app/entity"
+	"github.com/66gu1/easygodocs/internal/infrastructure/db"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+// hierarchyLockKey identifies the advisory lock that serializes changes of the entity tree structure.
+const hierarchyLockKey = "entities_hierarchy"
 
 // buildVisibilityFilter if userID is nil, show all entities, otherwise show only published entities and drafts created by the user.
 func buildVisibilityFilter(userID *uuid.UUID) (string, []any) {
@@ -31,10 +36,42 @@ func NewRepository(db *gorm.DB) (*gormRepo, error) {
 	return &gormRepo{db: db}, nil
 }
 
+// conn returns the transaction from ctx if there is one.
+func (r *gormRepo) conn(ctx context.Context) *gorm.DB {
+	return db.Conn(ctx, r.db)
+}
+
+// LockHierarchy takes a transaction-level advisory lock that serializes structural changes
+// (creating children, moving, deleting), so concurrent requests can't create cycles
+// or exceed the depth limit. It must be called inside a transaction.
+func (r *gormRepo) LockHierarchy(ctx context.Context) error {
+	if err := r.conn(ctx).Exec("SELECT pg_advisory_xact_lock(hashtext(?))", hierarchyLockKey).Error; err != nil {
+		return fmt.Errorf("gormRepo.LockHierarchy: %w", err)
+	}
+
+	return nil
+}
+
+// GetListItemForUpdate locks the entity row until the end of the transaction.
+func (r *gormRepo) GetListItemForUpdate(ctx context.Context, id uuid.UUID) (entity.ListItem, error) {
+	var model entityListItemModel
+
+	err := r.conn(ctx).Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).
+		Where("id = ?", id).First(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			err = entity.ErrEntityNotFound()
+		}
+		return entity.ListItem{}, fmt.Errorf("gormRepo.GetListItemForUpdate: %w", err)
+	}
+
+	return model.toDTO(), nil
+}
+
 func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error) {
 	var model entityModel
 
-	err := r.db.WithContext(ctx).Where("id = $1", id).First(&model).Error
+	err := r.conn(ctx).Where("id = $1", id).First(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = entity.ErrEntityNotFound()
@@ -48,7 +85,7 @@ func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error)
 func (r *gormRepo) GetListItem(ctx context.Context, id uuid.UUID) (entity.ListItem, error) {
 	var model entityListItemModel
 
-	err := r.db.WithContext(ctx).Where("id = $1", id).First(&model).Error
+	err := r.conn(ctx).Where("id = $1", id).First(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = entity.ErrEntityNotFound()
@@ -62,7 +99,7 @@ func (r *gormRepo) GetListItem(ctx context.Context, id uuid.UUID) (entity.ListIt
 func (r *gormRepo) GetAll(ctx context.Context) ([]entity.ListItem, error) {
 	var models []entityListItemModel
 
-	err := r.db.WithContext(ctx).Find(&models).Error
+	err := r.conn(ctx).Find(&models).Error
 	if err != nil {
 		return nil, fmt.Errorf("gormRepo.GetAll: %w", err)
 	}
@@ -91,7 +128,7 @@ func (r *gormRepo) GetHierarchy(ctx context.Context, ids []uuid.UUID, maxDepth i
 		return nil, fmt.Errorf("gormRepo.GetHierarchy: %w", fmt.Errorf("invalid hierarchy type: %v", hType))
 	}
 
-	err := r.db.WithContext(ctx).Raw(recursiveQuery, args...).Scan(&models).Error
+	err := r.conn(ctx).Raw(recursiveQuery, args...).Scan(&models).Error
 	if err != nil {
 		return nil, fmt.Errorf("gormRepo.GetHierarchy: %w", err)
 	}
@@ -102,7 +139,7 @@ func (r *gormRepo) GetHierarchy(ctx context.Context, ids []uuid.UUID, maxDepth i
 func (r *gormRepo) GetVersion(ctx context.Context, id uuid.UUID, version int) (entity.Entity, error) {
 	var model versionModel
 
-	err := r.db.WithContext(ctx).Where("entity_id = $1 AND version = $2", id, version).First(&model).Error
+	err := r.conn(ctx).Where("entity_id = $1 AND version = $2", id, version).First(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = entity.ErrEntityNotFound()
@@ -116,7 +153,7 @@ func (r *gormRepo) GetVersion(ctx context.Context, id uuid.UUID, version int) (e
 func (r *gormRepo) GetVersionsList(ctx context.Context, id uuid.UUID) ([]entity.Entity, error) {
 	var models []versionModel
 
-	err := r.db.WithContext(ctx).Where("entity_id = $1", id).Order("version DESC").Find(&models).Error
+	err := r.conn(ctx).Where("entity_id = $1", id).Order("version DESC").Find(&models).Error
 	if err != nil {
 		return nil, fmt.Errorf("gormRepo.GetVersionsList: %w", err)
 	}
@@ -135,7 +172,7 @@ func (r *gormRepo) CreateDraft(ctx context.Context, req entity.CreateEntityReq, 
 		UpdatedBy: req.UserID,
 	}
 
-	err := r.db.WithContext(ctx).Create(model).Error
+	err := r.conn(ctx).Create(model).Error
 	if err != nil {
 		return fmt.Errorf("gormRepo.CreateDraft: %w", err)
 	}
@@ -153,7 +190,7 @@ INSERT INTO entity_versions (entity_id, name, content, parent_id, created_by, cr
 VALUES ($1, $3, $4, $5, $6, $7, 1)
 `
 
-	res := r.db.WithContext(ctx).
+	res := r.conn(ctx).
 		Exec(sqlCTE,
 			id,
 			req.Type,
@@ -179,7 +216,7 @@ func (r *gormRepo) UpdateDraft(ctx context.Context, req entity.UpdateEntityReq) 
 		"updated_by":      req.UserID,
 		"current_version": gorm.Expr("NULL"),
 	}
-	result := r.db.WithContext(ctx).Model(&entityModel{}).Where("id = ?", req.ID).Updates(&updates)
+	result := r.conn(ctx).Model(&entityModel{}).Where("id = ?", req.ID).Updates(&updates)
 	if result.Error != nil {
 		return fmt.Errorf("gormRepo.UpdateDraft: %w", result.Error)
 	}
@@ -217,8 +254,7 @@ SELECT
 FROM bumped;
 `
 
-	res := r.db.
-		WithContext(ctx).
+	res := r.conn(ctx).
 		Exec(sqlCTE,
 			req.Name,
 			req.Content,
@@ -238,7 +274,7 @@ FROM bumped;
 }
 
 func (r *gormRepo) Delete(ctx context.Context, ids []uuid.UUID) error {
-	resp := r.db.WithContext(ctx).Model(&entityModel{}).Where("id IN ?", ids).Delete(&entityModel{})
+	resp := r.conn(ctx).Model(&entityModel{}).Where("id IN ?", ids).Delete(&entityModel{})
 	if resp.Error != nil {
 		return fmt.Errorf("gormRepo.Delete: %w", resp.Error)
 	}

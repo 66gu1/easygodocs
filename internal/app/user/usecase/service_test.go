@@ -305,14 +305,16 @@ func TestService_DeleteUser(t *testing.T) {
 				mocks.authService.CheckIsAdminMock.Expect(ctx).Return(nil)
 				mocks.core.DeleteUserMock.Expect(ctx, userID).Return(nil)
 				mocks.authService.DeleteSessionsByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(nil)
+				mocks.authService.DeleteUserRolesByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(nil)
 			},
 		},
 		{
-			name: "authService.DeleteSessionsByUserID returns error",
+			name: "cleanup errors are ignored",
 			setup: func(mocks mock) {
 				mocks.authService.CheckIsAdminMock.Expect(ctx).Return(nil)
 				mocks.core.DeleteUserMock.Expect(ctx, userID).Return(nil)
 				mocks.authService.DeleteSessionsByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(expErr)
+				mocks.authService.DeleteUserRolesByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(expErr)
 			},
 		},
 		{

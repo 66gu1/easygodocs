@@ -17,6 +17,8 @@ import (
 
 //go:generate minimock -o ./mocks -s _mock.go
 
+var dummyHash = []byte("dummy_hash")
+
 type mock struct {
 	core           *mocks.CoreMock
 	userCore       *mocks.UserCoreMock
@@ -91,7 +93,7 @@ func TestService_GetSessionsByUserID(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher)
+			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
 			got, err := s.GetSessionsByUserID(ctx, userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -147,7 +149,7 @@ func TestService_DeleteSession(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher)
+			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
 			err := s.DeleteSession(ctx, userID, id)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -201,7 +203,7 @@ func TestService_DeleteSessionsByUserID(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher)
+			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
 			err := s.DeleteSessionsByUserID(ctx, userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -258,7 +260,7 @@ func TestService_AddUserRole(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher)
+			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
 			err := s.AddUserRole(ctx, userRole)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -315,7 +317,7 @@ func TestService_DeleteUserRole(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher)
+			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
 			err := s.DeleteUserRole(ctx, userRole)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -379,7 +381,7 @@ func TestService_ListUserRoles(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher)
+			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
 			got, err := s.ListUserRoles(ctx, userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -486,7 +488,7 @@ func TestService_RefreshTokens(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher)
+			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
 			got, err := s.RefreshTokens(ctx, tt.req)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -571,6 +573,8 @@ func TestService_Login(t *testing.T) {
 			name: "error - userCore.GetUserByEmail user not found",
 			setup: func(m mock) {
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(user.User{}, "", user.ErrUserNotFound())
+				// the dummy hash is still checked to keep response time constant
+				m.passwordHasher.CheckPasswordHashMock.Expect(dummyHash, []byte(password)).Return(secure.ErrMismatchedHashAndPassword)
 			},
 			err: usecase.ErrInvalidPasswordOrEmail(),
 		},
@@ -582,7 +586,7 @@ func TestService_Login(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher)
+			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
 			got, err := s.Login(ctx, usecase.LoginCmd{
 				Email:    email,
 				Password: []byte(password),
@@ -593,6 +597,94 @@ func TestService_Login(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tokensExp, got)
 			}
+		})
+	}
+}
+
+func TestService_ValidateSession(t *testing.T) {
+	t.Parallel()
+	var (
+		ctx            = t.Context()
+		sessionID      = uuid.New()
+		userID         = uuid.New()
+		sessionVersion = 1
+		session        = auth.Session{
+			ID:             sessionID,
+			UserID:         userID,
+			ExpiresAt:      time.Now().Add(time.Hour),
+			SessionVersion: sessionVersion,
+		}
+		usr    = user.User{ID: userID, SessionVersion: sessionVersion}
+		errExp = fmt.Errorf("expected")
+	)
+	tests := []struct {
+		name  string
+		setup func(m mock)
+		err   error
+	}{
+		{
+			name: "ok",
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, "hash", nil)
+				m.core.CheckSessionActiveMock.Expect(session).Return(nil)
+				m.userCore.GetUserMock.Expect(ctx, userID).Return(usr, "", nil)
+			},
+		},
+		{
+			name: "error - session not found",
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(auth.Session{}, "", errExp)
+			},
+			err: errExp,
+		},
+		{
+			name: "session belongs to another user",
+			setup: func(m mock) {
+				other := session
+				other.UserID = uuid.New()
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(other, "hash", nil)
+			},
+			err: apperr.ErrUnauthorized(),
+		},
+		{
+			name: "session expired",
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, "hash", nil)
+				m.core.CheckSessionActiveMock.Expect(session).Return(apperr.ErrUnauthorized())
+			},
+			err: apperr.ErrUnauthorized(),
+		},
+		{
+			name: "user deleted",
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, "hash", nil)
+				m.core.CheckSessionActiveMock.Expect(session).Return(nil)
+				m.userCore.GetUserMock.Expect(ctx, userID).Return(user.User{}, "", user.ErrUserNotFound())
+			},
+			err: user.ErrUserNotFound(),
+		},
+		{
+			name: "session version mismatch (password changed)",
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, "hash", nil)
+				m.core.CheckSessionActiveMock.Expect(session).Return(nil)
+				m.userCore.GetUserMock.Expect(ctx, userID).Return(user.User{ID: userID, SessionVersion: 2}, "", nil)
+			},
+			err: apperr.ErrUnauthorized(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			m := newMock(t)
+			tt.setup(*m)
+			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
+			err := s.ValidateSession(ctx, userID, sessionID)
+			if tt.err != nil {
+				require.ErrorIs(t, err, tt.err)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }

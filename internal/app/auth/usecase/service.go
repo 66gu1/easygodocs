@@ -25,6 +25,7 @@ type Core interface {
 	DeleteSession(ctx context.Context, id, userID uuid.UUID) error
 	DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error
 	RefreshTokens(ctx context.Context, session auth.Session, refreshToken, rtHash string) (auth.Tokens, error)
+	CheckSessionActive(session auth.Session) error
 	IssueTokens(ctx context.Context, userID uuid.UUID, sessionVersion int) (auth.Tokens, error)
 	AddUserRole(ctx context.Context, role auth.UserRole) error
 	ListUserRoles(ctx context.Context, userID uuid.UUID) ([]auth.UserRole, error)
@@ -49,19 +50,27 @@ type LoginCmd struct {
 }
 
 type Service struct {
-	core           Core
-	userCore       UserCore
-	passwordHasher PasswordHasher
+	core              Core
+	userCore          UserCore
+	passwordHasher    PasswordHasher
+	dummyPasswordHash []byte
 }
 
-func NewService(core Core, userCore UserCore, passwordHasher PasswordHasher) *Service {
+// NewService creates the auth service. dummyPasswordHash must be a hash produced with the same
+// cost as real password hashes: Login checks it when the email is unknown, so that response time
+// doesn't reveal whether a user exists.
+func NewService(core Core, userCore UserCore, passwordHasher PasswordHasher, dummyPasswordHash []byte) *Service {
 	if core == nil || userCore == nil || passwordHasher == nil {
 		panic("nil dependency")
 	}
+	if len(dummyPasswordHash) == 0 {
+		panic("empty dummy password hash")
+	}
 	return &Service{
-		core:           core,
-		userCore:       userCore,
-		passwordHasher: passwordHasher,
+		core:              core,
+		userCore:          userCore,
+		passwordHasher:    passwordHasher,
+		dummyPasswordHash: dummyPasswordHash,
 	}
 }
 
@@ -192,21 +201,11 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken auth.RefreshTo
 		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", err)
 	}
 
-	usr, _, err := s.userCore.GetUser(ctx, session.UserID)
-	if err != nil {
+	if err = s.checkSessionUser(ctx, session); err != nil {
 		logger.Error(ctx, err).
 			Str(auth.FieldUserID.String(), session.UserID.String()).
 			Interface(auth.FieldSession.String(), session).
-			Msg("auth.service.RefreshTokens.userCore.GetUser")
-		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", err)
-	}
-
-	if usr.SessionVersion != session.SessionVersion {
-		err = apperr.ErrUnauthorized()
-		logger.Error(ctx, err).
-			Str(auth.FieldUserID.String(), session.UserID.String()).
-			Interface(auth.FieldSession.String(), session).
-			Msg("auth.service.RefreshTokens: session version mismatch")
+			Msg("auth.service.RefreshTokens.checkSessionUser")
 		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", err)
 	}
 
@@ -228,6 +227,8 @@ func (s *Service) Login(ctx context.Context, req LoginCmd) (auth.Tokens, error) 
 	usr, passwordHash, err := s.userCore.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, user.ErrUserNotFound()) {
+			// Spend the same time as for an existing user to prevent user enumeration.
+			_ = s.passwordHasher.CheckPasswordHash(s.dummyPasswordHash, req.Password) //nolint:errcheck
 			err = ErrInvalidPasswordOrEmail()
 		}
 		logger.Error(ctx, err).
@@ -257,4 +258,39 @@ func (s *Service) Login(ctx context.Context, req LoginCmd) (auth.Tokens, error) 
 	}
 
 	return tokens, nil
+}
+
+// ValidateSession checks that the session behind an access token is still active: it exists,
+// belongs to the user, hasn't expired, and wasn't invalidated by a password change or user deletion.
+func (s *Service) ValidateSession(ctx context.Context, userID, sessionID uuid.UUID) error {
+	session, _, err := s.core.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("auth.service.ValidateSession: %w", err)
+	}
+	if session.UserID != userID {
+		err = apperr.ErrUnauthorized().WithDetail("session belongs to another user")
+		return fmt.Errorf("auth.service.ValidateSession: %w", err)
+	}
+	if err = s.core.CheckSessionActive(session); err != nil {
+		return fmt.Errorf("auth.service.ValidateSession: %w", err)
+	}
+	if err = s.checkSessionUser(ctx, session); err != nil {
+		return fmt.Errorf("auth.service.ValidateSession: %w", err)
+	}
+
+	return nil
+}
+
+// checkSessionUser checks that the session owner still exists and the session
+// wasn't invalidated by a session version bump (e.g. after a password change).
+func (s *Service) checkSessionUser(ctx context.Context, session auth.Session) error {
+	usr, _, err := s.userCore.GetUser(ctx, session.UserID)
+	if err != nil {
+		return fmt.Errorf("checkSessionUser: %w", err)
+	}
+	if usr.SessionVersion != session.SessionVersion {
+		return fmt.Errorf("checkSessionUser: %w", apperr.ErrUnauthorized().WithDetail("session version mismatch"))
+	}
+
+	return nil
 }

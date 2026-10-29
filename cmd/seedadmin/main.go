@@ -55,7 +55,7 @@ func main() {
 		panic(err)
 	}
 	// we don't need jwt secret here or config, because we just assign role
-	authCore, err := auth.NewCore(authRepo, secure.NewTokenCodec(ephemeralKey()), &system.UUIDv7Generator{}, &system.RNDGenerator{}, &system.TimeGenerator{}, secure.NewPasswordHasher(), auth.Config{SessionTTLMinutes: 1, AccessTokenTTLMinutes: 1})
+	authCore, err := auth.NewCore(authRepo, secure.NewTokenCodec(ephemeralKey(), auth.TokenIssuer), &system.UUIDv7Generator{}, &system.RNDGenerator{}, &system.TimeGenerator{}, secure.NewRefreshTokenHasher(), auth.Config{SessionTTLMinutes: 1, AccessTokenTTLMinutes: 1})
 	if err != nil {
 		panic(err)
 	}

@@ -22,6 +22,9 @@ const (
 	FieldEntity    apperr.Field = "entity"
 )
 
+// TokenIssuer is the "iss" claim of access tokens issued by this service.
+const TokenIssuer = "easygodocs"
+
 const (
 	CodeSessionNotFound  apperr.Code = "auth/session_not_found"
 	CodeRoleNotFound     apperr.Code = "auth/role_not_found"
@@ -45,11 +48,12 @@ type Repository interface {
 	GetUserRoles(ctx context.Context, userID uuid.UUID, roles []Role) ([]UserRole, error)
 	DeleteUserRole(ctx context.Context, role UserRole) error
 	ListUserRoles(ctx context.Context, userID uuid.UUID) ([]UserRole, error)
+	DeleteUserRolesByUserID(ctx context.Context, userID uuid.UUID) error
 }
 
-type PasswordHasher interface {
-	HashRefreshToken(token []byte) ([]byte, error)
-	CheckPasswordHash(hash, password []byte) error
+type RefreshTokenHasher interface {
+	HashRefreshToken(token []byte) []byte
+	CheckRefreshTokenHash(hash, token []byte) error
 }
 
 type TokenCodec interface {
@@ -80,27 +84,27 @@ type Config struct {
 }
 
 type core struct {
-	repo           Repository
-	codec          TokenCodec
-	generators     generators
-	passwordHasher PasswordHasher
-	cfg            Config
+	repo        Repository
+	codec       TokenCodec
+	generators  generators
+	tokenHasher RefreshTokenHasher
+	cfg         Config
 }
 
-func NewCore(repo Repository, codec TokenCodec, idGenerator UUIDGenerator, rndGenerator RNDGenerator, timeGenerator TimeGenerator, passwordHasher PasswordHasher, cfg Config) (*core, error) {
+func NewCore(repo Repository, codec TokenCodec, idGenerator UUIDGenerator, rndGenerator RNDGenerator, timeGenerator TimeGenerator, tokenHasher RefreshTokenHasher, cfg Config) (*core, error) {
 	if cfg.SessionTTLMinutes <= 0 || cfg.AccessTokenTTLMinutes <= 0 {
 		return nil, fmt.Errorf("auth.NewCore: %w", fmt.Errorf("config TTL values must be positive"))
 	}
-	if rndGenerator == nil || idGenerator == nil || timeGenerator == nil || repo == nil || codec == nil || passwordHasher == nil {
+	if rndGenerator == nil || idGenerator == nil || timeGenerator == nil || repo == nil || codec == nil || tokenHasher == nil {
 		return nil, fmt.Errorf("auth.NewCore: %w", fmt.Errorf("config values must not be nil"))
 	}
 
 	return &core{
-		repo:           repo,
-		codec:          codec,
-		generators:     generators{idGenerator, rndGenerator, timeGenerator},
-		passwordHasher: passwordHasher,
-		cfg:            cfg,
+		repo:        repo,
+		codec:       codec,
+		generators:  generators{idGenerator, rndGenerator, timeGenerator},
+		tokenHasher: tokenHasher,
+		cfg:         cfg,
 	}, nil
 }
 
@@ -142,19 +146,18 @@ func (c *core) IssueTokens(ctx context.Context, userID uuid.UUID, sessionVersion
 }
 
 func (c *core) RefreshTokens(ctx context.Context, session Session, refreshToken, rtHash string) (Tokens, error) {
-	now := c.generators.timeGenerator.Now()
-	if !session.ExpiresAt.After(now) {
-		err := apperr.ErrUnauthorized().WithDetail("session has expired")
+	if err := c.CheckSessionActive(session); err != nil {
 		return Tokens{}, fmt.Errorf("auth.core.RefreshTokens: %w", err)
 	}
 
-	if err := c.passwordHasher.CheckPasswordHash([]byte(rtHash), []byte(refreshToken)); err != nil {
-		if errors.Is(err, secure.ErrMismatchedHashAndPassword) {
+	if err := c.tokenHasher.CheckRefreshTokenHash([]byte(rtHash), []byte(refreshToken)); err != nil {
+		if errors.Is(err, secure.ErrMismatchedRefreshToken) {
 			err = apperr.ErrUnauthorized().WithDetail("invalid refresh token")
 		}
 		return Tokens{}, fmt.Errorf("auth.core.RefreshTokens: %w", err)
 	}
 
+	now := c.generators.timeGenerator.Now()
 	accessToken, newRefreshToken, newRTHash, err := c.generateTokens(session.UserID, session.ID, now)
 	if err != nil {
 		return Tokens{}, fmt.Errorf("auth.core.RefreshTokens: %w", err)
@@ -177,6 +180,15 @@ func (c *core) RefreshTokens(ctx context.Context, session Session, refreshToken,
 			Token:     newRefreshToken,
 		},
 	}, nil
+}
+
+// CheckSessionActive returns an unauthorized error if the session has expired.
+func (c *core) CheckSessionActive(session Session) error {
+	if !session.ExpiresAt.After(c.generators.timeGenerator.Now()) {
+		return fmt.Errorf("auth.core.CheckSessionActive: %w", apperr.ErrUnauthorized().WithDetail("session has expired"))
+	}
+
+	return nil
 }
 
 func (c *core) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, string, error) {
@@ -236,6 +248,14 @@ func (c *core) AddUserRole(ctx context.Context, userRole UserRole) error {
 func (c *core) DeleteUserRole(ctx context.Context, role UserRole) error {
 	if err := c.repo.DeleteUserRole(ctx, role); err != nil {
 		return fmt.Errorf("auth.core.DeleteUserRole: %w", err)
+	}
+
+	return nil
+}
+
+func (c *core) DeleteUserRolesByUserID(ctx context.Context, userID uuid.UUID) error {
+	if err := c.repo.DeleteUserRolesByUserID(ctx, userID); err != nil {
+		return fmt.Errorf("auth.core.DeleteUserRolesByUserID: %w", err)
 	}
 
 	return nil
@@ -357,14 +377,12 @@ func (c *core) generateTokens(userID, sessionID uuid.UUID, now time.Time) (strin
 	if err != nil {
 		return "", "", nil, fmt.Errorf("generateTokens: %w", err)
 	}
-	rtHash, err := c.passwordHasher.HashRefreshToken([]byte(refreshToken))
-	if err != nil {
-		return "", "", nil, fmt.Errorf("generateTokens: %w", err)
-	}
+	rtHash := c.tokenHasher.HashRefreshToken([]byte(refreshToken))
 
 	accessToken, err := c.codec.GenerateToken(AccessTokenClaims{
 		SID: sessionID.String(),
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    TokenIssuer,
 			Subject:   userID.String(),
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(c.cfg.AccessTokenTTLMinutes) * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(now),

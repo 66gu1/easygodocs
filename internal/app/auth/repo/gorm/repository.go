@@ -166,3 +166,12 @@ func (r *gormRepo) DeleteUserRole(ctx context.Context, req auth.UserRole) error 
 
 	return nil
 }
+
+func (r *gormRepo) DeleteUserRolesByUserID(ctx context.Context, userID uuid.UUID) error {
+	result := r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&userRole{})
+	if result.Error != nil {
+		return fmt.Errorf("gormRepo.DeleteUserRolesByUserID: %w", result.Error)
+	}
+
+	return nil
+}

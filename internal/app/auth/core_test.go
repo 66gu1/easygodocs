@@ -19,22 +19,22 @@ import (
 //go:generate minimock -o ./mocks -s _mock.go
 
 type mock struct {
-	repo       *mocks.RepositoryMock
-	idGen      *mocks.UUIDGeneratorMock
-	timeGen    *mocks.TimeGeneratorMock
-	rndGen     *mocks.RNDGeneratorMock
-	pswHasher  *mocks.PasswordHasherMock
-	tokenCodec *mocks.TokenCodecMock
+	repo        *mocks.RepositoryMock
+	idGen       *mocks.UUIDGeneratorMock
+	timeGen     *mocks.TimeGeneratorMock
+	rndGen      *mocks.RNDGeneratorMock
+	tokenHasher *mocks.RefreshTokenHasherMock
+	tokenCodec  *mocks.TokenCodecMock
 }
 
 func setupMocks(t *testing.T) mock {
 	return mock{
-		repo:       mocks.NewRepositoryMock(t),
-		idGen:      mocks.NewUUIDGeneratorMock(t),
-		timeGen:    mocks.NewTimeGeneratorMock(t),
-		rndGen:     mocks.NewRNDGeneratorMock(t),
-		pswHasher:  mocks.NewPasswordHasherMock(t),
-		tokenCodec: mocks.NewTokenCodecMock(t),
+		repo:        mocks.NewRepositoryMock(t),
+		idGen:       mocks.NewUUIDGeneratorMock(t),
+		timeGen:     mocks.NewTimeGeneratorMock(t),
+		rndGen:      mocks.NewRNDGeneratorMock(t),
+		tokenHasher: mocks.NewRefreshTokenHasherMock(t),
+		tokenCodec:  mocks.NewTokenCodecMock(t),
 	}
 }
 
@@ -60,6 +60,7 @@ func TestCore_IssueTokens(t *testing.T) {
 		claims         = auth.AccessTokenClaims{
 			SID: sessID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
 				Subject:   userID.String(),
 				IssuedAt:  jwt.NewNumericDate(now),
 				ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(cfg().AccessTokenTTLMinutes) * time.Minute)),
@@ -96,7 +97,7 @@ func TestCore_IssueTokens(t *testing.T) {
 				mocks.idGen.NewMock.Return(sessID, nil)
 				mocks.timeGen.NowMock.Return(now)
 				mocks.rndGen.NewMock.Expect(32).Return(refreshToken, nil)
-				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(refreshToken)).Return(rtHash, nil)
+				mocks.tokenHasher.HashRefreshTokenMock.Expect([]byte(refreshToken)).Return(rtHash)
 				mocks.tokenCodec.GenerateTokenMock.Expect(claims).Return(accessToken, nil)
 				mocks.repo.CreateSessionMock.Expect(ctx, session, string(rtHash)).Return(nil)
 			},
@@ -126,24 +127,13 @@ func TestCore_IssueTokens(t *testing.T) {
 			err: errExp,
 		},
 		{
-			name:   "psw hasher error",
-			userID: userID,
-			setup: func(mocks mock) {
-				mocks.idGen.NewMock.Return(sessID, nil)
-				mocks.timeGen.NowMock.Return(now)
-				mocks.rndGen.NewMock.Expect(32).Return(refreshToken, nil)
-				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(refreshToken)).Return(nil, errExp)
-			},
-			err: errExp,
-		},
-		{
 			name:   "token codec error",
 			userID: userID,
 			setup: func(mocks mock) {
 				mocks.idGen.NewMock.Return(sessID, nil)
 				mocks.timeGen.NowMock.Return(now)
 				mocks.rndGen.NewMock.Expect(32).Return(refreshToken, nil)
-				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(refreshToken)).Return(rtHash, nil)
+				mocks.tokenHasher.HashRefreshTokenMock.Expect([]byte(refreshToken)).Return(rtHash)
 				mocks.tokenCodec.GenerateTokenMock.Expect(claims).Return("", errExp)
 			},
 			err: errExp,
@@ -155,7 +145,7 @@ func TestCore_IssueTokens(t *testing.T) {
 				mocks.idGen.NewMock.Return(sessID, nil)
 				mocks.timeGen.NowMock.Return(now)
 				mocks.rndGen.NewMock.Expect(32).Return(refreshToken, nil)
-				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(refreshToken)).Return(rtHash, nil)
+				mocks.tokenHasher.HashRefreshTokenMock.Expect([]byte(refreshToken)).Return(rtHash)
 				mocks.tokenCodec.GenerateTokenMock.Expect(claims).Return(accessToken, nil)
 				mocks.repo.CreateSessionMock.Expect(ctx, session, string(rtHash)).Return(errExp)
 			},
@@ -175,7 +165,7 @@ func TestCore_IssueTokens(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
@@ -211,6 +201,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 		claims          = auth.AccessTokenClaims{
 			SID: sessID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
 				Subject:   userID.String(),
 				IssuedAt:  jwt.NewNumericDate(now),
 				ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(cfg().AccessTokenTTLMinutes) * time.Minute)),
@@ -251,9 +242,9 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
+				mocks.tokenHasher.CheckRefreshTokenHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
 				mocks.rndGen.NewMock.Expect(32).Return(newRefreshToken, nil)
-				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return([]byte(newRTHash), nil)
+				mocks.tokenHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return([]byte(newRTHash))
 				mocks.tokenCodec.GenerateTokenMock.Expect(claims).Return(accessToken, nil)
 				mocks.repo.UpdateRefreshTokenMock.Expect(ctx, updateTokenReq).Return(nil)
 			},
@@ -271,7 +262,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(secure.ErrMismatchedHashAndPassword)
+				mocks.tokenHasher.CheckRefreshTokenHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(secure.ErrMismatchedRefreshToken)
 			},
 			err: apperr.ErrUnauthorized(),
 		},
@@ -280,7 +271,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(errExp)
+				mocks.tokenHasher.CheckRefreshTokenHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(errExp)
 			},
 			err: errExp,
 		},
@@ -289,19 +280,8 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
+				mocks.tokenHasher.CheckRefreshTokenHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
 				mocks.rndGen.NewMock.Expect(32).Return("", errExp)
-			},
-			err: errExp,
-		},
-		{
-			name:    "psw hasher error",
-			session: session,
-			setup: func(mocks mock) {
-				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
-				mocks.rndGen.NewMock.Expect(32).Return(newRefreshToken, nil)
-				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return(nil, errExp)
 			},
 			err: errExp,
 		},
@@ -310,9 +290,9 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
+				mocks.tokenHasher.CheckRefreshTokenHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
 				mocks.rndGen.NewMock.Expect(32).Return(newRefreshToken, nil)
-				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return([]byte(newRTHash), nil)
+				mocks.tokenHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return([]byte(newRTHash))
 				mocks.tokenCodec.GenerateTokenMock.Expect(claims).Return("", errExp)
 			},
 			err: errExp,
@@ -322,9 +302,9 @@ func TestCore_RefreshTokens(t *testing.T) {
 			session: session,
 			setup: func(mocks mock) {
 				mocks.timeGen.NowMock.Return(now)
-				mocks.pswHasher.CheckPasswordHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
+				mocks.tokenHasher.CheckRefreshTokenHashMock.Expect([]byte(rtHash), []byte(refreshToken)).Return(nil)
 				mocks.rndGen.NewMock.Expect(32).Return(newRefreshToken, nil)
-				mocks.pswHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return([]byte(newRTHash), nil)
+				mocks.tokenHasher.HashRefreshTokenMock.Expect([]byte(newRefreshToken)).Return([]byte(newRTHash))
 				mocks.tokenCodec.GenerateTokenMock.Expect(claims).Return(accessToken, nil)
 				mocks.repo.UpdateRefreshTokenMock.Expect(ctx, updateTokenReq).Return(errExp)
 			},
@@ -346,7 +326,7 @@ func TestCore_RefreshTokens(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
@@ -419,7 +399,7 @@ func TestCore_GetSessionByID(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
@@ -481,7 +461,7 @@ func TestCore_GetSessionsByUserID(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
@@ -539,7 +519,7 @@ func TestCore_DeleteSession(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
@@ -595,12 +575,106 @@ func TestCore_DeleteSessionsByUserID(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
 
 			err = core.DeleteSessionsByUserID(ctx, userID)
+			if tt.err != nil {
+				require.ErrorIs(t, err, tt.err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestCore_DeleteUserRolesByUserID(t *testing.T) {
+	t.Parallel()
+	var (
+		ctx    = context.Background()
+		userID = uuid.New()
+		errExp = fmt.Errorf("expected")
+	)
+	tests := []struct {
+		name  string
+		setup func(mocks mock)
+		err   error
+	}{
+		{
+			name: "ok",
+			setup: func(mocks mock) {
+				mocks.repo.DeleteUserRolesByUserIDMock.Expect(ctx, userID).Return(nil)
+			},
+		},
+		{
+			name: "err/repo",
+			setup: func(mocks mock) {
+				mocks.repo.DeleteUserRolesByUserIDMock.Expect(ctx, userID).Return(errExp)
+			},
+			err: errExp,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mocks := setupMocks(t)
+			tt.setup(mocks)
+
+			core, err := auth.NewCore(
+				mocks.repo,
+				mocks.tokenCodec,
+				mocks.idGen,
+				mocks.rndGen,
+				mocks.timeGen,
+				mocks.tokenHasher,
+				cfg(),
+			)
+			require.NoError(t, err)
+
+			err = core.DeleteUserRolesByUserID(ctx, userID)
+			if tt.err != nil {
+				require.ErrorIs(t, err, tt.err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestCore_CheckSessionActive(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	tests := []struct {
+		name      string
+		expiresAt time.Time
+		err       error
+	}{
+		{name: "active", expiresAt: now.Add(time.Minute)},
+		{name: "expired", expiresAt: now.Add(-time.Minute), err: apperr.ErrUnauthorized()},
+		{name: "expires right now", expiresAt: now, err: apperr.ErrUnauthorized()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mocks := setupMocks(t)
+			mocks.timeGen.NowMock.Return(now)
+
+			core, err := auth.NewCore(
+				mocks.repo,
+				mocks.tokenCodec,
+				mocks.idGen,
+				mocks.rndGen,
+				mocks.timeGen,
+				mocks.tokenHasher,
+				cfg(),
+			)
+			require.NoError(t, err)
+
+			err = core.CheckSessionActive(auth.Session{ExpiresAt: tt.expiresAt})
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
 				return
@@ -695,7 +769,7 @@ func TestCore_AddUserRole(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
@@ -755,7 +829,7 @@ func TestCore_DeleteUserRole(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
@@ -814,7 +888,7 @@ func TestCore_ListUserRoles(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
@@ -910,7 +984,7 @@ func TestCore_GetCurrentUserDirectPermissions(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)
@@ -976,7 +1050,7 @@ func TestCore_IsSelf(t *testing.T) {
 				mocks.idGen,
 				mocks.rndGen,
 				mocks.timeGen,
-				mocks.pswHasher,
+				mocks.tokenHasher,
 				cfg(),
 			)
 			require.NoError(t, err)

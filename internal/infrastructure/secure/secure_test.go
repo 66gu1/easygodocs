@@ -98,7 +98,7 @@ func TestPasswordHasher_CheckPasswordHash(t *testing.T) {
 func TestTokenCodec_GenerateToken(t *testing.T) {
 	t.Parallel()
 	secret := []byte("mysecret")
-	codec := secure.NewTokenCodec(secret)
+	codec := secure.NewTokenCodec(secret, "Issuer")
 	claims := auth.AccessTokenClaims{
 		SID: "sid",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -123,7 +123,7 @@ func TestTokenCodec_ParseToken(t *testing.T) {
 	t.Parallel()
 	var (
 		secret = []byte("mysecret")
-		codec  = secure.NewTokenCodec(secret)
+		codec  = secure.NewTokenCodec(secret, "Issuer")
 		claims = auth.AccessTokenClaims{
 			SID: "sid",
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -145,6 +145,21 @@ func TestTokenCodec_ParseToken(t *testing.T) {
 	invalidTokenStr, err := invalidToken.SignedString([]byte("wrongsecret"))
 	require.NoError(t, err)
 
+	signWith := func(modify func(c *auth.AccessTokenClaims)) string {
+		c := claims
+		modify(&c)
+		str, err := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString(secret)
+		require.NoError(t, err)
+		return str
+	}
+	noExpTokenStr := signWith(func(c *auth.AccessTokenClaims) { c.ExpiresAt = nil })
+	expiredTokenStr := signWith(func(c *auth.AccessTokenClaims) {
+		c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(-time.Hour))
+	})
+	wrongIssuerTokenStr := signWith(func(c *auth.AccessTokenClaims) { c.Issuer = "someone-else" })
+	noneAlgTokenStr, err := jwt.NewWithClaims(jwt.SigningMethodNone, claims).SignedString(jwt.UnsafeAllowNoneSignatureType)
+	require.NoError(t, err)
+
 	tests := []struct {
 		name     string
 		tokenStr string
@@ -164,6 +179,26 @@ func TestTokenCodec_ParseToken(t *testing.T) {
 			tokenStr: invalidTokenStr,
 			err:      apperr.ErrUnauthorized(),
 		},
+		{
+			name:     "missing exp",
+			tokenStr: noExpTokenStr,
+			err:      apperr.ErrUnauthorized(),
+		},
+		{
+			name:     "expired",
+			tokenStr: expiredTokenStr,
+			err:      apperr.ErrUnauthorized(),
+		},
+		{
+			name:     "wrong issuer",
+			tokenStr: wrongIssuerTokenStr,
+			err:      apperr.ErrUnauthorized(),
+		},
+		{
+			name:     "alg none",
+			tokenStr: noneAlgTokenStr,
+			err:      apperr.ErrUnauthorized(),
+		},
 	}
 
 	for _, tt := range tests {
@@ -179,4 +214,19 @@ func TestTokenCodec_ParseToken(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRefreshTokenHasher(t *testing.T) {
+	t.Parallel()
+
+	hasher := secure.NewRefreshTokenHasher()
+	token := []byte("refresh-token")
+
+	hash := hasher.HashRefreshToken(token)
+	require.Len(t, hash, 64) // hex-encoded SHA-256
+	require.Equal(t, hash, hasher.HashRefreshToken(token), "hash must be deterministic")
+
+	require.NoError(t, hasher.CheckRefreshTokenHash(hash, token))
+	require.ErrorIs(t, hasher.CheckRefreshTokenHash(hash, []byte("other-token")), secure.ErrMismatchedRefreshToken)
+	require.ErrorIs(t, hasher.CheckRefreshTokenHash(nil, token), secure.ErrMismatchedRefreshToken)
 }

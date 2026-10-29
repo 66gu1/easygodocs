@@ -55,6 +55,13 @@ type RepositoryMock struct {
 	beforeDeleteUserRoleCounter uint64
 	DeleteUserRoleMock          mRepositoryMockDeleteUserRole
 
+	funcDeleteUserRolesByUserID          func(ctx context.Context, userID uuid.UUID) (err error)
+	funcDeleteUserRolesByUserIDOrigin    string
+	inspectFuncDeleteUserRolesByUserID   func(ctx context.Context, userID uuid.UUID)
+	afterDeleteUserRolesByUserIDCounter  uint64
+	beforeDeleteUserRolesByUserIDCounter uint64
+	DeleteUserRolesByUserIDMock          mRepositoryMockDeleteUserRolesByUserID
+
 	funcGetSessionByID          func(ctx context.Context, id uuid.UUID) (s1 mm_auth.Session, s2 string, err error)
 	funcGetSessionByIDOrigin    string
 	inspectFuncGetSessionByID   func(ctx context.Context, id uuid.UUID)
@@ -113,6 +120,9 @@ func NewRepositoryMock(t minimock.Tester) *RepositoryMock {
 
 	m.DeleteUserRoleMock = mRepositoryMockDeleteUserRole{mock: m}
 	m.DeleteUserRoleMock.callArgs = []*RepositoryMockDeleteUserRoleParams{}
+
+	m.DeleteUserRolesByUserIDMock = mRepositoryMockDeleteUserRolesByUserID{mock: m}
+	m.DeleteUserRolesByUserIDMock.callArgs = []*RepositoryMockDeleteUserRolesByUserIDParams{}
 
 	m.GetSessionByIDMock = mRepositoryMockGetSessionByID{mock: m}
 	m.GetSessionByIDMock.callArgs = []*RepositoryMockGetSessionByIDParams{}
@@ -1906,6 +1916,348 @@ func (m *RepositoryMock) MinimockDeleteUserRoleInspect() {
 	}
 }
 
+type mRepositoryMockDeleteUserRolesByUserID struct {
+	optional           bool
+	mock               *RepositoryMock
+	defaultExpectation *RepositoryMockDeleteUserRolesByUserIDExpectation
+	expectations       []*RepositoryMockDeleteUserRolesByUserIDExpectation
+
+	callArgs []*RepositoryMockDeleteUserRolesByUserIDParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// RepositoryMockDeleteUserRolesByUserIDExpectation specifies expectation struct of the Repository.DeleteUserRolesByUserID
+type RepositoryMockDeleteUserRolesByUserIDExpectation struct {
+	mock               *RepositoryMock
+	params             *RepositoryMockDeleteUserRolesByUserIDParams
+	paramPtrs          *RepositoryMockDeleteUserRolesByUserIDParamPtrs
+	expectationOrigins RepositoryMockDeleteUserRolesByUserIDExpectationOrigins
+	results            *RepositoryMockDeleteUserRolesByUserIDResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// RepositoryMockDeleteUserRolesByUserIDParams contains parameters of the Repository.DeleteUserRolesByUserID
+type RepositoryMockDeleteUserRolesByUserIDParams struct {
+	ctx    context.Context
+	userID uuid.UUID
+}
+
+// RepositoryMockDeleteUserRolesByUserIDParamPtrs contains pointers to parameters of the Repository.DeleteUserRolesByUserID
+type RepositoryMockDeleteUserRolesByUserIDParamPtrs struct {
+	ctx    *context.Context
+	userID *uuid.UUID
+}
+
+// RepositoryMockDeleteUserRolesByUserIDResults contains results of the Repository.DeleteUserRolesByUserID
+type RepositoryMockDeleteUserRolesByUserIDResults struct {
+	err error
+}
+
+// RepositoryMockDeleteUserRolesByUserIDOrigins contains origins of expectations of the Repository.DeleteUserRolesByUserID
+type RepositoryMockDeleteUserRolesByUserIDExpectationOrigins struct {
+	origin       string
+	originCtx    string
+	originUserID string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) Optional() *mRepositoryMockDeleteUserRolesByUserID {
+	mmDeleteUserRolesByUserID.optional = true
+	return mmDeleteUserRolesByUserID
+}
+
+// Expect sets up expected params for Repository.DeleteUserRolesByUserID
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) Expect(ctx context.Context, userID uuid.UUID) *mRepositoryMockDeleteUserRolesByUserID {
+	if mmDeleteUserRolesByUserID.mock.funcDeleteUserRolesByUserID != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("RepositoryMock.DeleteUserRolesByUserID mock is already set by Set")
+	}
+
+	if mmDeleteUserRolesByUserID.defaultExpectation == nil {
+		mmDeleteUserRolesByUserID.defaultExpectation = &RepositoryMockDeleteUserRolesByUserIDExpectation{}
+	}
+
+	if mmDeleteUserRolesByUserID.defaultExpectation.paramPtrs != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("RepositoryMock.DeleteUserRolesByUserID mock is already set by ExpectParams functions")
+	}
+
+	mmDeleteUserRolesByUserID.defaultExpectation.params = &RepositoryMockDeleteUserRolesByUserIDParams{ctx, userID}
+	mmDeleteUserRolesByUserID.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmDeleteUserRolesByUserID.expectations {
+		if minimock.Equal(e.params, mmDeleteUserRolesByUserID.defaultExpectation.params) {
+			mmDeleteUserRolesByUserID.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmDeleteUserRolesByUserID.defaultExpectation.params)
+		}
+	}
+
+	return mmDeleteUserRolesByUserID
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Repository.DeleteUserRolesByUserID
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) ExpectCtxParam1(ctx context.Context) *mRepositoryMockDeleteUserRolesByUserID {
+	if mmDeleteUserRolesByUserID.mock.funcDeleteUserRolesByUserID != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("RepositoryMock.DeleteUserRolesByUserID mock is already set by Set")
+	}
+
+	if mmDeleteUserRolesByUserID.defaultExpectation == nil {
+		mmDeleteUserRolesByUserID.defaultExpectation = &RepositoryMockDeleteUserRolesByUserIDExpectation{}
+	}
+
+	if mmDeleteUserRolesByUserID.defaultExpectation.params != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("RepositoryMock.DeleteUserRolesByUserID mock is already set by Expect")
+	}
+
+	if mmDeleteUserRolesByUserID.defaultExpectation.paramPtrs == nil {
+		mmDeleteUserRolesByUserID.defaultExpectation.paramPtrs = &RepositoryMockDeleteUserRolesByUserIDParamPtrs{}
+	}
+	mmDeleteUserRolesByUserID.defaultExpectation.paramPtrs.ctx = &ctx
+	mmDeleteUserRolesByUserID.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmDeleteUserRolesByUserID
+}
+
+// ExpectUserIDParam2 sets up expected param userID for Repository.DeleteUserRolesByUserID
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) ExpectUserIDParam2(userID uuid.UUID) *mRepositoryMockDeleteUserRolesByUserID {
+	if mmDeleteUserRolesByUserID.mock.funcDeleteUserRolesByUserID != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("RepositoryMock.DeleteUserRolesByUserID mock is already set by Set")
+	}
+
+	if mmDeleteUserRolesByUserID.defaultExpectation == nil {
+		mmDeleteUserRolesByUserID.defaultExpectation = &RepositoryMockDeleteUserRolesByUserIDExpectation{}
+	}
+
+	if mmDeleteUserRolesByUserID.defaultExpectation.params != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("RepositoryMock.DeleteUserRolesByUserID mock is already set by Expect")
+	}
+
+	if mmDeleteUserRolesByUserID.defaultExpectation.paramPtrs == nil {
+		mmDeleteUserRolesByUserID.defaultExpectation.paramPtrs = &RepositoryMockDeleteUserRolesByUserIDParamPtrs{}
+	}
+	mmDeleteUserRolesByUserID.defaultExpectation.paramPtrs.userID = &userID
+	mmDeleteUserRolesByUserID.defaultExpectation.expectationOrigins.originUserID = minimock.CallerInfo(1)
+
+	return mmDeleteUserRolesByUserID
+}
+
+// Inspect accepts an inspector function that has same arguments as the Repository.DeleteUserRolesByUserID
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) Inspect(f func(ctx context.Context, userID uuid.UUID)) *mRepositoryMockDeleteUserRolesByUserID {
+	if mmDeleteUserRolesByUserID.mock.inspectFuncDeleteUserRolesByUserID != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("Inspect function is already set for RepositoryMock.DeleteUserRolesByUserID")
+	}
+
+	mmDeleteUserRolesByUserID.mock.inspectFuncDeleteUserRolesByUserID = f
+
+	return mmDeleteUserRolesByUserID
+}
+
+// Return sets up results that will be returned by Repository.DeleteUserRolesByUserID
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) Return(err error) *RepositoryMock {
+	if mmDeleteUserRolesByUserID.mock.funcDeleteUserRolesByUserID != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("RepositoryMock.DeleteUserRolesByUserID mock is already set by Set")
+	}
+
+	if mmDeleteUserRolesByUserID.defaultExpectation == nil {
+		mmDeleteUserRolesByUserID.defaultExpectation = &RepositoryMockDeleteUserRolesByUserIDExpectation{mock: mmDeleteUserRolesByUserID.mock}
+	}
+	mmDeleteUserRolesByUserID.defaultExpectation.results = &RepositoryMockDeleteUserRolesByUserIDResults{err}
+	mmDeleteUserRolesByUserID.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmDeleteUserRolesByUserID.mock
+}
+
+// Set uses given function f to mock the Repository.DeleteUserRolesByUserID method
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) Set(f func(ctx context.Context, userID uuid.UUID) (err error)) *RepositoryMock {
+	if mmDeleteUserRolesByUserID.defaultExpectation != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("Default expectation is already set for the Repository.DeleteUserRolesByUserID method")
+	}
+
+	if len(mmDeleteUserRolesByUserID.expectations) > 0 {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("Some expectations are already set for the Repository.DeleteUserRolesByUserID method")
+	}
+
+	mmDeleteUserRolesByUserID.mock.funcDeleteUserRolesByUserID = f
+	mmDeleteUserRolesByUserID.mock.funcDeleteUserRolesByUserIDOrigin = minimock.CallerInfo(1)
+	return mmDeleteUserRolesByUserID.mock
+}
+
+// When sets expectation for the Repository.DeleteUserRolesByUserID which will trigger the result defined by the following
+// Then helper
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) When(ctx context.Context, userID uuid.UUID) *RepositoryMockDeleteUserRolesByUserIDExpectation {
+	if mmDeleteUserRolesByUserID.mock.funcDeleteUserRolesByUserID != nil {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("RepositoryMock.DeleteUserRolesByUserID mock is already set by Set")
+	}
+
+	expectation := &RepositoryMockDeleteUserRolesByUserIDExpectation{
+		mock:               mmDeleteUserRolesByUserID.mock,
+		params:             &RepositoryMockDeleteUserRolesByUserIDParams{ctx, userID},
+		expectationOrigins: RepositoryMockDeleteUserRolesByUserIDExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmDeleteUserRolesByUserID.expectations = append(mmDeleteUserRolesByUserID.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Repository.DeleteUserRolesByUserID return parameters for the expectation previously defined by the When method
+func (e *RepositoryMockDeleteUserRolesByUserIDExpectation) Then(err error) *RepositoryMock {
+	e.results = &RepositoryMockDeleteUserRolesByUserIDResults{err}
+	return e.mock
+}
+
+// Times sets number of times Repository.DeleteUserRolesByUserID should be invoked
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) Times(n uint64) *mRepositoryMockDeleteUserRolesByUserID {
+	if n == 0 {
+		mmDeleteUserRolesByUserID.mock.t.Fatalf("Times of RepositoryMock.DeleteUserRolesByUserID mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmDeleteUserRolesByUserID.expectedInvocations, n)
+	mmDeleteUserRolesByUserID.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmDeleteUserRolesByUserID
+}
+
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) invocationsDone() bool {
+	if len(mmDeleteUserRolesByUserID.expectations) == 0 && mmDeleteUserRolesByUserID.defaultExpectation == nil && mmDeleteUserRolesByUserID.mock.funcDeleteUserRolesByUserID == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmDeleteUserRolesByUserID.mock.afterDeleteUserRolesByUserIDCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmDeleteUserRolesByUserID.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// DeleteUserRolesByUserID implements mm_auth.Repository
+func (mmDeleteUserRolesByUserID *RepositoryMock) DeleteUserRolesByUserID(ctx context.Context, userID uuid.UUID) (err error) {
+	mm_atomic.AddUint64(&mmDeleteUserRolesByUserID.beforeDeleteUserRolesByUserIDCounter, 1)
+	defer mm_atomic.AddUint64(&mmDeleteUserRolesByUserID.afterDeleteUserRolesByUserIDCounter, 1)
+
+	mmDeleteUserRolesByUserID.t.Helper()
+
+	if mmDeleteUserRolesByUserID.inspectFuncDeleteUserRolesByUserID != nil {
+		mmDeleteUserRolesByUserID.inspectFuncDeleteUserRolesByUserID(ctx, userID)
+	}
+
+	mm_params := RepositoryMockDeleteUserRolesByUserIDParams{ctx, userID}
+
+	// Record call args
+	mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.mutex.Lock()
+	mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.callArgs = append(mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.callArgs, &mm_params)
+	mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.mutex.Unlock()
+
+	for _, e := range mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.defaultExpectation.Counter, 1)
+		mm_want := mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.defaultExpectation.params
+		mm_want_ptrs := mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.defaultExpectation.paramPtrs
+
+		mm_got := RepositoryMockDeleteUserRolesByUserIDParams{ctx, userID}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmDeleteUserRolesByUserID.t.Errorf("RepositoryMock.DeleteUserRolesByUserID got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.userID != nil && !minimock.Equal(*mm_want_ptrs.userID, mm_got.userID) {
+				mmDeleteUserRolesByUserID.t.Errorf("RepositoryMock.DeleteUserRolesByUserID got unexpected parameter userID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.defaultExpectation.expectationOrigins.originUserID, *mm_want_ptrs.userID, mm_got.userID, minimock.Diff(*mm_want_ptrs.userID, mm_got.userID))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmDeleteUserRolesByUserID.t.Errorf("RepositoryMock.DeleteUserRolesByUserID got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmDeleteUserRolesByUserID.DeleteUserRolesByUserIDMock.defaultExpectation.results
+		if mm_results == nil {
+			mmDeleteUserRolesByUserID.t.Fatal("No results are set for the RepositoryMock.DeleteUserRolesByUserID")
+		}
+		return (*mm_results).err
+	}
+	if mmDeleteUserRolesByUserID.funcDeleteUserRolesByUserID != nil {
+		return mmDeleteUserRolesByUserID.funcDeleteUserRolesByUserID(ctx, userID)
+	}
+	mmDeleteUserRolesByUserID.t.Fatalf("Unexpected call to RepositoryMock.DeleteUserRolesByUserID. %v %v", ctx, userID)
+	return
+}
+
+// DeleteUserRolesByUserIDAfterCounter returns a count of finished RepositoryMock.DeleteUserRolesByUserID invocations
+func (mmDeleteUserRolesByUserID *RepositoryMock) DeleteUserRolesByUserIDAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmDeleteUserRolesByUserID.afterDeleteUserRolesByUserIDCounter)
+}
+
+// DeleteUserRolesByUserIDBeforeCounter returns a count of RepositoryMock.DeleteUserRolesByUserID invocations
+func (mmDeleteUserRolesByUserID *RepositoryMock) DeleteUserRolesByUserIDBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmDeleteUserRolesByUserID.beforeDeleteUserRolesByUserIDCounter)
+}
+
+// Calls returns a list of arguments used in each call to RepositoryMock.DeleteUserRolesByUserID.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmDeleteUserRolesByUserID *mRepositoryMockDeleteUserRolesByUserID) Calls() []*RepositoryMockDeleteUserRolesByUserIDParams {
+	mmDeleteUserRolesByUserID.mutex.RLock()
+
+	argCopy := make([]*RepositoryMockDeleteUserRolesByUserIDParams, len(mmDeleteUserRolesByUserID.callArgs))
+	copy(argCopy, mmDeleteUserRolesByUserID.callArgs)
+
+	mmDeleteUserRolesByUserID.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockDeleteUserRolesByUserIDDone returns true if the count of the DeleteUserRolesByUserID invocations corresponds
+// the number of defined expectations
+func (m *RepositoryMock) MinimockDeleteUserRolesByUserIDDone() bool {
+	if m.DeleteUserRolesByUserIDMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.DeleteUserRolesByUserIDMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.DeleteUserRolesByUserIDMock.invocationsDone()
+}
+
+// MinimockDeleteUserRolesByUserIDInspect logs each unmet expectation
+func (m *RepositoryMock) MinimockDeleteUserRolesByUserIDInspect() {
+	for _, e := range m.DeleteUserRolesByUserIDMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to RepositoryMock.DeleteUserRolesByUserID at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterDeleteUserRolesByUserIDCounter := mm_atomic.LoadUint64(&m.afterDeleteUserRolesByUserIDCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.DeleteUserRolesByUserIDMock.defaultExpectation != nil && afterDeleteUserRolesByUserIDCounter < 1 {
+		if m.DeleteUserRolesByUserIDMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to RepositoryMock.DeleteUserRolesByUserID at\n%s", m.DeleteUserRolesByUserIDMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to RepositoryMock.DeleteUserRolesByUserID at\n%s with params: %#v", m.DeleteUserRolesByUserIDMock.defaultExpectation.expectationOrigins.origin, *m.DeleteUserRolesByUserIDMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcDeleteUserRolesByUserID != nil && afterDeleteUserRolesByUserIDCounter < 1 {
+		m.t.Errorf("Expected call to RepositoryMock.DeleteUserRolesByUserID at\n%s", m.funcDeleteUserRolesByUserIDOrigin)
+	}
+
+	if !m.DeleteUserRolesByUserIDMock.invocationsDone() && afterDeleteUserRolesByUserIDCounter > 0 {
+		m.t.Errorf("Expected %d calls to RepositoryMock.DeleteUserRolesByUserID at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.DeleteUserRolesByUserIDMock.expectedInvocations), m.DeleteUserRolesByUserIDMock.expectedInvocationsOrigin, afterDeleteUserRolesByUserIDCounter)
+	}
+}
+
 type mRepositoryMockGetSessionByID struct {
 	optional           bool
 	mock               *RepositoryMock
@@ -3666,6 +4018,8 @@ func (m *RepositoryMock) MinimockFinish() {
 
 			m.MinimockDeleteUserRoleInspect()
 
+			m.MinimockDeleteUserRolesByUserIDInspect()
+
 			m.MinimockGetSessionByIDInspect()
 
 			m.MinimockGetSessionsByUserIDInspect()
@@ -3703,6 +4057,7 @@ func (m *RepositoryMock) minimockDone() bool {
 		m.MinimockDeleteSessionByIDAndUserDone() &&
 		m.MinimockDeleteSessionsByUserIDDone() &&
 		m.MinimockDeleteUserRoleDone() &&
+		m.MinimockDeleteUserRolesByUserIDDone() &&
 		m.MinimockGetSessionByIDDone() &&
 		m.MinimockGetSessionsByUserIDDone() &&
 		m.MinimockGetUserRolesDone() &&

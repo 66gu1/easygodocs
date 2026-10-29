@@ -12,6 +12,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"net/http"
@@ -32,11 +33,13 @@ import (
 	userrepo "github.com/66gu1/easygodocs/internal/app/user/repo/gorm"
 	userhttp "github.com/66gu1/easygodocs/internal/app/user/transport/http"
 	userusecase "github.com/66gu1/easygodocs/internal/app/user/usecase"
+	dbinfra "github.com/66gu1/easygodocs/internal/infrastructure/db"
 	"github.com/66gu1/easygodocs/internal/infrastructure/httpx"
 	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
 	"github.com/66gu1/easygodocs/internal/infrastructure/system"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -62,18 +65,9 @@ func main() {
 	if !ok {
 		panic("DATABASE_DSN environment variable is required")
 	}
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		NowFunc: func() time.Time {
-			return time.Now().UTC()
-		},
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
-	if err != nil {
-		panic(err)
-	}
+	db := mustOpenDB(dsn, cfg.DBPool)
 
-	jwtSecret := os.Getenv("JWT_SECRET")
-	jwtCodec := secure.NewTokenCodec([]byte(jwtSecret))
+	jwtCodec := secure.NewTokenCodec(mustJWTSecret(), auth.TokenIssuer)
 
 	idGen := &system.UUIDv7Generator{}
 	timeGen := &system.TimeGenerator{}
@@ -99,7 +93,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create auth repository")
 	}
-	authCore, err := auth.NewCore(authRepo, jwtCodec, idGen, rndGen, timeGen, passwordHasher, authCfg)
+	authCore, err := auth.NewCore(authRepo, jwtCodec, idGen, rndGen, timeGen, secure.NewRefreshTokenHasher(), authCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create auth core")
 	}
@@ -113,7 +107,11 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create entity validator")
 	}
-	entityCore, err := entity.NewCore(entityRepo, entity.Generators{
+	txManager, err := dbinfra.NewTxManager(db)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create tx manager")
+	}
+	entityCore, err := entity.NewCore(entityRepo, txManager, entity.Generators{
 		ID:   idGen,
 		Time: timeGen,
 	}, entityValidator, entityCfg)
@@ -124,7 +122,8 @@ func main() {
 	userService := userusecase.NewService(userCore, authCore, passwordHasher)
 	userHandler := userhttp.NewHandler(userService)
 
-	authService := authusecase.NewService(authCore, userCore, passwordHasher)
+	dummyPasswordHash := mustDummyPasswordHash(passwordHasher, userCfg.PasswordHashCost)
+	authService := authusecase.NewService(authCore, userCore, passwordHasher, dummyPasswordHash)
 	authHandler := authhttp.NewHandler(authService)
 
 	entityService := entityusecase.NewService(entityCore, entityusecase.NewPermissionChecker(entityCore, authCore))
@@ -142,7 +141,7 @@ func main() {
 	r.Route("/api/v1", func(r chi.Router) {
 		// with auth
 		r.Group(func(r chi.Router) {
-			r.Use(authhttp.AuthMiddleware(jwtCodec))
+			r.Use(authhttp.AuthMiddleware(jwtCodec, authService))
 			// --- user routes
 			r.Route("/users", func(r chi.Router) {
 				r.Get("/", userHandler.GetAllUsers) // GET    /users
@@ -195,13 +194,14 @@ func main() {
 
 		// without auth
 		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(cfg.RateLimit.PublicRequestsPerMinute, time.Minute))
 			r.Post("/login", authHandler.Login)           // POST /login
 			r.Post("/refresh", authHandler.RefreshTokens) // POST /refresh
 			r.Post("/register", userHandler.CreateUser)   // POST /register
 		})
 
 		r.Get("/swagger/*", httpSwagger.Handler(
-			httpSwagger.URL("/api/v1/swagger/doc.json"), // относительный путь — безопаснее
+			httpSwagger.URL("/api/v1/swagger/doc.json"),
 		))
 	})
 
@@ -216,4 +216,49 @@ func main() {
 	if err = srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal().Err(err).Msg("server error")
 	}
+}
+
+// mustJWTSecret reads JWT_SECRET and refuses to start with a missing or weak secret.
+func mustJWTSecret() []byte {
+	secret := os.Getenv("JWT_SECRET")
+	if len(secret) < secure.MinJWTSecretLength {
+		log.Fatal().Msgf("JWT_SECRET must be at least %d bytes long", secure.MinJWTSecretLength)
+	}
+	return []byte(secret)
+}
+
+// mustDummyPasswordHash creates a hash with the same cost as real password hashes.
+// It is used to equalize login timing for unknown emails.
+func mustDummyPasswordHash(hasher *secure.PasswordHasher, cost int) []byte {
+	password := make([]byte, 32)
+	if _, err := rand.Read(password); err != nil {
+		log.Fatal().Err(err).Msg("failed to generate dummy password")
+	}
+	hash, err := hasher.HashPassword(password, cost)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create dummy password hash")
+	}
+	return hash
+}
+
+func mustOpenDB(dsn string, pool config.DBPoolConfig) *gorm.DB {
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		NowFunc: func() time.Time {
+			return time.Now().UTC()
+		},
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to open database")
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to get *sql.DB from gorm")
+	}
+	sqlDB.SetMaxOpenConns(pool.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(pool.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(time.Duration(pool.ConnMaxLifetimeMinutes) * time.Minute)
+
+	return db
 }

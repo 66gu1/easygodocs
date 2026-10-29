@@ -79,6 +79,9 @@ type UpdateEntityReq struct {
 	UserID        uuid.UUID  `json:"user_id"`
 	ParentChanged bool       `json:"parent_changed"`
 	EntityType    Type       `json:"entity_type"`
+	// ExpectedParentID is the parent the caller saw when checking permissions.
+	// The update fails with a conflict if the entity was moved in the meantime.
+	ExpectedParentID *uuid.UUID `json:"expected_parent_id,omitempty"`
 }
 
 type Tree []*Node

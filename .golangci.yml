@@ -61,10 +61,10 @@ linters-settings:
     check-blank: true
   forbidigo:
     forbid:
-      - 'fmt\.Print.*'   # используем zerolog
+      - 'fmt\.Print.*'   # use zerolog instead
   gosec:
     excludes:
-      - G104             # unchecked error (допускаем в местах, где у тебя лог+wrap)
+      - G104             # unchecked errors are covered by errcheck
   nolintlint:
     require-explanation: true
     require-specific: true
@@ -88,5 +88,5 @@ issues:
         - containedctx
     - path: repo/gorm
       linters:
-        - lll           # длинные raw SQL — ок
-        - dupl          # повторяющиеся SQL блоки — ок
+        - lll           # long raw SQL queries
+        - dupl          # similar SQL blocks

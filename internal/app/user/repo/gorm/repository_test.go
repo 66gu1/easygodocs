@@ -1,3 +1,5 @@
+//go:build testutil
+
 package gorm
 
 import (

@@ -16,6 +16,13 @@ import (
 
 //go:generate minimock -o ./mocks -s _mock.go
 
+// noTx runs the function without a transaction, so mocks receive the original ctx.
+type noTx struct{}
+
+func (noTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(ctx)
+}
+
 func Cfg() entity.Config {
 	return entity.Config{MaxHierarchyDepth: 1}
 }
@@ -33,6 +40,7 @@ func TestNewCore(t *testing.T) {
 	tests := []struct {
 		name      string
 		repo      entity.Repository
+		tx        entity.TxManager
 		gen       entity.Generators
 		validator entity.Validator
 		wantErr   bool
@@ -40,6 +48,7 @@ func TestNewCore(t *testing.T) {
 		{
 			name:      "success",
 			repo:      repo,
+			tx:        noTx{},
 			gen:       entity.Generators{ID: idGen, Time: timeGen},
 			validator: validator,
 			wantErr:   false,
@@ -47,6 +56,15 @@ func TestNewCore(t *testing.T) {
 		{
 			name:      "error/nil_repo",
 			repo:      nil,
+			tx:        noTx{},
+			gen:       entity.Generators{ID: idGen, Time: timeGen},
+			validator: validator,
+			wantErr:   true,
+		},
+		{
+			name:      "error/nil_tx",
+			repo:      repo,
+			tx:        nil,
 			gen:       entity.Generators{ID: idGen, Time: timeGen},
 			validator: validator,
 			wantErr:   true,
@@ -54,6 +72,7 @@ func TestNewCore(t *testing.T) {
 		{
 			name:      "error/nil_id_gen",
 			repo:      repo,
+			tx:        noTx{},
 			gen:       entity.Generators{ID: nil, Time: timeGen},
 			validator: validator,
 			wantErr:   true,
@@ -61,6 +80,7 @@ func TestNewCore(t *testing.T) {
 		{
 			name:      "error/nil_time_gen",
 			repo:      repo,
+			tx:        noTx{},
 			gen:       entity.Generators{ID: idGen, Time: nil},
 			validator: validator,
 			wantErr:   true,
@@ -68,6 +88,7 @@ func TestNewCore(t *testing.T) {
 		{
 			name:      "error/nil_validator",
 			repo:      repo,
+			tx:        noTx{},
 			gen:       entity.Generators{ID: idGen, Time: timeGen},
 			validator: nil,
 			wantErr:   true,
@@ -76,7 +97,7 @@ func TestNewCore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := entity.NewCore(tt.repo, tt.gen, tt.validator, entity.Config{MaxHierarchyDepth: 1})
+			_, err := entity.NewCore(tt.repo, tt.tx, tt.gen, tt.validator, entity.Config{MaxHierarchyDepth: 1})
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -149,7 +170,7 @@ func TestCore_Get(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.Get(ctx, tt.id)
@@ -220,7 +241,7 @@ func TestCore_GetListItem(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.GetListItem(ctx, tt.id)
@@ -346,7 +367,7 @@ func TestCore_GetTree(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.GetTree(ctx, tt.perms, tt.isAdmin)
@@ -418,7 +439,7 @@ func TestCore_GetPermittedIDs(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
 			require.NoError(t, err)
 
 			got, err := c.GetPermittedIDs(ctx, tt.perms, hType)
@@ -504,7 +525,7 @@ func TestCore_GetVersion(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.GetVersion(ctx, tt.id, tt.v)
@@ -595,7 +616,7 @@ func TestCore_GetVersionsList(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: idGen, Time: timeGen}, validator, Cfg())
 			require.NoError(t, err)
 
 			got, err := c.GetVersionsList(ctx, tt.id)
@@ -678,6 +699,7 @@ func TestCore_Create(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return(list, nil)
 				timeGen.NowMock.Expect().Return(now)
 				idGen.NewMock.Expect().Return(id, nil)
@@ -721,6 +743,7 @@ func TestCore_Create(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return(nil, expErr)
 			},
 			err: expErr,
@@ -731,9 +754,20 @@ func TestCore_Create(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{{}, {}, {}, {}}, nil)
 			},
 			err: entity.ErrMaxHierarchyDepthExceeded(cfg.MaxHierarchyDepth),
+		},
+		{
+			name: "error/repo/lock_hierarchy",
+			req:  requestWithParent,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
+				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.LockHierarchyMock.Expect(ctx).Return(expErr)
+			},
+			err: expErr,
 		},
 		{
 			name: "error/validation/parent_not_found",
@@ -741,6 +775,7 @@ func TestCore_Create(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{}, nil)
 			},
 			err: entity.ErrParentNotFound(),
@@ -751,6 +786,7 @@ func TestCore_Create(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{
 					{
 						ID:       parentID,
@@ -806,6 +842,7 @@ func TestCore_Create(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
 				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return(list, nil)
 				timeGen.NowMock.Expect().Return(now)
 				idGen.NewMock.Expect().Return(id, nil)
@@ -824,7 +861,7 @@ func TestCore_Create(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen, validator)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
 			require.NoError(t, err)
 
 			gotID, err := c.Create(ctx, tt.req)
@@ -891,6 +928,12 @@ func TestCore_Update(t *testing.T) {
 		parentList = []entity.ListItem{parentItem, {}, {}}
 		cfg        = entity.Config{MaxHierarchyDepth: 5}
 		expErr     = fmt.Errorf("test error")
+		lockRow    = func(repo *mocks.RepositoryMock, structural bool) {
+			if structural {
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
+			}
+			repo.GetListItemForUpdateMock.Expect(ctx, id).Return(entity.ListItem{ID: id}, nil)
+		}
 	)
 
 	tests := []struct {
@@ -906,6 +949,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(notNormalizedReq.Name).Return(normalizedName)
 				validator.ValidateNameMock.Expect(normalizedName).Return(nil)
+				lockRow(repo, false)
 				timeGen.NowMock.Expect().Return(now)
 				repo.UpdateMock.Expect(ctx, req, now).Return(nil)
 			},
@@ -916,6 +960,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
 				validator.ValidateNameMock.Expect(reqParentChanged.Name).Return(nil)
+				lockRow(repo, true)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then(parentList, nil)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Then(nil, nil)
 				repo.UpdateDraftMock.Expect(ctx, reqParentChanged).Return(nil)
@@ -967,6 +1012,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(req.Name).Return(reqParentRemoved.Name)
 				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				lockRow(repo, true)
 			},
 			err: entity.ErrParentCycle(),
 		},
@@ -976,6 +1022,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
 				validator.ValidateNameMock.Expect(reqParentChanged.Name).Return(nil)
+				lockRow(repo, true)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then([]entity.ListItem{
 					{
 						ID:   req.ID,
@@ -992,6 +1039,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
 				validator.ValidateNameMock.Expect(reqParentChanged.Name).Return(nil)
+				lockRow(repo, true)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then([]entity.ListItem{}, nil)
 			},
 			err: entity.ErrParentNotFound(),
@@ -1002,6 +1050,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
 				validator.ValidateNameMock.Expect(reqParentChanged.Name).Return(nil)
+				lockRow(repo, true)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then(parentList, nil)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Then([]entity.ListItem{{Depth: 3}}, nil)
 			},
@@ -1013,6 +1062,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
 				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
+				lockRow(repo, true)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return(nil, expErr)
 			},
 			err: expErr,
@@ -1023,6 +1073,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
 				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				lockRow(repo, true)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then(parentList, nil)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Then(nil, expErr)
 			},
@@ -1034,6 +1085,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
 				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				lockRow(repo, true)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{
 					{
 						ID:       parentID,
@@ -1051,6 +1103,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
 				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				lockRow(repo, true)
 			},
 			err: entity.ErrParentRequired(),
 		},
@@ -1065,6 +1118,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
 				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
+				lockRow(repo, true)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, 2, nil, entity.HierarchyTypeChildrenOnly).Then([]entity.ListItem{{}, {}}, nil)
 			},
 			err: entity.ErrCannotDraftEntityWithChildren(),
@@ -1080,9 +1134,40 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
 				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
+				lockRow(repo, true)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, 2, nil, entity.HierarchyTypeChildrenOnly).Then(nil, expErr)
 			},
 			err: expErr,
+		},
+		{
+			name: "error/repo/lock_hierarchy",
+			req:  reqParentChanged,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
+				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				repo.LockHierarchyMock.Expect(ctx).Return(expErr)
+			},
+			err: expErr,
+		},
+		{
+			name: "error/repo/lock_row",
+			req:  req,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
+				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				repo.GetListItemForUpdateMock.Expect(ctx, id).Return(entity.ListItem{}, entity.ErrEntityNotFound())
+			},
+			err: entity.ErrEntityNotFound(),
+		},
+		{
+			name: "error/moved_concurrently",
+			req:  req,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
+				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				repo.GetListItemForUpdateMock.Expect(ctx, id).Return(entity.ListItem{ID: id, ParentID: &parentID}, nil)
+			},
+			err: entity.ErrConcurrentModification(),
 		},
 		{
 			name: "error/repo/update",
@@ -1090,6 +1175,7 @@ func TestCore_Update(t *testing.T) {
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(req.Name).Return(normalizedName)
 				validator.ValidateNameMock.Expect(normalizedName).Return(nil)
+				lockRow(repo, false)
 				timeGen.NowMock.Expect().Return(now)
 				repo.UpdateMock.Expect(ctx, req, now).Return(expErr)
 			},
@@ -1106,7 +1192,7 @@ func TestCore_Update(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, idGen, timeGen, validator)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
 			require.NoError(t, err)
 
 			err = c.Update(ctx, tt.req)
@@ -1140,13 +1226,22 @@ func TestCore_Delete(t *testing.T) {
 		{
 			name: "success",
 			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return(list, nil)
 				repo.DeleteMock.Expect(ctx, ids).Return(nil)
 			},
 		},
 		{
+			name: "error/repo/LockHierarchy",
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.LockHierarchyMock.Expect(ctx).Return(expErr)
+			},
+			err: expErr,
+		},
+		{
 			name: "error/repo/GetHierarchyMock",
 			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return(nil, expErr)
 			},
 			err: expErr,
@@ -1154,6 +1249,7 @@ func TestCore_Delete(t *testing.T) {
 		{
 			name: "error/repo/Delete",
 			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return(list, nil)
 				repo.DeleteMock.Expect(ctx, ids).Return(expErr)
 			},
@@ -1162,6 +1258,7 @@ func TestCore_Delete(t *testing.T) {
 		{
 			name: "error/not found",
 			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return([]entity.ListItem{}, nil)
 			},
 			err: entity.ErrEntityNotFound(),
@@ -1169,6 +1266,7 @@ func TestCore_Delete(t *testing.T) {
 		{
 			name: "error/max hierarchy depth exceeded",
 			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Return([]entity.ListItem{{Depth: 6}}, nil)
 			},
 			err: entity.ErrMaxHierarchyDepthExceeded(cfg.MaxHierarchyDepth),
@@ -1184,7 +1282,7 @@ func TestCore_Delete(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo, timeGen)
 			}
-			c, err := entity.NewCore(repo, entity.Generators{Time: timeGen, ID: idGen}, validator, cfg)
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{Time: timeGen, ID: idGen}, validator, cfg)
 			require.NoError(t, err)
 
 			err = c.Delete(ctx, id)

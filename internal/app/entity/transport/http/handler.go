@@ -35,7 +35,6 @@ type Handler struct {
 	svc Service
 }
 
-//go:generate minimock -i github.com/66gu1/easygodocs/internal/app/entity.EntityService -o ./mock -s _mock.go
 type Service interface {
 	GetTree(ctx context.Context) (entity.Tree, error)
 	Get(ctx context.Context, id uuid.UUID) (entity.Entity, error)

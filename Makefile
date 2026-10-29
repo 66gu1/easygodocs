@@ -3,22 +3,25 @@ TAGS      ?= testutil
 RACE      ?= -race
 COUNT     ?= 1
 TIMEOUT   ?= 5m
-BIN ?= easygodocs
+BIN_DIR   ?= bin
 
 PKGS_ALL := $(shell go list ./...)
 PKGS     := $(filter-out %/mocks %/mocks/% %/mock %/mock/% %/minimock %/minimock/%,$(PKGS_ALL))
 COVERPKG := $(shell printf "%s\n" $(PKGS) | paste -sd, -)
 
 # -------- Targets --------
-.PHONY: build run fmt vet lint test cover cover-html clean tools vuln
+.PHONY: build run seed-admin fmt vet lint test cover cover-html generate clean tools vuln print-pkgs
 
 build:
-	mkdir -p bin
-	go build -o bin/$(BIN) ./cmd/server
-	go build -o bin/$(BIN) ./cmd/seedadmin
+	mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/server ./cmd/server
+	go build -o $(BIN_DIR)/seedadmin ./cmd/seedadmin
 
 run:
-	go run ./cmd
+	go run ./cmd/server
+
+seed-admin:
+	go run ./cmd/seedadmin
 
 fmt:
 	gofumpt -l -w .
@@ -52,11 +55,12 @@ generate:
 tools:
 	go install mvdan.cc/gofumpt@latest
 	go install golang.org/x/tools/cmd/goimports@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 
 clean:
 	rm -f coverage.out coverage.html
+	rm -rf $(BIN_DIR)
 
 print-pkgs:
 	@echo PKGS=$(PKGS)

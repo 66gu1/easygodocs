@@ -41,6 +41,13 @@ type CoreMock struct {
 	beforeCheckSelfOrAdminCounter uint64
 	CheckSelfOrAdminMock          mCoreMockCheckSelfOrAdmin
 
+	funcCheckSessionActive          func(session auth.Session) (err error)
+	funcCheckSessionActiveOrigin    string
+	inspectFuncCheckSessionActive   func(session auth.Session)
+	afterCheckSessionActiveCounter  uint64
+	beforeCheckSessionActiveCounter uint64
+	CheckSessionActiveMock          mCoreMockCheckSessionActive
+
 	funcDeleteSession          func(ctx context.Context, id uuid.UUID, userID uuid.UUID) (err error)
 	funcDeleteSessionOrigin    string
 	inspectFuncDeleteSession   func(ctx context.Context, id uuid.UUID, userID uuid.UUID)
@@ -121,6 +128,9 @@ func NewCoreMock(t minimock.Tester) *CoreMock {
 
 	m.CheckSelfOrAdminMock = mCoreMockCheckSelfOrAdmin{mock: m}
 	m.CheckSelfOrAdminMock.callArgs = []*CoreMockCheckSelfOrAdminParams{}
+
+	m.CheckSessionActiveMock = mCoreMockCheckSessionActive{mock: m}
+	m.CheckSessionActiveMock.callArgs = []*CoreMockCheckSessionActiveParams{}
 
 	m.DeleteSessionMock = mCoreMockDeleteSession{mock: m}
 	m.DeleteSessionMock.callArgs = []*CoreMockDeleteSessionParams{}
@@ -1146,6 +1156,317 @@ func (m *CoreMock) MinimockCheckSelfOrAdminInspect() {
 	if !m.CheckSelfOrAdminMock.invocationsDone() && afterCheckSelfOrAdminCounter > 0 {
 		m.t.Errorf("Expected %d calls to CoreMock.CheckSelfOrAdmin at\n%s but found %d calls",
 			mm_atomic.LoadUint64(&m.CheckSelfOrAdminMock.expectedInvocations), m.CheckSelfOrAdminMock.expectedInvocationsOrigin, afterCheckSelfOrAdminCounter)
+	}
+}
+
+type mCoreMockCheckSessionActive struct {
+	optional           bool
+	mock               *CoreMock
+	defaultExpectation *CoreMockCheckSessionActiveExpectation
+	expectations       []*CoreMockCheckSessionActiveExpectation
+
+	callArgs []*CoreMockCheckSessionActiveParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// CoreMockCheckSessionActiveExpectation specifies expectation struct of the Core.CheckSessionActive
+type CoreMockCheckSessionActiveExpectation struct {
+	mock               *CoreMock
+	params             *CoreMockCheckSessionActiveParams
+	paramPtrs          *CoreMockCheckSessionActiveParamPtrs
+	expectationOrigins CoreMockCheckSessionActiveExpectationOrigins
+	results            *CoreMockCheckSessionActiveResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// CoreMockCheckSessionActiveParams contains parameters of the Core.CheckSessionActive
+type CoreMockCheckSessionActiveParams struct {
+	session auth.Session
+}
+
+// CoreMockCheckSessionActiveParamPtrs contains pointers to parameters of the Core.CheckSessionActive
+type CoreMockCheckSessionActiveParamPtrs struct {
+	session *auth.Session
+}
+
+// CoreMockCheckSessionActiveResults contains results of the Core.CheckSessionActive
+type CoreMockCheckSessionActiveResults struct {
+	err error
+}
+
+// CoreMockCheckSessionActiveOrigins contains origins of expectations of the Core.CheckSessionActive
+type CoreMockCheckSessionActiveExpectationOrigins struct {
+	origin        string
+	originSession string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) Optional() *mCoreMockCheckSessionActive {
+	mmCheckSessionActive.optional = true
+	return mmCheckSessionActive
+}
+
+// Expect sets up expected params for Core.CheckSessionActive
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) Expect(session auth.Session) *mCoreMockCheckSessionActive {
+	if mmCheckSessionActive.mock.funcCheckSessionActive != nil {
+		mmCheckSessionActive.mock.t.Fatalf("CoreMock.CheckSessionActive mock is already set by Set")
+	}
+
+	if mmCheckSessionActive.defaultExpectation == nil {
+		mmCheckSessionActive.defaultExpectation = &CoreMockCheckSessionActiveExpectation{}
+	}
+
+	if mmCheckSessionActive.defaultExpectation.paramPtrs != nil {
+		mmCheckSessionActive.mock.t.Fatalf("CoreMock.CheckSessionActive mock is already set by ExpectParams functions")
+	}
+
+	mmCheckSessionActive.defaultExpectation.params = &CoreMockCheckSessionActiveParams{session}
+	mmCheckSessionActive.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmCheckSessionActive.expectations {
+		if minimock.Equal(e.params, mmCheckSessionActive.defaultExpectation.params) {
+			mmCheckSessionActive.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmCheckSessionActive.defaultExpectation.params)
+		}
+	}
+
+	return mmCheckSessionActive
+}
+
+// ExpectSessionParam1 sets up expected param session for Core.CheckSessionActive
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) ExpectSessionParam1(session auth.Session) *mCoreMockCheckSessionActive {
+	if mmCheckSessionActive.mock.funcCheckSessionActive != nil {
+		mmCheckSessionActive.mock.t.Fatalf("CoreMock.CheckSessionActive mock is already set by Set")
+	}
+
+	if mmCheckSessionActive.defaultExpectation == nil {
+		mmCheckSessionActive.defaultExpectation = &CoreMockCheckSessionActiveExpectation{}
+	}
+
+	if mmCheckSessionActive.defaultExpectation.params != nil {
+		mmCheckSessionActive.mock.t.Fatalf("CoreMock.CheckSessionActive mock is already set by Expect")
+	}
+
+	if mmCheckSessionActive.defaultExpectation.paramPtrs == nil {
+		mmCheckSessionActive.defaultExpectation.paramPtrs = &CoreMockCheckSessionActiveParamPtrs{}
+	}
+	mmCheckSessionActive.defaultExpectation.paramPtrs.session = &session
+	mmCheckSessionActive.defaultExpectation.expectationOrigins.originSession = minimock.CallerInfo(1)
+
+	return mmCheckSessionActive
+}
+
+// Inspect accepts an inspector function that has same arguments as the Core.CheckSessionActive
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) Inspect(f func(session auth.Session)) *mCoreMockCheckSessionActive {
+	if mmCheckSessionActive.mock.inspectFuncCheckSessionActive != nil {
+		mmCheckSessionActive.mock.t.Fatalf("Inspect function is already set for CoreMock.CheckSessionActive")
+	}
+
+	mmCheckSessionActive.mock.inspectFuncCheckSessionActive = f
+
+	return mmCheckSessionActive
+}
+
+// Return sets up results that will be returned by Core.CheckSessionActive
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) Return(err error) *CoreMock {
+	if mmCheckSessionActive.mock.funcCheckSessionActive != nil {
+		mmCheckSessionActive.mock.t.Fatalf("CoreMock.CheckSessionActive mock is already set by Set")
+	}
+
+	if mmCheckSessionActive.defaultExpectation == nil {
+		mmCheckSessionActive.defaultExpectation = &CoreMockCheckSessionActiveExpectation{mock: mmCheckSessionActive.mock}
+	}
+	mmCheckSessionActive.defaultExpectation.results = &CoreMockCheckSessionActiveResults{err}
+	mmCheckSessionActive.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmCheckSessionActive.mock
+}
+
+// Set uses given function f to mock the Core.CheckSessionActive method
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) Set(f func(session auth.Session) (err error)) *CoreMock {
+	if mmCheckSessionActive.defaultExpectation != nil {
+		mmCheckSessionActive.mock.t.Fatalf("Default expectation is already set for the Core.CheckSessionActive method")
+	}
+
+	if len(mmCheckSessionActive.expectations) > 0 {
+		mmCheckSessionActive.mock.t.Fatalf("Some expectations are already set for the Core.CheckSessionActive method")
+	}
+
+	mmCheckSessionActive.mock.funcCheckSessionActive = f
+	mmCheckSessionActive.mock.funcCheckSessionActiveOrigin = minimock.CallerInfo(1)
+	return mmCheckSessionActive.mock
+}
+
+// When sets expectation for the Core.CheckSessionActive which will trigger the result defined by the following
+// Then helper
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) When(session auth.Session) *CoreMockCheckSessionActiveExpectation {
+	if mmCheckSessionActive.mock.funcCheckSessionActive != nil {
+		mmCheckSessionActive.mock.t.Fatalf("CoreMock.CheckSessionActive mock is already set by Set")
+	}
+
+	expectation := &CoreMockCheckSessionActiveExpectation{
+		mock:               mmCheckSessionActive.mock,
+		params:             &CoreMockCheckSessionActiveParams{session},
+		expectationOrigins: CoreMockCheckSessionActiveExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmCheckSessionActive.expectations = append(mmCheckSessionActive.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Core.CheckSessionActive return parameters for the expectation previously defined by the When method
+func (e *CoreMockCheckSessionActiveExpectation) Then(err error) *CoreMock {
+	e.results = &CoreMockCheckSessionActiveResults{err}
+	return e.mock
+}
+
+// Times sets number of times Core.CheckSessionActive should be invoked
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) Times(n uint64) *mCoreMockCheckSessionActive {
+	if n == 0 {
+		mmCheckSessionActive.mock.t.Fatalf("Times of CoreMock.CheckSessionActive mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmCheckSessionActive.expectedInvocations, n)
+	mmCheckSessionActive.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmCheckSessionActive
+}
+
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) invocationsDone() bool {
+	if len(mmCheckSessionActive.expectations) == 0 && mmCheckSessionActive.defaultExpectation == nil && mmCheckSessionActive.mock.funcCheckSessionActive == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmCheckSessionActive.mock.afterCheckSessionActiveCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmCheckSessionActive.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// CheckSessionActive implements mm_usecase.Core
+func (mmCheckSessionActive *CoreMock) CheckSessionActive(session auth.Session) (err error) {
+	mm_atomic.AddUint64(&mmCheckSessionActive.beforeCheckSessionActiveCounter, 1)
+	defer mm_atomic.AddUint64(&mmCheckSessionActive.afterCheckSessionActiveCounter, 1)
+
+	mmCheckSessionActive.t.Helper()
+
+	if mmCheckSessionActive.inspectFuncCheckSessionActive != nil {
+		mmCheckSessionActive.inspectFuncCheckSessionActive(session)
+	}
+
+	mm_params := CoreMockCheckSessionActiveParams{session}
+
+	// Record call args
+	mmCheckSessionActive.CheckSessionActiveMock.mutex.Lock()
+	mmCheckSessionActive.CheckSessionActiveMock.callArgs = append(mmCheckSessionActive.CheckSessionActiveMock.callArgs, &mm_params)
+	mmCheckSessionActive.CheckSessionActiveMock.mutex.Unlock()
+
+	for _, e := range mmCheckSessionActive.CheckSessionActiveMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmCheckSessionActive.CheckSessionActiveMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmCheckSessionActive.CheckSessionActiveMock.defaultExpectation.Counter, 1)
+		mm_want := mmCheckSessionActive.CheckSessionActiveMock.defaultExpectation.params
+		mm_want_ptrs := mmCheckSessionActive.CheckSessionActiveMock.defaultExpectation.paramPtrs
+
+		mm_got := CoreMockCheckSessionActiveParams{session}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.session != nil && !minimock.Equal(*mm_want_ptrs.session, mm_got.session) {
+				mmCheckSessionActive.t.Errorf("CoreMock.CheckSessionActive got unexpected parameter session, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmCheckSessionActive.CheckSessionActiveMock.defaultExpectation.expectationOrigins.originSession, *mm_want_ptrs.session, mm_got.session, minimock.Diff(*mm_want_ptrs.session, mm_got.session))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmCheckSessionActive.t.Errorf("CoreMock.CheckSessionActive got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmCheckSessionActive.CheckSessionActiveMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmCheckSessionActive.CheckSessionActiveMock.defaultExpectation.results
+		if mm_results == nil {
+			mmCheckSessionActive.t.Fatal("No results are set for the CoreMock.CheckSessionActive")
+		}
+		return (*mm_results).err
+	}
+	if mmCheckSessionActive.funcCheckSessionActive != nil {
+		return mmCheckSessionActive.funcCheckSessionActive(session)
+	}
+	mmCheckSessionActive.t.Fatalf("Unexpected call to CoreMock.CheckSessionActive. %v", session)
+	return
+}
+
+// CheckSessionActiveAfterCounter returns a count of finished CoreMock.CheckSessionActive invocations
+func (mmCheckSessionActive *CoreMock) CheckSessionActiveAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmCheckSessionActive.afterCheckSessionActiveCounter)
+}
+
+// CheckSessionActiveBeforeCounter returns a count of CoreMock.CheckSessionActive invocations
+func (mmCheckSessionActive *CoreMock) CheckSessionActiveBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmCheckSessionActive.beforeCheckSessionActiveCounter)
+}
+
+// Calls returns a list of arguments used in each call to CoreMock.CheckSessionActive.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmCheckSessionActive *mCoreMockCheckSessionActive) Calls() []*CoreMockCheckSessionActiveParams {
+	mmCheckSessionActive.mutex.RLock()
+
+	argCopy := make([]*CoreMockCheckSessionActiveParams, len(mmCheckSessionActive.callArgs))
+	copy(argCopy, mmCheckSessionActive.callArgs)
+
+	mmCheckSessionActive.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockCheckSessionActiveDone returns true if the count of the CheckSessionActive invocations corresponds
+// the number of defined expectations
+func (m *CoreMock) MinimockCheckSessionActiveDone() bool {
+	if m.CheckSessionActiveMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.CheckSessionActiveMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.CheckSessionActiveMock.invocationsDone()
+}
+
+// MinimockCheckSessionActiveInspect logs each unmet expectation
+func (m *CoreMock) MinimockCheckSessionActiveInspect() {
+	for _, e := range m.CheckSessionActiveMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to CoreMock.CheckSessionActive at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterCheckSessionActiveCounter := mm_atomic.LoadUint64(&m.afterCheckSessionActiveCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.CheckSessionActiveMock.defaultExpectation != nil && afterCheckSessionActiveCounter < 1 {
+		if m.CheckSessionActiveMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to CoreMock.CheckSessionActive at\n%s", m.CheckSessionActiveMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to CoreMock.CheckSessionActive at\n%s with params: %#v", m.CheckSessionActiveMock.defaultExpectation.expectationOrigins.origin, *m.CheckSessionActiveMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcCheckSessionActive != nil && afterCheckSessionActiveCounter < 1 {
+		m.t.Errorf("Expected call to CoreMock.CheckSessionActive at\n%s", m.funcCheckSessionActiveOrigin)
+	}
+
+	if !m.CheckSessionActiveMock.invocationsDone() && afterCheckSessionActiveCounter > 0 {
+		m.t.Errorf("Expected %d calls to CoreMock.CheckSessionActive at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.CheckSessionActiveMock.expectedInvocations), m.CheckSessionActiveMock.expectedInvocationsOrigin, afterCheckSessionActiveCounter)
 	}
 }
 
@@ -4337,6 +4658,8 @@ func (m *CoreMock) MinimockFinish() {
 
 			m.MinimockCheckSelfOrAdminInspect()
 
+			m.MinimockCheckSessionActiveInspect()
+
 			m.MinimockDeleteSessionInspect()
 
 			m.MinimockDeleteSessionsByUserIDInspect()
@@ -4380,6 +4703,7 @@ func (m *CoreMock) minimockDone() bool {
 		m.MinimockAddUserRoleDone() &&
 		m.MinimockCheckIsAdminDone() &&
 		m.MinimockCheckSelfOrAdminDone() &&
+		m.MinimockCheckSessionActiveDone() &&
 		m.MinimockDeleteSessionDone() &&
 		m.MinimockDeleteSessionsByUserIDDone() &&
 		m.MinimockDeleteUserRoleDone() &&

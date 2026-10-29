@@ -1,3 +1,5 @@
+//go:build testutil
+
 package gorm
 
 import (
@@ -313,7 +315,7 @@ func TestDeleteUserRole_WithAndWithoutEntity(t *testing.T) {
 	e1 := createEntity(t, gdb, u)
 	r := auth.Role("member")
 
-	// добавим две записи: с entity и без
+	// add two roles: scoped to an entity and global
 	withEnt := auth.UserRole{UserID: u, Role: r, EntityID: &e1}
 	withoutEnt := auth.UserRole{UserID: u, Role: r, EntityID: nil}
 
@@ -328,8 +330,34 @@ func TestDeleteUserRole_WithAndWithoutEntity(t *testing.T) {
 	require.Equal(t, withoutEnt.Role, all[0].Role)
 	require.Nil(t, all[0].EntityID)
 
-	// удаляем оставшуюся
+	// delete the remaining one
 	require.NoError(t, repo.DeleteUserRole(t.Context(), withoutEnt))
+}
+
+func TestDeleteUserRolesByUserID(t *testing.T) {
+	t.Parallel()
+	repo, gdb, _ := newRepo(t)
+
+	u := createUser(t, gdb)
+	other := createUser(t, gdb)
+	e1 := createEntity(t, gdb, u)
+
+	require.NoError(t, repo.AddUserRole(t.Context(), auth.UserRole{UserID: u, Role: auth.RoleAdmin}))
+	require.NoError(t, repo.AddUserRole(t.Context(), auth.UserRole{UserID: u, Role: auth.RoleWrite, EntityID: &e1}))
+	require.NoError(t, repo.AddUserRole(t.Context(), auth.UserRole{UserID: other, Role: auth.RoleRead, EntityID: &e1}))
+
+	require.NoError(t, repo.DeleteUserRolesByUserID(t.Context(), u))
+
+	got, err := repo.ListUserRoles(t.Context(), u)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	got, err = repo.ListUserRoles(t.Context(), other)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+
+	// deleting roles of a user without roles is not an error
+	require.NoError(t, repo.DeleteUserRolesByUserID(t.Context(), u))
 }
 
 func createUser(t *testing.T, gdb *gorm.DB) uuid.UUID {

@@ -39,7 +39,6 @@ type Handler struct {
 	svc Service
 }
 
-//go:generate minimock -i github.com/66gu1/easygodocs/internal/app/user/usecase.Service -o ./mock -s _mock.go
 type Service interface {
 	CreateUser(ctx context.Context, req user.CreateUserReq) error
 	GetUser(ctx context.Context, id uuid.UUID) (user.User, error)

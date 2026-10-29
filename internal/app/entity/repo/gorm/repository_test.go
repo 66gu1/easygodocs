@@ -1,3 +1,5 @@
+//go:build testutil
+
 package gorm
 
 import (
@@ -234,7 +236,7 @@ func TestEntity_GetListItem_And_GetAll(t *testing.T) {
 	_, err = repo.GetListItem(t.Context(), uuid.New())
 	require.ErrorIs(t, err, entity.ErrEntityNotFound())
 
-	// негатив
+	// negative cases
 	cleanup()
 	_, err = repo.GetListItem(t.Context(), id1)
 	require.Error(t, err)

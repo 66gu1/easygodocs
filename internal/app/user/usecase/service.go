@@ -40,6 +40,7 @@ type AuthService interface {
 	CheckSelfOrAdmin(ctx context.Context, targetUserID uuid.UUID) error
 	CheckIsAdmin(ctx context.Context) error
 	DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error
+	DeleteUserRolesByUserID(ctx context.Context, userID uuid.UUID) error
 	CheckSelf(ctx context.Context, targetUserID uuid.UUID) error
 	IsAdmin(ctx context.Context) (bool, error)
 }
@@ -146,10 +147,18 @@ func (s *service) DeleteUser(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("user.Service.DeleteUser: %w", err)
 	}
 
-	if err := s.authService.DeleteSessionsByUserID(context.WithoutCancel(ctx), id); err != nil { // Best-effort: session cleanup is attempted, but failures are ignored
+	// Best-effort cleanup: failures are only logged, because a deleted user
+	// can't authenticate anyway (the auth middleware checks that the user exists).
+	cleanupCtx := context.WithoutCancel(ctx)
+	if err := s.authService.DeleteSessionsByUserID(cleanupCtx, id); err != nil {
 		logger.Error(ctx, err).
 			Str(user.FieldUserID.String(), id.String()).
 			Msg("user.Service.DeleteUser: failed to delete sessions")
+	}
+	if err := s.authService.DeleteUserRolesByUserID(cleanupCtx, id); err != nil {
+		logger.Error(ctx, err).
+			Str(user.FieldUserID.String(), id.String()).
+			Msg("user.Service.DeleteUser: failed to delete roles")
 	}
 	return nil
 }

@@ -11,10 +11,23 @@ import (
 )
 
 type Config struct {
-	Port        string   `mapstructure:"port" json:"port"`
-	DatabaseDSN string   `mapstructure:"database_dsn" json:"database_dsn"`
-	LogLevel    LogLevel `mapstructure:"log_level" json:"log_level"`
-	MaxBodySize int64    `mapstructure:"max_body_size" json:"max_body_size"`
+	Port        string          `mapstructure:"port" json:"port"`
+	DatabaseDSN string          `mapstructure:"database_dsn" json:"database_dsn"`
+	LogLevel    LogLevel        `mapstructure:"log_level" json:"log_level"`
+	MaxBodySize int64           `mapstructure:"max_body_size" json:"max_body_size"`
+	RateLimit   RateLimitConfig `mapstructure:"rate_limit" json:"rate_limit"`
+	DBPool      DBPoolConfig    `mapstructure:"db_pool" json:"db_pool"`
+}
+
+type DBPoolConfig struct {
+	MaxOpenConns           int `mapstructure:"max_open_conns" json:"max_open_conns"`
+	MaxIdleConns           int `mapstructure:"max_idle_conns" json:"max_idle_conns"`
+	ConnMaxLifetimeMinutes int `mapstructure:"conn_max_lifetime_minutes" json:"conn_max_lifetime_minutes"`
+}
+
+type RateLimitConfig struct {
+	// PublicRequestsPerMinute limits unauthenticated endpoints (login, refresh, register) per client IP.
+	PublicRequestsPerMinute int `mapstructure:"public_requests_per_minute" json:"public_requests_per_minute"`
 }
 
 func LoadConfig() Config {
@@ -22,6 +35,10 @@ func LoadConfig() Config {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("config")
 	viper.AddConfigPath(".")
+	viper.SetDefault("rate_limit.public_requests_per_minute", 20)
+	viper.SetDefault("db_pool.max_open_conns", 20)
+	viper.SetDefault("db_pool.max_idle_conns", 20)
+	viper.SetDefault("db_pool.conn_max_lifetime_minutes", 5)
 
 	if err := viper.ReadInConfig(); err != nil {
 		panic(fmt.Errorf("fatal error config file: %w", err))

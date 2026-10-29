@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -18,8 +19,14 @@ type TokenCodec interface {
 	ParseToken(tokenStr string, claims jwt.Claims) error
 }
 
+type SessionValidator interface {
+	ValidateSession(ctx context.Context, userID, sessionID uuid.UUID) error
+}
+
 // AuthMiddleware parses and validates JWT from Authorization header
-func AuthMiddleware(codec TokenCodec) func(http.Handler) http.Handler {
+// and checks that the session it was issued for is still active,
+// so revoked sessions and deleted users lose access immediately.
+func AuthMiddleware(codec TokenCodec, sessions SessionValidator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -72,11 +79,24 @@ func AuthMiddleware(codec TokenCodec) func(http.Handler) http.Handler {
 				return
 			}
 
-			if !claims.ExpiresAt.After(time.Now().UTC()) {
+			if claims.ExpiresAt == nil || !claims.ExpiresAt.After(time.Now().UTC()) {
 				err = apperr.ErrUnauthorized().WithDetail("token is expired")
 				logger.Error(ctx, err).
 					Msg("auth.AuthMiddleware: token is expired")
 				httpx.ReturnError(ctx, w, err)
+				return
+			}
+
+			if err = sessions.ValidateSession(ctx, userID, sessionID); err != nil {
+				logger.Error(ctx, err).
+					Str(auth.FieldUserID.String(), userID.String()).
+					Str(auth.FieldSessionID.String(), sessionID.String()).
+					Msg("auth.AuthMiddleware: session is not active")
+				if apperr.ClassOf(err) == apperr.ClassInternal {
+					httpx.ReturnError(ctx, w, err)
+					return
+				}
+				httpx.ReturnError(ctx, w, apperr.ErrUnauthorized())
 				return
 			}
 

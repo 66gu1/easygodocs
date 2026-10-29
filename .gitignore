@@ -28,6 +28,13 @@ go.work.sum
 .env
 
 docker-compose.override.yml
+
+# Build output
+bin/
+
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+
+# OS
+.DS_Store

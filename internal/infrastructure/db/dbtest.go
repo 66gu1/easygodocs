@@ -56,7 +56,7 @@ func StartPostgres() (td *TestDB, cleanup func()) {
 			},
 			WaitingFor: wait.ForSQL(nat.Port("5432/tcp"), "pgx",
 				func(host string, port nat.Port) string {
-					// DSN для ping-а контейнера
+					// DSN used to ping the container
 					return fmt.Sprintf(
 						"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable timezone=UTC",
 						host, port.Port(), defaultUser, defaultPassword, defaultDB,

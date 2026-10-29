@@ -70,6 +70,13 @@ type RepositoryMock struct {
 	beforeGetListItemCounter uint64
 	GetListItemMock          mRepositoryMockGetListItem
 
+	funcGetListItemForUpdate          func(ctx context.Context, id uuid.UUID) (l1 mm_entity.ListItem, err error)
+	funcGetListItemForUpdateOrigin    string
+	inspectFuncGetListItemForUpdate   func(ctx context.Context, id uuid.UUID)
+	afterGetListItemForUpdateCounter  uint64
+	beforeGetListItemForUpdateCounter uint64
+	GetListItemForUpdateMock          mRepositoryMockGetListItemForUpdate
+
 	funcGetVersion          func(ctx context.Context, id uuid.UUID, version int) (e1 mm_entity.Entity, err error)
 	funcGetVersionOrigin    string
 	inspectFuncGetVersion   func(ctx context.Context, id uuid.UUID, version int)
@@ -83,6 +90,13 @@ type RepositoryMock struct {
 	afterGetVersionsListCounter  uint64
 	beforeGetVersionsListCounter uint64
 	GetVersionsListMock          mRepositoryMockGetVersionsList
+
+	funcLockHierarchy          func(ctx context.Context) (err error)
+	funcLockHierarchyOrigin    string
+	inspectFuncLockHierarchy   func(ctx context.Context)
+	afterLockHierarchyCounter  uint64
+	beforeLockHierarchyCounter uint64
+	LockHierarchyMock          mRepositoryMockLockHierarchy
 
 	funcUpdate          func(ctx context.Context, req mm_entity.UpdateEntityReq, updatedAt time.Time) (err error)
 	funcUpdateOrigin    string
@@ -128,11 +142,17 @@ func NewRepositoryMock(t minimock.Tester) *RepositoryMock {
 	m.GetListItemMock = mRepositoryMockGetListItem{mock: m}
 	m.GetListItemMock.callArgs = []*RepositoryMockGetListItemParams{}
 
+	m.GetListItemForUpdateMock = mRepositoryMockGetListItemForUpdate{mock: m}
+	m.GetListItemForUpdateMock.callArgs = []*RepositoryMockGetListItemForUpdateParams{}
+
 	m.GetVersionMock = mRepositoryMockGetVersion{mock: m}
 	m.GetVersionMock.callArgs = []*RepositoryMockGetVersionParams{}
 
 	m.GetVersionsListMock = mRepositoryMockGetVersionsList{mock: m}
 	m.GetVersionsListMock.callArgs = []*RepositoryMockGetVersionsListParams{}
+
+	m.LockHierarchyMock = mRepositoryMockLockHierarchy{mock: m}
+	m.LockHierarchyMock.callArgs = []*RepositoryMockLockHierarchyParams{}
 
 	m.UpdateMock = mRepositoryMockUpdate{mock: m}
 	m.UpdateMock.callArgs = []*RepositoryMockUpdateParams{}
@@ -2698,6 +2718,349 @@ func (m *RepositoryMock) MinimockGetListItemInspect() {
 	}
 }
 
+type mRepositoryMockGetListItemForUpdate struct {
+	optional           bool
+	mock               *RepositoryMock
+	defaultExpectation *RepositoryMockGetListItemForUpdateExpectation
+	expectations       []*RepositoryMockGetListItemForUpdateExpectation
+
+	callArgs []*RepositoryMockGetListItemForUpdateParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// RepositoryMockGetListItemForUpdateExpectation specifies expectation struct of the Repository.GetListItemForUpdate
+type RepositoryMockGetListItemForUpdateExpectation struct {
+	mock               *RepositoryMock
+	params             *RepositoryMockGetListItemForUpdateParams
+	paramPtrs          *RepositoryMockGetListItemForUpdateParamPtrs
+	expectationOrigins RepositoryMockGetListItemForUpdateExpectationOrigins
+	results            *RepositoryMockGetListItemForUpdateResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// RepositoryMockGetListItemForUpdateParams contains parameters of the Repository.GetListItemForUpdate
+type RepositoryMockGetListItemForUpdateParams struct {
+	ctx context.Context
+	id  uuid.UUID
+}
+
+// RepositoryMockGetListItemForUpdateParamPtrs contains pointers to parameters of the Repository.GetListItemForUpdate
+type RepositoryMockGetListItemForUpdateParamPtrs struct {
+	ctx *context.Context
+	id  *uuid.UUID
+}
+
+// RepositoryMockGetListItemForUpdateResults contains results of the Repository.GetListItemForUpdate
+type RepositoryMockGetListItemForUpdateResults struct {
+	l1  mm_entity.ListItem
+	err error
+}
+
+// RepositoryMockGetListItemForUpdateOrigins contains origins of expectations of the Repository.GetListItemForUpdate
+type RepositoryMockGetListItemForUpdateExpectationOrigins struct {
+	origin    string
+	originCtx string
+	originId  string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) Optional() *mRepositoryMockGetListItemForUpdate {
+	mmGetListItemForUpdate.optional = true
+	return mmGetListItemForUpdate
+}
+
+// Expect sets up expected params for Repository.GetListItemForUpdate
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) Expect(ctx context.Context, id uuid.UUID) *mRepositoryMockGetListItemForUpdate {
+	if mmGetListItemForUpdate.mock.funcGetListItemForUpdate != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("RepositoryMock.GetListItemForUpdate mock is already set by Set")
+	}
+
+	if mmGetListItemForUpdate.defaultExpectation == nil {
+		mmGetListItemForUpdate.defaultExpectation = &RepositoryMockGetListItemForUpdateExpectation{}
+	}
+
+	if mmGetListItemForUpdate.defaultExpectation.paramPtrs != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("RepositoryMock.GetListItemForUpdate mock is already set by ExpectParams functions")
+	}
+
+	mmGetListItemForUpdate.defaultExpectation.params = &RepositoryMockGetListItemForUpdateParams{ctx, id}
+	mmGetListItemForUpdate.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmGetListItemForUpdate.expectations {
+		if minimock.Equal(e.params, mmGetListItemForUpdate.defaultExpectation.params) {
+			mmGetListItemForUpdate.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmGetListItemForUpdate.defaultExpectation.params)
+		}
+	}
+
+	return mmGetListItemForUpdate
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Repository.GetListItemForUpdate
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) ExpectCtxParam1(ctx context.Context) *mRepositoryMockGetListItemForUpdate {
+	if mmGetListItemForUpdate.mock.funcGetListItemForUpdate != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("RepositoryMock.GetListItemForUpdate mock is already set by Set")
+	}
+
+	if mmGetListItemForUpdate.defaultExpectation == nil {
+		mmGetListItemForUpdate.defaultExpectation = &RepositoryMockGetListItemForUpdateExpectation{}
+	}
+
+	if mmGetListItemForUpdate.defaultExpectation.params != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("RepositoryMock.GetListItemForUpdate mock is already set by Expect")
+	}
+
+	if mmGetListItemForUpdate.defaultExpectation.paramPtrs == nil {
+		mmGetListItemForUpdate.defaultExpectation.paramPtrs = &RepositoryMockGetListItemForUpdateParamPtrs{}
+	}
+	mmGetListItemForUpdate.defaultExpectation.paramPtrs.ctx = &ctx
+	mmGetListItemForUpdate.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmGetListItemForUpdate
+}
+
+// ExpectIdParam2 sets up expected param id for Repository.GetListItemForUpdate
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) ExpectIdParam2(id uuid.UUID) *mRepositoryMockGetListItemForUpdate {
+	if mmGetListItemForUpdate.mock.funcGetListItemForUpdate != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("RepositoryMock.GetListItemForUpdate mock is already set by Set")
+	}
+
+	if mmGetListItemForUpdate.defaultExpectation == nil {
+		mmGetListItemForUpdate.defaultExpectation = &RepositoryMockGetListItemForUpdateExpectation{}
+	}
+
+	if mmGetListItemForUpdate.defaultExpectation.params != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("RepositoryMock.GetListItemForUpdate mock is already set by Expect")
+	}
+
+	if mmGetListItemForUpdate.defaultExpectation.paramPtrs == nil {
+		mmGetListItemForUpdate.defaultExpectation.paramPtrs = &RepositoryMockGetListItemForUpdateParamPtrs{}
+	}
+	mmGetListItemForUpdate.defaultExpectation.paramPtrs.id = &id
+	mmGetListItemForUpdate.defaultExpectation.expectationOrigins.originId = minimock.CallerInfo(1)
+
+	return mmGetListItemForUpdate
+}
+
+// Inspect accepts an inspector function that has same arguments as the Repository.GetListItemForUpdate
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) Inspect(f func(ctx context.Context, id uuid.UUID)) *mRepositoryMockGetListItemForUpdate {
+	if mmGetListItemForUpdate.mock.inspectFuncGetListItemForUpdate != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("Inspect function is already set for RepositoryMock.GetListItemForUpdate")
+	}
+
+	mmGetListItemForUpdate.mock.inspectFuncGetListItemForUpdate = f
+
+	return mmGetListItemForUpdate
+}
+
+// Return sets up results that will be returned by Repository.GetListItemForUpdate
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) Return(l1 mm_entity.ListItem, err error) *RepositoryMock {
+	if mmGetListItemForUpdate.mock.funcGetListItemForUpdate != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("RepositoryMock.GetListItemForUpdate mock is already set by Set")
+	}
+
+	if mmGetListItemForUpdate.defaultExpectation == nil {
+		mmGetListItemForUpdate.defaultExpectation = &RepositoryMockGetListItemForUpdateExpectation{mock: mmGetListItemForUpdate.mock}
+	}
+	mmGetListItemForUpdate.defaultExpectation.results = &RepositoryMockGetListItemForUpdateResults{l1, err}
+	mmGetListItemForUpdate.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmGetListItemForUpdate.mock
+}
+
+// Set uses given function f to mock the Repository.GetListItemForUpdate method
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) Set(f func(ctx context.Context, id uuid.UUID) (l1 mm_entity.ListItem, err error)) *RepositoryMock {
+	if mmGetListItemForUpdate.defaultExpectation != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("Default expectation is already set for the Repository.GetListItemForUpdate method")
+	}
+
+	if len(mmGetListItemForUpdate.expectations) > 0 {
+		mmGetListItemForUpdate.mock.t.Fatalf("Some expectations are already set for the Repository.GetListItemForUpdate method")
+	}
+
+	mmGetListItemForUpdate.mock.funcGetListItemForUpdate = f
+	mmGetListItemForUpdate.mock.funcGetListItemForUpdateOrigin = minimock.CallerInfo(1)
+	return mmGetListItemForUpdate.mock
+}
+
+// When sets expectation for the Repository.GetListItemForUpdate which will trigger the result defined by the following
+// Then helper
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) When(ctx context.Context, id uuid.UUID) *RepositoryMockGetListItemForUpdateExpectation {
+	if mmGetListItemForUpdate.mock.funcGetListItemForUpdate != nil {
+		mmGetListItemForUpdate.mock.t.Fatalf("RepositoryMock.GetListItemForUpdate mock is already set by Set")
+	}
+
+	expectation := &RepositoryMockGetListItemForUpdateExpectation{
+		mock:               mmGetListItemForUpdate.mock,
+		params:             &RepositoryMockGetListItemForUpdateParams{ctx, id},
+		expectationOrigins: RepositoryMockGetListItemForUpdateExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmGetListItemForUpdate.expectations = append(mmGetListItemForUpdate.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Repository.GetListItemForUpdate return parameters for the expectation previously defined by the When method
+func (e *RepositoryMockGetListItemForUpdateExpectation) Then(l1 mm_entity.ListItem, err error) *RepositoryMock {
+	e.results = &RepositoryMockGetListItemForUpdateResults{l1, err}
+	return e.mock
+}
+
+// Times sets number of times Repository.GetListItemForUpdate should be invoked
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) Times(n uint64) *mRepositoryMockGetListItemForUpdate {
+	if n == 0 {
+		mmGetListItemForUpdate.mock.t.Fatalf("Times of RepositoryMock.GetListItemForUpdate mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmGetListItemForUpdate.expectedInvocations, n)
+	mmGetListItemForUpdate.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmGetListItemForUpdate
+}
+
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) invocationsDone() bool {
+	if len(mmGetListItemForUpdate.expectations) == 0 && mmGetListItemForUpdate.defaultExpectation == nil && mmGetListItemForUpdate.mock.funcGetListItemForUpdate == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmGetListItemForUpdate.mock.afterGetListItemForUpdateCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmGetListItemForUpdate.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// GetListItemForUpdate implements mm_entity.Repository
+func (mmGetListItemForUpdate *RepositoryMock) GetListItemForUpdate(ctx context.Context, id uuid.UUID) (l1 mm_entity.ListItem, err error) {
+	mm_atomic.AddUint64(&mmGetListItemForUpdate.beforeGetListItemForUpdateCounter, 1)
+	defer mm_atomic.AddUint64(&mmGetListItemForUpdate.afterGetListItemForUpdateCounter, 1)
+
+	mmGetListItemForUpdate.t.Helper()
+
+	if mmGetListItemForUpdate.inspectFuncGetListItemForUpdate != nil {
+		mmGetListItemForUpdate.inspectFuncGetListItemForUpdate(ctx, id)
+	}
+
+	mm_params := RepositoryMockGetListItemForUpdateParams{ctx, id}
+
+	// Record call args
+	mmGetListItemForUpdate.GetListItemForUpdateMock.mutex.Lock()
+	mmGetListItemForUpdate.GetListItemForUpdateMock.callArgs = append(mmGetListItemForUpdate.GetListItemForUpdateMock.callArgs, &mm_params)
+	mmGetListItemForUpdate.GetListItemForUpdateMock.mutex.Unlock()
+
+	for _, e := range mmGetListItemForUpdate.GetListItemForUpdateMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.l1, e.results.err
+		}
+	}
+
+	if mmGetListItemForUpdate.GetListItemForUpdateMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmGetListItemForUpdate.GetListItemForUpdateMock.defaultExpectation.Counter, 1)
+		mm_want := mmGetListItemForUpdate.GetListItemForUpdateMock.defaultExpectation.params
+		mm_want_ptrs := mmGetListItemForUpdate.GetListItemForUpdateMock.defaultExpectation.paramPtrs
+
+		mm_got := RepositoryMockGetListItemForUpdateParams{ctx, id}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmGetListItemForUpdate.t.Errorf("RepositoryMock.GetListItemForUpdate got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetListItemForUpdate.GetListItemForUpdateMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.id != nil && !minimock.Equal(*mm_want_ptrs.id, mm_got.id) {
+				mmGetListItemForUpdate.t.Errorf("RepositoryMock.GetListItemForUpdate got unexpected parameter id, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetListItemForUpdate.GetListItemForUpdateMock.defaultExpectation.expectationOrigins.originId, *mm_want_ptrs.id, mm_got.id, minimock.Diff(*mm_want_ptrs.id, mm_got.id))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmGetListItemForUpdate.t.Errorf("RepositoryMock.GetListItemForUpdate got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmGetListItemForUpdate.GetListItemForUpdateMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmGetListItemForUpdate.GetListItemForUpdateMock.defaultExpectation.results
+		if mm_results == nil {
+			mmGetListItemForUpdate.t.Fatal("No results are set for the RepositoryMock.GetListItemForUpdate")
+		}
+		return (*mm_results).l1, (*mm_results).err
+	}
+	if mmGetListItemForUpdate.funcGetListItemForUpdate != nil {
+		return mmGetListItemForUpdate.funcGetListItemForUpdate(ctx, id)
+	}
+	mmGetListItemForUpdate.t.Fatalf("Unexpected call to RepositoryMock.GetListItemForUpdate. %v %v", ctx, id)
+	return
+}
+
+// GetListItemForUpdateAfterCounter returns a count of finished RepositoryMock.GetListItemForUpdate invocations
+func (mmGetListItemForUpdate *RepositoryMock) GetListItemForUpdateAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetListItemForUpdate.afterGetListItemForUpdateCounter)
+}
+
+// GetListItemForUpdateBeforeCounter returns a count of RepositoryMock.GetListItemForUpdate invocations
+func (mmGetListItemForUpdate *RepositoryMock) GetListItemForUpdateBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetListItemForUpdate.beforeGetListItemForUpdateCounter)
+}
+
+// Calls returns a list of arguments used in each call to RepositoryMock.GetListItemForUpdate.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmGetListItemForUpdate *mRepositoryMockGetListItemForUpdate) Calls() []*RepositoryMockGetListItemForUpdateParams {
+	mmGetListItemForUpdate.mutex.RLock()
+
+	argCopy := make([]*RepositoryMockGetListItemForUpdateParams, len(mmGetListItemForUpdate.callArgs))
+	copy(argCopy, mmGetListItemForUpdate.callArgs)
+
+	mmGetListItemForUpdate.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockGetListItemForUpdateDone returns true if the count of the GetListItemForUpdate invocations corresponds
+// the number of defined expectations
+func (m *RepositoryMock) MinimockGetListItemForUpdateDone() bool {
+	if m.GetListItemForUpdateMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.GetListItemForUpdateMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.GetListItemForUpdateMock.invocationsDone()
+}
+
+// MinimockGetListItemForUpdateInspect logs each unmet expectation
+func (m *RepositoryMock) MinimockGetListItemForUpdateInspect() {
+	for _, e := range m.GetListItemForUpdateMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to RepositoryMock.GetListItemForUpdate at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterGetListItemForUpdateCounter := mm_atomic.LoadUint64(&m.afterGetListItemForUpdateCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.GetListItemForUpdateMock.defaultExpectation != nil && afterGetListItemForUpdateCounter < 1 {
+		if m.GetListItemForUpdateMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to RepositoryMock.GetListItemForUpdate at\n%s", m.GetListItemForUpdateMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to RepositoryMock.GetListItemForUpdate at\n%s with params: %#v", m.GetListItemForUpdateMock.defaultExpectation.expectationOrigins.origin, *m.GetListItemForUpdateMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcGetListItemForUpdate != nil && afterGetListItemForUpdateCounter < 1 {
+		m.t.Errorf("Expected call to RepositoryMock.GetListItemForUpdate at\n%s", m.funcGetListItemForUpdateOrigin)
+	}
+
+	if !m.GetListItemForUpdateMock.invocationsDone() && afterGetListItemForUpdateCounter > 0 {
+		m.t.Errorf("Expected %d calls to RepositoryMock.GetListItemForUpdate at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.GetListItemForUpdateMock.expectedInvocations), m.GetListItemForUpdateMock.expectedInvocationsOrigin, afterGetListItemForUpdateCounter)
+	}
+}
+
 type mRepositoryMockGetVersion struct {
 	optional           bool
 	mock               *RepositoryMock
@@ -3412,6 +3775,317 @@ func (m *RepositoryMock) MinimockGetVersionsListInspect() {
 	if !m.GetVersionsListMock.invocationsDone() && afterGetVersionsListCounter > 0 {
 		m.t.Errorf("Expected %d calls to RepositoryMock.GetVersionsList at\n%s but found %d calls",
 			mm_atomic.LoadUint64(&m.GetVersionsListMock.expectedInvocations), m.GetVersionsListMock.expectedInvocationsOrigin, afterGetVersionsListCounter)
+	}
+}
+
+type mRepositoryMockLockHierarchy struct {
+	optional           bool
+	mock               *RepositoryMock
+	defaultExpectation *RepositoryMockLockHierarchyExpectation
+	expectations       []*RepositoryMockLockHierarchyExpectation
+
+	callArgs []*RepositoryMockLockHierarchyParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// RepositoryMockLockHierarchyExpectation specifies expectation struct of the Repository.LockHierarchy
+type RepositoryMockLockHierarchyExpectation struct {
+	mock               *RepositoryMock
+	params             *RepositoryMockLockHierarchyParams
+	paramPtrs          *RepositoryMockLockHierarchyParamPtrs
+	expectationOrigins RepositoryMockLockHierarchyExpectationOrigins
+	results            *RepositoryMockLockHierarchyResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// RepositoryMockLockHierarchyParams contains parameters of the Repository.LockHierarchy
+type RepositoryMockLockHierarchyParams struct {
+	ctx context.Context
+}
+
+// RepositoryMockLockHierarchyParamPtrs contains pointers to parameters of the Repository.LockHierarchy
+type RepositoryMockLockHierarchyParamPtrs struct {
+	ctx *context.Context
+}
+
+// RepositoryMockLockHierarchyResults contains results of the Repository.LockHierarchy
+type RepositoryMockLockHierarchyResults struct {
+	err error
+}
+
+// RepositoryMockLockHierarchyOrigins contains origins of expectations of the Repository.LockHierarchy
+type RepositoryMockLockHierarchyExpectationOrigins struct {
+	origin    string
+	originCtx string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) Optional() *mRepositoryMockLockHierarchy {
+	mmLockHierarchy.optional = true
+	return mmLockHierarchy
+}
+
+// Expect sets up expected params for Repository.LockHierarchy
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) Expect(ctx context.Context) *mRepositoryMockLockHierarchy {
+	if mmLockHierarchy.mock.funcLockHierarchy != nil {
+		mmLockHierarchy.mock.t.Fatalf("RepositoryMock.LockHierarchy mock is already set by Set")
+	}
+
+	if mmLockHierarchy.defaultExpectation == nil {
+		mmLockHierarchy.defaultExpectation = &RepositoryMockLockHierarchyExpectation{}
+	}
+
+	if mmLockHierarchy.defaultExpectation.paramPtrs != nil {
+		mmLockHierarchy.mock.t.Fatalf("RepositoryMock.LockHierarchy mock is already set by ExpectParams functions")
+	}
+
+	mmLockHierarchy.defaultExpectation.params = &RepositoryMockLockHierarchyParams{ctx}
+	mmLockHierarchy.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmLockHierarchy.expectations {
+		if minimock.Equal(e.params, mmLockHierarchy.defaultExpectation.params) {
+			mmLockHierarchy.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmLockHierarchy.defaultExpectation.params)
+		}
+	}
+
+	return mmLockHierarchy
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Repository.LockHierarchy
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) ExpectCtxParam1(ctx context.Context) *mRepositoryMockLockHierarchy {
+	if mmLockHierarchy.mock.funcLockHierarchy != nil {
+		mmLockHierarchy.mock.t.Fatalf("RepositoryMock.LockHierarchy mock is already set by Set")
+	}
+
+	if mmLockHierarchy.defaultExpectation == nil {
+		mmLockHierarchy.defaultExpectation = &RepositoryMockLockHierarchyExpectation{}
+	}
+
+	if mmLockHierarchy.defaultExpectation.params != nil {
+		mmLockHierarchy.mock.t.Fatalf("RepositoryMock.LockHierarchy mock is already set by Expect")
+	}
+
+	if mmLockHierarchy.defaultExpectation.paramPtrs == nil {
+		mmLockHierarchy.defaultExpectation.paramPtrs = &RepositoryMockLockHierarchyParamPtrs{}
+	}
+	mmLockHierarchy.defaultExpectation.paramPtrs.ctx = &ctx
+	mmLockHierarchy.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmLockHierarchy
+}
+
+// Inspect accepts an inspector function that has same arguments as the Repository.LockHierarchy
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) Inspect(f func(ctx context.Context)) *mRepositoryMockLockHierarchy {
+	if mmLockHierarchy.mock.inspectFuncLockHierarchy != nil {
+		mmLockHierarchy.mock.t.Fatalf("Inspect function is already set for RepositoryMock.LockHierarchy")
+	}
+
+	mmLockHierarchy.mock.inspectFuncLockHierarchy = f
+
+	return mmLockHierarchy
+}
+
+// Return sets up results that will be returned by Repository.LockHierarchy
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) Return(err error) *RepositoryMock {
+	if mmLockHierarchy.mock.funcLockHierarchy != nil {
+		mmLockHierarchy.mock.t.Fatalf("RepositoryMock.LockHierarchy mock is already set by Set")
+	}
+
+	if mmLockHierarchy.defaultExpectation == nil {
+		mmLockHierarchy.defaultExpectation = &RepositoryMockLockHierarchyExpectation{mock: mmLockHierarchy.mock}
+	}
+	mmLockHierarchy.defaultExpectation.results = &RepositoryMockLockHierarchyResults{err}
+	mmLockHierarchy.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmLockHierarchy.mock
+}
+
+// Set uses given function f to mock the Repository.LockHierarchy method
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) Set(f func(ctx context.Context) (err error)) *RepositoryMock {
+	if mmLockHierarchy.defaultExpectation != nil {
+		mmLockHierarchy.mock.t.Fatalf("Default expectation is already set for the Repository.LockHierarchy method")
+	}
+
+	if len(mmLockHierarchy.expectations) > 0 {
+		mmLockHierarchy.mock.t.Fatalf("Some expectations are already set for the Repository.LockHierarchy method")
+	}
+
+	mmLockHierarchy.mock.funcLockHierarchy = f
+	mmLockHierarchy.mock.funcLockHierarchyOrigin = minimock.CallerInfo(1)
+	return mmLockHierarchy.mock
+}
+
+// When sets expectation for the Repository.LockHierarchy which will trigger the result defined by the following
+// Then helper
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) When(ctx context.Context) *RepositoryMockLockHierarchyExpectation {
+	if mmLockHierarchy.mock.funcLockHierarchy != nil {
+		mmLockHierarchy.mock.t.Fatalf("RepositoryMock.LockHierarchy mock is already set by Set")
+	}
+
+	expectation := &RepositoryMockLockHierarchyExpectation{
+		mock:               mmLockHierarchy.mock,
+		params:             &RepositoryMockLockHierarchyParams{ctx},
+		expectationOrigins: RepositoryMockLockHierarchyExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmLockHierarchy.expectations = append(mmLockHierarchy.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Repository.LockHierarchy return parameters for the expectation previously defined by the When method
+func (e *RepositoryMockLockHierarchyExpectation) Then(err error) *RepositoryMock {
+	e.results = &RepositoryMockLockHierarchyResults{err}
+	return e.mock
+}
+
+// Times sets number of times Repository.LockHierarchy should be invoked
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) Times(n uint64) *mRepositoryMockLockHierarchy {
+	if n == 0 {
+		mmLockHierarchy.mock.t.Fatalf("Times of RepositoryMock.LockHierarchy mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmLockHierarchy.expectedInvocations, n)
+	mmLockHierarchy.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmLockHierarchy
+}
+
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) invocationsDone() bool {
+	if len(mmLockHierarchy.expectations) == 0 && mmLockHierarchy.defaultExpectation == nil && mmLockHierarchy.mock.funcLockHierarchy == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmLockHierarchy.mock.afterLockHierarchyCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmLockHierarchy.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// LockHierarchy implements mm_entity.Repository
+func (mmLockHierarchy *RepositoryMock) LockHierarchy(ctx context.Context) (err error) {
+	mm_atomic.AddUint64(&mmLockHierarchy.beforeLockHierarchyCounter, 1)
+	defer mm_atomic.AddUint64(&mmLockHierarchy.afterLockHierarchyCounter, 1)
+
+	mmLockHierarchy.t.Helper()
+
+	if mmLockHierarchy.inspectFuncLockHierarchy != nil {
+		mmLockHierarchy.inspectFuncLockHierarchy(ctx)
+	}
+
+	mm_params := RepositoryMockLockHierarchyParams{ctx}
+
+	// Record call args
+	mmLockHierarchy.LockHierarchyMock.mutex.Lock()
+	mmLockHierarchy.LockHierarchyMock.callArgs = append(mmLockHierarchy.LockHierarchyMock.callArgs, &mm_params)
+	mmLockHierarchy.LockHierarchyMock.mutex.Unlock()
+
+	for _, e := range mmLockHierarchy.LockHierarchyMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmLockHierarchy.LockHierarchyMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmLockHierarchy.LockHierarchyMock.defaultExpectation.Counter, 1)
+		mm_want := mmLockHierarchy.LockHierarchyMock.defaultExpectation.params
+		mm_want_ptrs := mmLockHierarchy.LockHierarchyMock.defaultExpectation.paramPtrs
+
+		mm_got := RepositoryMockLockHierarchyParams{ctx}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmLockHierarchy.t.Errorf("RepositoryMock.LockHierarchy got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmLockHierarchy.LockHierarchyMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmLockHierarchy.t.Errorf("RepositoryMock.LockHierarchy got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmLockHierarchy.LockHierarchyMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmLockHierarchy.LockHierarchyMock.defaultExpectation.results
+		if mm_results == nil {
+			mmLockHierarchy.t.Fatal("No results are set for the RepositoryMock.LockHierarchy")
+		}
+		return (*mm_results).err
+	}
+	if mmLockHierarchy.funcLockHierarchy != nil {
+		return mmLockHierarchy.funcLockHierarchy(ctx)
+	}
+	mmLockHierarchy.t.Fatalf("Unexpected call to RepositoryMock.LockHierarchy. %v", ctx)
+	return
+}
+
+// LockHierarchyAfterCounter returns a count of finished RepositoryMock.LockHierarchy invocations
+func (mmLockHierarchy *RepositoryMock) LockHierarchyAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmLockHierarchy.afterLockHierarchyCounter)
+}
+
+// LockHierarchyBeforeCounter returns a count of RepositoryMock.LockHierarchy invocations
+func (mmLockHierarchy *RepositoryMock) LockHierarchyBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmLockHierarchy.beforeLockHierarchyCounter)
+}
+
+// Calls returns a list of arguments used in each call to RepositoryMock.LockHierarchy.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmLockHierarchy *mRepositoryMockLockHierarchy) Calls() []*RepositoryMockLockHierarchyParams {
+	mmLockHierarchy.mutex.RLock()
+
+	argCopy := make([]*RepositoryMockLockHierarchyParams, len(mmLockHierarchy.callArgs))
+	copy(argCopy, mmLockHierarchy.callArgs)
+
+	mmLockHierarchy.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockLockHierarchyDone returns true if the count of the LockHierarchy invocations corresponds
+// the number of defined expectations
+func (m *RepositoryMock) MinimockLockHierarchyDone() bool {
+	if m.LockHierarchyMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.LockHierarchyMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.LockHierarchyMock.invocationsDone()
+}
+
+// MinimockLockHierarchyInspect logs each unmet expectation
+func (m *RepositoryMock) MinimockLockHierarchyInspect() {
+	for _, e := range m.LockHierarchyMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to RepositoryMock.LockHierarchy at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterLockHierarchyCounter := mm_atomic.LoadUint64(&m.afterLockHierarchyCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.LockHierarchyMock.defaultExpectation != nil && afterLockHierarchyCounter < 1 {
+		if m.LockHierarchyMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to RepositoryMock.LockHierarchy at\n%s", m.LockHierarchyMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to RepositoryMock.LockHierarchy at\n%s with params: %#v", m.LockHierarchyMock.defaultExpectation.expectationOrigins.origin, *m.LockHierarchyMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcLockHierarchy != nil && afterLockHierarchyCounter < 1 {
+		m.t.Errorf("Expected call to RepositoryMock.LockHierarchy at\n%s", m.funcLockHierarchyOrigin)
+	}
+
+	if !m.LockHierarchyMock.invocationsDone() && afterLockHierarchyCounter > 0 {
+		m.t.Errorf("Expected %d calls to RepositoryMock.LockHierarchy at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.LockHierarchyMock.expectedInvocations), m.LockHierarchyMock.expectedInvocationsOrigin, afterLockHierarchyCounter)
 	}
 }
 
@@ -4148,9 +4822,13 @@ func (m *RepositoryMock) MinimockFinish() {
 
 			m.MinimockGetListItemInspect()
 
+			m.MinimockGetListItemForUpdateInspect()
+
 			m.MinimockGetVersionInspect()
 
 			m.MinimockGetVersionsListInspect()
+
+			m.MinimockLockHierarchyInspect()
 
 			m.MinimockUpdateInspect()
 
@@ -4185,8 +4863,10 @@ func (m *RepositoryMock) minimockDone() bool {
 		m.MinimockGetAllDone() &&
 		m.MinimockGetHierarchyDone() &&
 		m.MinimockGetListItemDone() &&
+		m.MinimockGetListItemForUpdateDone() &&
 		m.MinimockGetVersionDone() &&
 		m.MinimockGetVersionsListDone() &&
+		m.MinimockLockHierarchyDone() &&
 		m.MinimockUpdateDone() &&
 		m.MinimockUpdateDraftDone()
 }
