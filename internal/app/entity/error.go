@@ -25,11 +25,18 @@ func ErrConcurrentModification() error {
 	return apperr.New("Entity was modified by another request, please retry", CodeConflict, apperr.ClassConflict, apperr.LogLevelWarn)
 }
 
-func ErrCannotDraftEntityWithChildren() error {
-	return apperr.New("Cannot create draft for entity with children", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-		WithViolation(apperr.Violation{
-			Field: FieldEntityID, Rule: apperr.RuleInvalidState,
-		})
+func ErrDraftNotFound() error {
+	return apperr.New("Draft not found", CodeDraftNotFound, apperr.ClassNotFound, apperr.LogLevelWarn)
+}
+
+func ErrDraftOutdated() error {
+	return apperr.New("Entity was published after the draft was started, discard the draft and start a new one",
+		CodeDraftOutdated, apperr.ClassConflict, apperr.LogLevelWarn)
+}
+
+func ErrParentNotPublished() error {
+	return apperr.New("parent entity is not published", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
+		WithViolation(apperr.Violation{Field: FieldParentID, Rule: apperr.RuleInvalidState})
 }
 
 const (
@@ -38,6 +45,8 @@ const (
 	CodeParentCycle      apperr.Code = "entity/parent_cycle"
 	CodeMaxDepthExceeded apperr.Code = "entity/max_depth_exceeded"
 	CodeConflict         apperr.Code = "entity/conflict"
+	CodeDraftNotFound    apperr.Code = "entity/draft_not_found"
+	CodeDraftOutdated    apperr.Code = "entity/draft_outdated"
 )
 
 const (

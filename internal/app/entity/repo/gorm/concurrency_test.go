@@ -25,6 +25,8 @@ type entityCore interface {
 	Create(ctx context.Context, req entity.CreateEntityReq) (uuid.UUID, error)
 	Update(ctx context.Context, req entity.UpdateEntityReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	SaveDraft(ctx context.Context, req entity.SaveDraftReq) error
+	PublishDraft(ctx context.Context, entityID, userID uuid.UUID) error
 }
 
 func newEntityCore(t *testing.T, repo *Repository, gdb *gorm.DB) entityCore {
@@ -184,6 +186,43 @@ func TestConcurrency_CreateChildWhileDeletingParentLeavesNoOrphans(t *testing.T)
 		// the create won: the child must have been deleted together with the parent
 		_, err := repo.GetListItem(t.Context(), childID)
 		require.ErrorIs(t, err, entity.ErrEntityNotFound(), "iteration %d: orphaned child", i)
+	}
+}
+
+func TestConcurrency_PublishDraftsStartedFromSameVersion(t *testing.T) {
+	t.Parallel()
+	repo, gdb, _ := newEntityRepo(t)
+	core := newEntityCore(t, repo, gdb)
+	userA := createUserForEntity(t, gdb)
+	userB := createUserForEntity(t, gdb)
+
+	for i := range 20 {
+		id := createDepartment(t, core, userA, nil)
+		for _, userID := range []uuid.UUID{userA, userB} {
+			require.NoError(t, core.SaveDraft(t.Context(), entity.SaveDraftReq{
+				EntityID: id, UserID: userID, Name: "dep", Content: userID.String(),
+			}))
+		}
+
+		var errA, errB error
+		runConcurrently(
+			func() { errA = core.PublishDraft(context.Background(), id, userA) },
+			func() { errB = core.PublishDraft(context.Background(), id, userB) },
+		)
+
+		// exactly one draft is published, the other one must not silently overwrite it
+		winner := userA
+		if errA == nil {
+			require.ErrorIs(t, errB, entity.ErrDraftOutdated(), "iteration %d", i)
+		} else {
+			require.ErrorIs(t, errA, entity.ErrDraftOutdated(), "iteration %d", i)
+			require.NoError(t, errB, "iteration %d", i)
+			winner = userB
+		}
+		got, err := repo.Get(t.Context(), id)
+		require.NoError(t, err)
+		require.Equal(t, 2, *got.CurrentVersion, "iteration %d", i)
+		require.Equal(t, winner.String(), got.Content, "iteration %d", i)
 	}
 }
 

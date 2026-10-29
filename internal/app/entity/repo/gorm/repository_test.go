@@ -137,7 +137,7 @@ func TestEntity_Create_Get_Versions_Update(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestEntity_CreateDraft_And_UpdateDraft(t *testing.T) {
+func TestEntity_CreateDraft_Then_Publish(t *testing.T) {
 	t.Parallel()
 	repo, gdb, cleanup := newEntityRepo(t)
 
@@ -152,7 +152,7 @@ func TestEntity_CreateDraft_And_UpdateDraft(t *testing.T) {
 		UserID:  userID,
 	}
 
-	// create draft, version = nil
+	// never published entity: version = nil, no versions
 	require.NoError(t, repo.CreateDraft(t.Context(), req, id))
 	dto, err := repo.Get(t.Context(), id)
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestEntity_CreateDraft_And_UpdateDraft(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, vs, 0)
 
-	// update, version = 1
+	// publishing creates version 1
 	reqUpd := entity.UpdateEntityReq{
 		ID:      id,
 		Name:    "draft-1",
@@ -176,32 +176,75 @@ func TestEntity_CreateDraft_And_UpdateDraft(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, vs, 1)
 
-	// UpdateDraft, version = nil
-	reqUpd = entity.UpdateEntityReq{
-		ID:       id,
-		Name:     "draft-2",
-		Content:  "d1",
-		ParentID: nil,
-		UserID:   userID,
-	}
-	require.NoError(t, repo.UpdateDraft(t.Context(), reqUpd))
-	dto, err = repo.Get(t.Context(), id)
-	require.NoError(t, err)
-	compareEntityDTO(t, dto, req.Type, reqUpd.Name, reqUpd.Content, id, userID, userID, reqUpd.ParentID, nil)
-	vs, err = repo.GetVersionsList(t.Context(), id)
-	require.NoError(t, err)
-	require.Len(t, vs, 1)
+	// err
+	cleanup()
+	err = repo.CreateDraft(t.Context(), req, id)
+	require.Error(t, err)
+}
 
-	// not found
-	err = repo.UpdateDraft(t.Context(), entity.UpdateEntityReq{})
-	require.ErrorIs(t, err, entity.ErrEntityNotFound())
+func TestEntity_Drafts(t *testing.T) {
+	t.Parallel()
+	repo, gdb, cleanup := newEntityRepo(t)
+
+	userID := createUserForEntity(t, gdb)
+	userID2 := createUserForEntity(t, gdb)
+	id := uuid.New()
+	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
+		Type: "t", Name: "doc", Content: "published", UserID: userID,
+	}, id, time.Now().UTC()))
+
+	now := time.Now().UTC().Truncate(time.Second)
+	v1, v2 := 1, 2
+	req := entity.SaveDraftReq{EntityID: id, UserID: userID, Name: "doc-draft", Content: "draft"}
+
+	// create
+	require.NoError(t, repo.SaveDraft(t.Context(), req, &v1, now))
+	got, err := repo.GetDraft(t.Context(), id, userID)
+	require.NoError(t, err)
+	got.UpdatedAt = got.UpdatedAt.UTC()
+	require.Equal(t, entity.Draft{
+		EntityID: id, UserID: userID, Name: req.Name, Content: req.Content, BaseVersion: &v1, UpdatedAt: now,
+	}, got)
+
+	// overwrite keeps the version the draft was started from
+	req.Content = "draft-2"
+	require.NoError(t, repo.SaveDraft(t.Context(), req, &v2, now.Add(time.Minute)))
+	got, err = repo.GetDraft(t.Context(), id, userID)
+	require.NoError(t, err)
+	require.Equal(t, "draft-2", got.Content)
+	require.Equal(t, &v1, got.BaseVersion)
+	require.Equal(t, now.Add(time.Minute), got.UpdatedAt.UTC())
+
+	// the published entity is not changed by a draft
+	dto, err := repo.Get(t.Context(), id)
+	require.NoError(t, err)
+	require.Equal(t, "published", dto.Content)
+
+	// drafts are per user
+	_, err = repo.GetDraft(t.Context(), id, userID2)
+	require.ErrorIs(t, err, entity.ErrDraftNotFound())
+	require.NoError(t, repo.SaveDraft(t.Context(), entity.SaveDraftReq{
+		EntityID: id, UserID: userID2, Name: "other", Content: "other",
+	}, &v1, now))
+
+	// delete
+	require.NoError(t, repo.DeleteDraft(t.Context(), id, userID))
+	_, err = repo.GetDraft(t.Context(), id, userID)
+	require.ErrorIs(t, err, entity.ErrDraftNotFound())
+	err = repo.DeleteDraft(t.Context(), id, userID)
+	require.ErrorIs(t, err, entity.ErrDraftNotFound())
+
+	// deleting the entity deletes its drafts
+	require.NoError(t, repo.Delete(t.Context(), []uuid.UUID{id}))
+	_, err = repo.GetDraft(t.Context(), id, userID2)
+	require.ErrorIs(t, err, entity.ErrDraftNotFound())
 
 	// err
 	cleanup()
-	err = repo.UpdateDraft(t.Context(), reqUpd)
+	require.Error(t, repo.SaveDraft(t.Context(), req, &v1, now))
+	_, err = repo.GetDraft(t.Context(), id, userID)
 	require.Error(t, err)
-	err = repo.CreateDraft(t.Context(), req, id)
-	require.Error(t, err)
+	require.Error(t, repo.DeleteDraft(t.Context(), id, userID))
 }
 
 func TestEntity_GetListItem_And_GetAll(t *testing.T) {
@@ -221,8 +264,9 @@ func TestEntity_GetListItem_And_GetAll(t *testing.T) {
 	}
 	require.NoError(t, repo.Create(t.Context(), req2, id2, time.Now().UTC()))
 
-	exp1 := entity.ListItem{ID: id1, Type: req1.Type, Name: req1.Name, ParentID: req1.ParentID}
-	exp2 := entity.ListItem{ID: id2, Type: req2.Type, Name: req2.Name, ParentID: req2.ParentID}
+	v1 := 1
+	exp1 := entity.ListItem{ID: id1, Type: req1.Type, Name: req1.Name, ParentID: req1.ParentID, CurrentVersion: &v1}
+	exp2 := entity.ListItem{ID: id2, Type: req2.Type, Name: req2.Name, ParentID: req2.ParentID, CurrentVersion: &v1}
 	li, err := repo.GetListItem(t.Context(), id1)
 	require.NoError(t, err)
 	require.Equal(t, exp1, li)
@@ -250,14 +294,15 @@ func TestEntity_GetHierarchy(t *testing.T) {
 	userID := createUserForEntity(t, gdb)
 	userID2 := createUserForEntity(t, gdb)
 
-	// root -> c1 -> gc1 ; root -> c2
+	// root -> c1 -> gc1 (never published) ; root -> c2
+	v1 := 1
 	root := uuid.New()
-	rootItem := entity.ListItem{ID: root, Type: "t", Name: "root", Depth: 2}
+	rootItem := entity.ListItem{ID: root, Type: "t", Name: "root", CurrentVersion: &v1, Depth: 2}
 	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
 		Type: rootItem.Type, Name: rootItem.Name, Content: "", UserID: userID,
 	}, root, time.Now().UTC()))
 	c1 := uuid.New()
-	c1Item := entity.ListItem{ID: c1, Type: "t", Name: "c1", ParentID: &root, Depth: 1}
+	c1Item := entity.ListItem{ID: c1, Type: "t", Name: "c1", ParentID: &root, CurrentVersion: &v1, Depth: 1}
 	require.NoError(t, repo.Create(t.Context(), entity.CreateEntityReq{
 		Type: c1Item.Type, Name: c1Item.Name, Content: "", ParentID: c1Item.ParentID, UserID: userID,
 	}, c1, time.Now().UTC()))
@@ -294,12 +339,12 @@ func TestEntity_GetHierarchy(t *testing.T) {
 	require.ElementsMatch(t, []entity.ListItem{c1Item, rootItem}, res)
 
 	// userID not nil
-	// not own draft gc1 must be excluded [c1] → {root, c1}
+	// gc1 created by another user must be excluded [c1] → {root, c1}
 	res, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 5, &userID, entity.HierarchyTypeChildrenAndParents)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []entity.ListItem{rootItem, c1Item}, res)
 
-	// own draft gc1 must be included [c1] → {root, c1, gc1}
+	// gc1 created by the user must be included [c1] → {root, c1, gc1}
 	res, err = repo.GetHierarchy(t.Context(), []uuid.UUID{c1}, 5, &userID2, entity.HierarchyTypeChildrenAndParents)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []entity.ListItem{rootItem, c1Item, gc1Item}, res)

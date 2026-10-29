@@ -58,7 +58,32 @@ type ListItem struct {
 	Type     Type       `json:"type"`
 	Name     string     `json:"name"`
 	ParentID *uuid.UUID `json:"parent_id,omitempty"`
-	Depth    int        `json:"-"`
+	// CurrentVersion is nil for an entity that has never been published.
+	CurrentVersion *int `json:"current_version,omitempty"`
+	Depth          int  `json:"-"`
+}
+
+func (i ListItem) IsPublished() bool {
+	return i.CurrentVersion != nil
+}
+
+// Draft holds a user's unpublished changes to an entity.
+// Readers keep seeing the published version until the draft is published.
+type Draft struct {
+	EntityID uuid.UUID `json:"entity_id"`
+	UserID   uuid.UUID `json:"user_id"`
+	Name     string    `json:"name"`
+	Content  string    `json:"content"`
+	// BaseVersion is the published version the draft was started from.
+	BaseVersion *int      `json:"base_version,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type SaveDraftReq struct {
+	EntityID uuid.UUID `json:"entity_id"`
+	UserID   uuid.UUID `json:"user_id"`
+	Name     string    `json:"name"`
+	Content  string    `json:"content"`
 }
 
 type CreateEntityReq struct {
@@ -75,7 +100,6 @@ type UpdateEntityReq struct {
 	Name          string     `json:"name"`
 	Content       string     `json:"content"`
 	ParentID      *uuid.UUID `json:"parent_id,omitempty"`
-	IsDraft       bool       `json:"is_draft"`
 	UserID        uuid.UUID  `json:"user_id"`
 	ParentChanged bool       `json:"parent_changed"`
 	EntityType    Type       `json:"entity_type"`

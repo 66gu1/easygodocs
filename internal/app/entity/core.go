@@ -19,7 +19,9 @@ type Repository interface {
 	Create(ctx context.Context, req CreateEntityReq, id uuid.UUID, createdAt time.Time) error
 	CreateDraft(ctx context.Context, req CreateEntityReq, id uuid.UUID) error
 	Update(ctx context.Context, req UpdateEntityReq, updatedAt time.Time) error
-	UpdateDraft(ctx context.Context, req UpdateEntityReq) error
+	SaveDraft(ctx context.Context, req SaveDraftReq, baseVersion *int, updatedAt time.Time) error
+	GetDraft(ctx context.Context, entityID, userID uuid.UUID) (Draft, error)
+	DeleteDraft(ctx context.Context, entityID, userID uuid.UUID) error
 	Delete(ctx context.Context, ids []uuid.UUID) error
 	GetAll(ctx context.Context) ([]ListItem, error)
 	GetListItem(ctx context.Context, id uuid.UUID) (ListItem, error)
@@ -242,7 +244,7 @@ func (c *Core) validateParentForCreate(ctx context.Context, req CreateEntityReq)
 	}
 	for _, item := range list {
 		if item.ID == *req.ParentID {
-			if err = req.Type.ValidateParentTypeCompatibility(item.Type); err != nil {
+			if err = validateParent(item, req.Type); err != nil {
 				return fmt.Errorf("validateParentForCreate: %w", err)
 			}
 			return nil
@@ -271,9 +273,8 @@ func (c *Core) Update(ctx context.Context, req UpdateEntityReq) error {
 }
 
 func (c *Core) update(ctx context.Context, req UpdateEntityReq) error {
-	// Moving changes the tree structure, and an entity may become a draft only
-	// while it has no children, so both must not interleave with other structural changes.
-	if req.ParentChanged || req.IsDraft {
+	// Moving changes the tree structure, so it must not interleave with other structural changes.
+	if req.ParentChanged {
 		if err := c.repo.LockHierarchy(ctx); err != nil {
 			return fmt.Errorf("entity.core.update: %w", err)
 		}
@@ -285,41 +286,116 @@ func (c *Core) update(ctx context.Context, req UpdateEntityReq) error {
 		return fmt.Errorf("entity.core.update: %w", err)
 	}
 	// Permissions and ParentChanged were computed from the parent the caller saw.
-	if !equalUUIDPtr(current.ParentID, req.ExpectedParentID) {
+	if !equalPtr(current.ParentID, req.ExpectedParentID) {
 		return fmt.Errorf("entity.core.update: %w", ErrConcurrentModification())
 	}
 
-	var (
-		hasChildren         bool
-		hasChildrenComputed bool
-	)
 	if req.ParentChanged {
-		hasChildren, err = c.validateNewParentForUpdate(ctx, req)
-		if err != nil {
+		if err = c.validateNewParentForUpdate(ctx, req); err != nil {
 			return fmt.Errorf("entity.core.update: %w", err)
 		}
-		hasChildrenComputed = true
 	}
 
-	if !req.IsDraft {
+	if err = c.repo.Update(ctx, req, c.gen.Time.Now()); err != nil {
+		return fmt.Errorf("entity.core.update: %w", err)
+	}
+	return nil
+}
+
+// SaveDraft creates or overwrites the user's draft of an entity.
+func (c *Core) SaveDraft(ctx context.Context, req SaveDraftReq) error {
+	if req.EntityID == uuid.Nil {
+		return fmt.Errorf("entity.core.SaveDraft: %w", apperr.ErrNilUUID(FieldEntityID))
+	}
+	if req.UserID == uuid.Nil {
+		return fmt.Errorf("entity.core.SaveDraft: %w", apperr.ErrNilUUID(FieldUserID))
+	}
+	req.Name = c.validator.NormalizeName(req.Name)
+	if err := c.validator.ValidateName(req.Name); err != nil {
+		return fmt.Errorf("entity.core.SaveDraft: %w", err)
+	}
+
+	current, err := c.repo.GetListItem(ctx, req.EntityID)
+	if err != nil {
+		return fmt.Errorf("entity.core.SaveDraft: %w", err)
+	}
+	// The version is recorded only when the draft is created, so publishing can detect
+	// that someone else has published the entity since the draft was started.
+	if err = c.repo.SaveDraft(ctx, req, current.CurrentVersion, c.gen.Time.Now()); err != nil {
+		return fmt.Errorf("entity.core.SaveDraft: %w", err)
+	}
+	return nil
+}
+
+func (c *Core) GetDraft(ctx context.Context, entityID, userID uuid.UUID) (Draft, error) {
+	if err := validateDraftKey(entityID, userID); err != nil {
+		return Draft{}, fmt.Errorf("entity.core.GetDraft: %w", err)
+	}
+	draft, err := c.repo.GetDraft(ctx, entityID, userID)
+	if err != nil {
+		return Draft{}, fmt.Errorf("entity.core.GetDraft: %w", err)
+	}
+	return draft, nil
+}
+
+func (c *Core) DeleteDraft(ctx context.Context, entityID, userID uuid.UUID) error {
+	if err := validateDraftKey(entityID, userID); err != nil {
+		return fmt.Errorf("entity.core.DeleteDraft: %w", err)
+	}
+	if err := c.repo.DeleteDraft(ctx, entityID, userID); err != nil {
+		return fmt.Errorf("entity.core.DeleteDraft: %w", err)
+	}
+	return nil
+}
+
+// PublishDraft publishes the user's draft as a new version of the entity and deletes the draft.
+func (c *Core) PublishDraft(ctx context.Context, entityID, userID uuid.UUID) error {
+	if err := validateDraftKey(entityID, userID); err != nil {
+		return fmt.Errorf("entity.core.PublishDraft: %w", err)
+	}
+
+	err := c.tx.WithinTx(ctx, func(ctx context.Context) error {
+		// The row lock serializes publishing, so of two drafts started from
+		// the same version only the first one is published.
+		current, err := c.repo.GetListItemForUpdate(ctx, entityID)
+		if err != nil {
+			return fmt.Errorf("lock entity: %w", err)
+		}
+		draft, err := c.repo.GetDraft(ctx, entityID, userID)
+		if err != nil {
+			return fmt.Errorf("get draft: %w", err)
+		}
+		if !equalPtr(draft.BaseVersion, current.CurrentVersion) {
+			return ErrDraftOutdated()
+		}
+
+		req := UpdateEntityReq{
+			ID:       entityID,
+			Name:     draft.Name,
+			Content:  draft.Content,
+			ParentID: current.ParentID,
+			UserID:   userID,
+		}
 		if err = c.repo.Update(ctx, req, c.gen.Time.Now()); err != nil {
-			return fmt.Errorf("entity.core.update: %w", err)
+			return fmt.Errorf("update: %w", err)
+		}
+		if err = c.repo.DeleteDraft(ctx, entityID, userID); err != nil {
+			return fmt.Errorf("delete draft: %w", err)
 		}
 		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("entity.core.PublishDraft: %w", err)
 	}
+	return nil
+}
 
-	if !hasChildrenComputed {
-		list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{req.ID}, 2, nil, HierarchyTypeChildrenOnly)
-		if err != nil {
-			return fmt.Errorf("entity.core.update: %w", err)
-		}
-		hasChildren = len(list) > 1
+func validateDraftKey(entityID, userID uuid.UUID) error {
+	if entityID == uuid.Nil {
+		return apperr.ErrNilUUID(FieldEntityID)
 	}
-	if hasChildren {
-		return fmt.Errorf("entity.core.update: %w", ErrCannotDraftEntityWithChildren())
-	}
-	if err = c.repo.UpdateDraft(ctx, req); err != nil {
-		return fmt.Errorf("entity.core.update: %w", err)
+	if userID == uuid.Nil {
+		return apperr.ErrNilUUID(FieldUserID)
 	}
 	return nil
 }
@@ -361,61 +437,72 @@ func (c *Core) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (c *Core) validateNewParentForUpdate(ctx context.Context, req UpdateEntityReq) (bool, error) {
-	if req.ParentID != nil {
-		if *req.ParentID == req.ID {
-			return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrParentCycle())
+func (c *Core) validateNewParentForUpdate(ctx context.Context, req UpdateEntityReq) error {
+	if req.ParentID == nil {
+		if req.EntityType == TypeArticle {
+			return fmt.Errorf("validateNewParentForUpdate: %w", ErrParentRequired())
 		}
-		list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{*req.ParentID}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeParentsOnly)
-		if err != nil {
-			return false, fmt.Errorf("validateNewParentForUpdate: %w", err)
+		return nil
+	}
+	if *req.ParentID == req.ID {
+		return fmt.Errorf("validateNewParentForUpdate: %w", ErrParentCycle())
+	}
+	list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{*req.ParentID}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeParentsOnly)
+	if err != nil {
+		return fmt.Errorf("validateNewParentForUpdate: %w", err)
+	}
+	var (
+		parent ListItem
+		found  bool
+	)
+	for _, item := range list {
+		if !found && item.ID == *req.ParentID {
+			found = true
+			parent = item
 		}
-		var (
-			parent ListItem
-			found  bool
-		)
-		for _, item := range list {
-			if !found && item.ID == *req.ParentID {
-				found = true
-				parent = item
-			}
-			if item.ID == req.ID {
-				return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrParentCycle())
-			}
+		if item.ID == req.ID {
+			return fmt.Errorf("validateNewParentForUpdate: %w", ErrParentCycle())
 		}
-		if !found {
-			return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrParentNotFound())
-		}
-		if err = req.EntityType.ValidateParentTypeCompatibility(parent.Type); err != nil {
-			return false, fmt.Errorf("validateNewParentForUpdate: %w", err)
-		}
-		parentDepth := len(list)
+	}
+	if !found {
+		return fmt.Errorf("validateNewParentForUpdate: %w", ErrParentNotFound())
+	}
+	if err = validateParent(parent, req.EntityType); err != nil {
+		return fmt.Errorf("validateNewParentForUpdate: %w", err)
+	}
+	parentDepth := len(list)
 
-		list, err = c.repo.GetHierarchy(ctx, []uuid.UUID{req.ID}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeChildrenOnly)
-		if err != nil {
-			return false, fmt.Errorf("validateNewParentForUpdate: %w", err)
+	list, err = c.repo.GetHierarchy(ctx, []uuid.UUID{req.ID}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeChildrenOnly)
+	if err != nil {
+		return fmt.Errorf("validateNewParentForUpdate: %w", err)
+	}
+	var maxChildDepth int
+	for _, item := range list {
+		if item.Depth > maxChildDepth {
+			maxChildDepth = item.Depth
 		}
-		var maxChildDepth int
-		for _, item := range list {
-			if item.Depth > maxChildDepth {
-				maxChildDepth = item.Depth
-			}
-		}
-
-		if parentDepth+maxChildDepth > c.cfg.MaxHierarchyDepth {
-			return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrMaxHierarchyDepthExceeded(c.cfg.MaxHierarchyDepth))
-		}
-
-		return len(list) > 1, nil
-
-	} else if req.EntityType == TypeArticle {
-		return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrParentRequired())
+	}
+	if parentDepth+maxChildDepth > c.cfg.MaxHierarchyDepth {
+		return fmt.Errorf("validateNewParentForUpdate: %w", ErrMaxHierarchyDepthExceeded(c.cfg.MaxHierarchyDepth))
 	}
 
-	return false, nil
+	return nil
 }
 
-func equalUUIDPtr(a, b *uuid.UUID) bool {
+// validateParent checks that an entity of type childType may be placed under parent.
+// A never published entity is visible only to its creator, so it can't have children:
+// they would be hidden from everyone else together with it.
+func validateParent(parent ListItem, childType Type) error {
+	if !parent.IsPublished() {
+		return ErrParentNotPublished()
+	}
+	if err := childType.ValidateParentTypeCompatibility(parent.Type); err != nil {
+		return fmt.Errorf("validateParent: %w", err)
+	}
+	return nil
+}
+
+func equalPtr[T comparable](a, b *T) bool {
 	switch {
 	case a == nil && b == nil:
 		return true

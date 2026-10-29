@@ -27,7 +27,11 @@ type UpdateEntityInput struct {
 	Name     string     `json:"name"`
 	Content  string     `json:"content"`
 	ParentID *uuid.UUID `json:"parent_id,omitempty"`
-	IsDraft  bool       `json:"is_draft,omitempty"`
+}
+
+type SaveDraftInput struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
 }
 
 // Handler knows how to decode HTTP → service calls and encode responses.
@@ -43,6 +47,10 @@ type Service interface {
 	Create(ctx context.Context, req usecase.CreateEntityCmd) (uuid.UUID, error)
 	Update(ctx context.Context, req usecase.UpdateEntityCmd) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	SaveDraft(ctx context.Context, cmd usecase.SaveDraftCmd) error
+	GetDraft(ctx context.Context, entityID uuid.UUID) (entity.Draft, error)
+	DeleteDraft(ctx context.Context, entityID uuid.UUID) error
+	PublishDraft(ctx context.Context, entityID uuid.UUID) error
 }
 
 func NewHandler(svc Service) *Handler {
@@ -171,6 +179,7 @@ func (h *Handler) GetVersionsList(w http.ResponseWriter, r *http.Request) {
 // Create godoc
 // @Summary      Create entity
 // @Description  Creates a new entity. Requires write permission for the parent entity. if root entity, requires admin role.
+// @Description  With is_draft the entity is not published: it is visible only to its creator and can't have children.
 // @Tags         entities
 // @Security     BearerAuth
 // @Accept       json
@@ -201,7 +210,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update godoc
 // @Summary      Update entity
-// @Description  Updates an existing entity. Requires write permission. If changes parent, requires write permission for the new and old parents as well.
+// @Description  Updates an existing entity and publishes the changes as a new version. Requires write permission. If changes parent, requires write permission for the new and old parents as well.
 // @Tags         entities
 // @Security     BearerAuth
 // @Accept       json
@@ -231,7 +240,6 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		Name:     input.Name,
 		Content:  input.Content,
 		ParentID: input.ParentID,
-		IsDraft:  input.IsDraft,
 	}); err != nil {
 		httpx.ReturnError(ctx, w, err)
 		return
@@ -260,6 +268,125 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = h.svc.Delete(ctx, id); err != nil {
+		httpx.ReturnError(ctx, w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetDraft godoc
+// @Summary      Get own draft
+// @Description  Returns the current user's draft of the entity. Requires write permission.
+// @Tags         drafts
+// @Security     BearerAuth
+// @Produce      json
+// @Param        entity_id path string true "Entity ID"
+// @Success      200 {object} entity.Draft
+// @Failure      default {object} apperr.AppError "Error"
+// @Router       /entities/{entity_id}/draft [get]
+func (h *Handler) GetDraft(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	id, err := uuid.Parse(chi.URLParam(r, URLParamEntityID))
+	if err != nil {
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.GetDraft: invalid entity ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
+		return
+	}
+
+	draft, err := h.svc.GetDraft(ctx, id)
+	if err != nil {
+		httpx.ReturnError(ctx, w, err)
+		return
+	}
+
+	httpx.WriteJSON(ctx, w, http.StatusOK, draft)
+}
+
+// SaveDraft godoc
+// @Summary      Save own draft
+// @Description  Creates or overwrites the current user's draft of the entity. The published version doesn't change. Requires write permission.
+// @Tags         drafts
+// @Security     BearerAuth
+// @Accept       json
+// @Param        entity_id path string true "Entity ID"
+// @Param        request body SaveDraftInput true "Draft payload"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.AppError "Error"
+// @Router       /entities/{entity_id}/draft [put]
+func (h *Handler) SaveDraft(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	id, err := uuid.Parse(chi.URLParam(r, URLParamEntityID))
+	if err != nil {
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.SaveDraft: invalid entity ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
+		return
+	}
+
+	var input SaveDraftInput
+	if err = httpx.DecodeJSON(r, &input); err != nil {
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.SaveDraft: invalid request body: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
+		return
+	}
+
+	if err = h.svc.SaveDraft(ctx, usecase.SaveDraftCmd{
+		EntityID: id,
+		Name:     input.Name,
+		Content:  input.Content,
+	}); err != nil {
+		httpx.ReturnError(ctx, w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteDraft godoc
+// @Summary      Discard own draft
+// @Description  Deletes the current user's draft of the entity. Requires write permission.
+// @Tags         drafts
+// @Security     BearerAuth
+// @Param        entity_id path string true "Entity ID"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.AppError "Error"
+// @Router       /entities/{entity_id}/draft [delete]
+func (h *Handler) DeleteDraft(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	id, err := uuid.Parse(chi.URLParam(r, URLParamEntityID))
+	if err != nil {
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.DeleteDraft: invalid entity ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
+		return
+	}
+
+	if err = h.svc.DeleteDraft(ctx, id); err != nil {
+		httpx.ReturnError(ctx, w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PublishDraft godoc
+// @Summary      Publish own draft
+// @Description  Publishes the current user's draft as a new version of the entity and deletes the draft.
+// @Description  Fails with 409 if the entity has been published since the draft was started. Requires write permission.
+// @Tags         drafts
+// @Security     BearerAuth
+// @Param        entity_id path string true "Entity ID"
+// @Success      204 "No Content"
+// @Failure      default {object} apperr.AppError "Error"
+// @Router       /entities/{entity_id}/draft/publish [post]
+func (h *Handler) PublishDraft(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	id, err := uuid.Parse(chi.URLParam(r, URLParamEntityID))
+	if err != nil {
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.PublishDraft: invalid entity ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
+		return
+	}
+
+	if err = h.svc.PublishDraft(ctx, id); err != nil {
 		httpx.ReturnError(ctx, w, err)
 		return
 	}

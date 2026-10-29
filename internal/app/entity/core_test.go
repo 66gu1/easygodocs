@@ -664,11 +664,13 @@ func TestCore_Create(t *testing.T) {
 			UserID:   req.UserID,
 		}
 
-		parent = entity.ListItem{
-			ID:       parentID,
-			Type:     entity.TypeDepartment,
-			Name:     "parent",
-			ParentID: nil,
+		version = 1
+		parent  = entity.ListItem{
+			ID:             parentID,
+			Type:           entity.TypeDepartment,
+			Name:           "parent",
+			ParentID:       nil,
+			CurrentVersion: &version,
 		}
 		cfg    = entity.Config{MaxHierarchyDepth: 4}
 		list   = []entity.ListItem{parent, {}, {}}
@@ -789,14 +791,28 @@ func TestCore_Create(t *testing.T) {
 				repo.LockHierarchyMock.Expect(ctx).Return(nil)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{
 					{
-						ID:       parentID,
-						Type:     entity.TypeArticle,
-						Name:     "parent",
-						ParentID: nil,
+						ID:             parentID,
+						Type:           entity.TypeArticle,
+						Name:           "parent",
+						ParentID:       nil,
+						CurrentVersion: &version,
 					},
 				}, nil)
 			},
 			err: entity.ErrIncompatibleParentType(),
+		},
+		{
+			name: "error/validation/parent_not_published",
+			req:  requestWithParent,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(requestWithParent.Name).Return(requestWithParent.Name)
+				validator.ValidateNameMock.Expect(requestWithParent.Name).Return(nil)
+				repo.LockHierarchyMock.Expect(ctx).Return(nil)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{
+					{ID: parentID, Type: entity.TypeDepartment, Name: "parent"},
+				}, nil)
+			},
+			err: entity.ErrParentNotPublished(),
 		},
 		{
 			name: "error/validation/parent_required",
@@ -888,14 +904,12 @@ func TestCore_Update(t *testing.T) {
 			ID:      id,
 			Name:    normalizedName,
 			Content: "content",
-			IsDraft: false,
 			UserID:  userID,
 		}
 		notNormalizedReq = entity.UpdateEntityReq{
 			ID:      req.ID,
 			Name:    " Name ",
 			Content: req.Content,
-			IsDraft: req.IsDraft,
 			UserID:  req.UserID,
 		}
 		reqParentRemoved = entity.UpdateEntityReq{
@@ -904,7 +918,6 @@ func TestCore_Update(t *testing.T) {
 			Content:       req.Content,
 			ParentID:      nil,
 			ParentChanged: true,
-			IsDraft:       true,
 			UserID:        req.UserID,
 			EntityType:    entity.TypeArticle,
 		}
@@ -914,16 +927,17 @@ func TestCore_Update(t *testing.T) {
 			Name:          req.Name,
 			Content:       req.Content,
 			ParentID:      &parentID,
-			IsDraft:       true,
 			UserID:        req.UserID,
 			ParentChanged: true,
 			EntityType:    entity.TypeDepartment,
 		}
+		version    = 1
 		parentItem = entity.ListItem{
-			ID:       parentID,
-			Type:     entity.TypeDepartment,
-			Name:     "parent",
-			ParentID: nil,
+			ID:             parentID,
+			Type:           entity.TypeDepartment,
+			Name:           "parent",
+			ParentID:       nil,
+			CurrentVersion: &version,
 		}
 		parentList = []entity.ListItem{parentItem, {}, {}}
 		cfg        = entity.Config{MaxHierarchyDepth: 5}
@@ -955,7 +969,7 @@ func TestCore_Update(t *testing.T) {
 			},
 		},
 		{
-			name: "success/parent_changed/draft",
+			name: "success/parent_changed",
 			req:  reqParentChanged,
 			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
 				validator.NormalizeNameMock.Expect(reqParentChanged.Name).Return(reqParentChanged.Name)
@@ -963,7 +977,8 @@ func TestCore_Update(t *testing.T) {
 				lockRow(repo, true)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Then(parentList, nil)
 				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeChildrenOnly).Then(nil, nil)
-				repo.UpdateDraftMock.Expect(ctx, reqParentChanged).Return(nil)
+				timeGen.NowMock.Expect().Return(now)
+				repo.UpdateMock.Expect(ctx, reqParentChanged, now).Return(nil)
 			},
 		},
 		{
@@ -972,7 +987,6 @@ func TestCore_Update(t *testing.T) {
 				ID:      uuid.Nil,
 				Name:    req.Name,
 				Content: req.Content,
-				IsDraft: req.IsDraft,
 				UserID:  req.UserID,
 			},
 			err: apperr.ErrNilUUID(entity.FieldEntityID),
@@ -983,7 +997,6 @@ func TestCore_Update(t *testing.T) {
 				ID:      req.ID,
 				Name:    req.Name,
 				Content: req.Content,
-				IsDraft: req.IsDraft,
 				UserID:  uuid.Nil,
 			},
 			err: apperr.ErrNilUUID(entity.FieldUserID),
@@ -1005,7 +1018,6 @@ func TestCore_Update(t *testing.T) {
 				Content:       req.Content,
 				ParentID:      &id,
 				ParentChanged: true,
-				IsDraft:       req.IsDraft,
 				UserID:        req.UserID,
 				EntityType:    entity.TypeDepartment,
 			},
@@ -1088,14 +1100,28 @@ func TestCore_Update(t *testing.T) {
 				lockRow(repo, true)
 				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{
 					{
-						ID:       parentID,
-						Type:     entity.TypeArticle,
-						Name:     "parent",
-						ParentID: nil,
+						ID:             parentID,
+						Type:           entity.TypeArticle,
+						Name:           "parent",
+						ParentID:       nil,
+						CurrentVersion: &version,
 					},
 				}, nil)
 			},
 			err: entity.ErrIncompatibleParentType(),
+		},
+		{
+			name: "error/validation/parent_not_published",
+			req:  reqParentChanged,
+			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
+				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				lockRow(repo, true)
+				repo.GetHierarchyMock.Expect(ctx, []uuid.UUID{parentID}, cfg.MaxHierarchyDepth+1, nil, entity.HierarchyTypeParentsOnly).Return([]entity.ListItem{
+					{ID: parentID, Type: entity.TypeDepartment, Name: "parent"},
+				}, nil)
+			},
+			err: entity.ErrParentNotPublished(),
 		},
 		{
 			name: "error/validation/parent_required",
@@ -1106,38 +1132,6 @@ func TestCore_Update(t *testing.T) {
 				lockRow(repo, true)
 			},
 			err: entity.ErrParentRequired(),
-		},
-		{
-			name: "error/update_draft/has_children",
-			req: entity.UpdateEntityReq{
-				ID:      req.ID,
-				UserID:  userID,
-				Name:    reqParentChanged.Name,
-				IsDraft: reqParentChanged.IsDraft,
-			},
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
-				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
-				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
-				lockRow(repo, true)
-				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, 2, nil, entity.HierarchyTypeChildrenOnly).Then([]entity.ListItem{{}, {}}, nil)
-			},
-			err: entity.ErrCannotDraftEntityWithChildren(),
-		},
-		{
-			name: "error/update_draft/repo/GetHierarchy",
-			req: entity.UpdateEntityReq{
-				ID:      req.ID,
-				UserID:  userID,
-				Name:    reqParentChanged.Name,
-				IsDraft: reqParentChanged.IsDraft,
-			},
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
-				validator.NormalizeNameMock.Expect(reqParentRemoved.Name).Return(reqParentRemoved.Name)
-				validator.ValidateNameMock.Expect(reqParentRemoved.Name).Return(nil)
-				lockRow(repo, true)
-				repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, 2, nil, entity.HierarchyTypeChildrenOnly).Then(nil, expErr)
-			},
-			err: expErr,
 		},
 		{
 			name: "error/repo/lock_hierarchy",
@@ -1196,6 +1190,314 @@ func TestCore_Update(t *testing.T) {
 			require.NoError(t, err)
 
 			err = c.Update(ctx, tt.req)
+			if tt.err != nil {
+				require.ErrorIs(t, err, tt.err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestCore_SaveDraft(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx            = context.Background()
+		entityID       = uuid.New()
+		userID         = uuid.New()
+		now            = time.Now()
+		version        = 3
+		normalizedName = "n_name"
+		req            = entity.SaveDraftReq{EntityID: entityID, UserID: userID, Name: normalizedName, Content: "content"}
+		rawReq         = entity.SaveDraftReq{EntityID: entityID, UserID: userID, Name: " Name ", Content: req.Content}
+		expErr         = fmt.Errorf("test error")
+	)
+
+	tests := []struct {
+		name  string
+		req   entity.SaveDraftReq
+		setup func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock)
+		err   error
+	}{
+		{
+			name: "success/normalize",
+			req:  rawReq,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(rawReq.Name).Return(normalizedName)
+				validator.ValidateNameMock.Expect(normalizedName).Return(nil)
+				repo.GetListItemMock.Expect(ctx, entityID).Return(entity.ListItem{ID: entityID, CurrentVersion: &version}, nil)
+				timeGen.NowMock.Expect().Return(now)
+				repo.SaveDraftMock.Expect(ctx, req, &version, now).Return(nil)
+			},
+		},
+		{
+			name: "error/validation/nil_entity_id",
+			req:  entity.SaveDraftReq{UserID: userID, Name: req.Name},
+			err:  apperr.ErrNilUUID(entity.FieldEntityID),
+		},
+		{
+			name: "error/validation/nil_user_id",
+			req:  entity.SaveDraftReq{EntityID: entityID, Name: req.Name},
+			err:  apperr.ErrNilUUID(entity.FieldUserID),
+		},
+		{
+			name: "error/validation/invalid_name",
+			req:  req,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
+				validator.ValidateNameMock.Expect(req.Name).Return(expErr)
+			},
+			err: expErr,
+		},
+		{
+			name: "error/repo/get_list_item",
+			req:  req,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
+				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				repo.GetListItemMock.Expect(ctx, entityID).Return(entity.ListItem{}, entity.ErrEntityNotFound())
+			},
+			err: entity.ErrEntityNotFound(),
+		},
+		{
+			name: "error/repo/save_draft",
+			req:  req,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock, validator *mocks.ValidatorMock) {
+				validator.NormalizeNameMock.Expect(req.Name).Return(req.Name)
+				validator.ValidateNameMock.Expect(req.Name).Return(nil)
+				repo.GetListItemMock.Expect(ctx, entityID).Return(entity.ListItem{ID: entityID}, nil)
+				timeGen.NowMock.Expect().Return(now)
+				repo.SaveDraftMock.Expect(ctx, req, nil, now).Return(expErr)
+			},
+			err: expErr,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := mocks.NewRepositoryMock(t)
+			timeGen := mocks.NewTimeGeneratorMock(t)
+			validator := mocks.NewValidatorMock(t)
+			if tt.setup != nil {
+				tt.setup(repo, timeGen, validator)
+			}
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: mocks.NewIDGeneratorMock(t), Time: timeGen}, validator, Cfg())
+			require.NoError(t, err)
+
+			err = c.SaveDraft(ctx, tt.req)
+			if tt.err != nil {
+				require.ErrorIs(t, err, tt.err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestCore_GetDraft_DeleteDraft(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx      = context.Background()
+		entityID = uuid.New()
+		userID   = uuid.New()
+		draft    = entity.Draft{EntityID: entityID, UserID: userID, Name: "name", Content: "content"}
+		expErr   = fmt.Errorf("test error")
+	)
+
+	tests := []struct {
+		name     string
+		entityID uuid.UUID
+		userID   uuid.UUID
+		setup    func(repo *mocks.RepositoryMock)
+		err      error
+	}{
+		{
+			name:     "success",
+			entityID: entityID,
+			userID:   userID,
+			setup: func(repo *mocks.RepositoryMock) {
+				repo.GetDraftMock.Expect(ctx, entityID, userID).Return(draft, nil)
+				repo.DeleteDraftMock.Expect(ctx, entityID, userID).Return(nil)
+			},
+		},
+		{
+			name:   "error/validation/nil_entity_id",
+			userID: userID,
+			err:    apperr.ErrNilUUID(entity.FieldEntityID),
+		},
+		{
+			name:     "error/validation/nil_user_id",
+			entityID: entityID,
+			err:      apperr.ErrNilUUID(entity.FieldUserID),
+		},
+		{
+			name:     "error/repo",
+			entityID: entityID,
+			userID:   userID,
+			setup: func(repo *mocks.RepositoryMock) {
+				repo.GetDraftMock.Expect(ctx, entityID, userID).Return(entity.Draft{}, expErr)
+				repo.DeleteDraftMock.Expect(ctx, entityID, userID).Return(expErr)
+			},
+			err: expErr,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := mocks.NewRepositoryMock(t)
+			if tt.setup != nil {
+				tt.setup(repo)
+			}
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: mocks.NewIDGeneratorMock(t), Time: mocks.NewTimeGeneratorMock(t)}, mocks.NewValidatorMock(t), Cfg())
+			require.NoError(t, err)
+
+			got, getErr := c.GetDraft(ctx, tt.entityID, tt.userID)
+			deleteErr := c.DeleteDraft(ctx, tt.entityID, tt.userID)
+			if tt.err != nil {
+				require.ErrorIs(t, getErr, tt.err)
+				require.ErrorIs(t, deleteErr, tt.err)
+				return
+			}
+			require.NoError(t, getErr)
+			require.NoError(t, deleteErr)
+			require.Equal(t, draft, got)
+		})
+	}
+}
+
+func TestCore_PublishDraft(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx      = context.Background()
+		entityID = uuid.New()
+		userID   = uuid.New()
+		parentID = uuid.New()
+		now      = time.Now()
+		v1, v2   = 1, 2
+		current  = entity.ListItem{ID: entityID, ParentID: &parentID, CurrentVersion: &v1}
+		draft    = entity.Draft{EntityID: entityID, UserID: userID, Name: "name", Content: "content", BaseVersion: &v1}
+		// the draft is published under the current parent: moving is not part of a draft
+		updateReq = entity.UpdateEntityReq{
+			ID:       entityID,
+			Name:     draft.Name,
+			Content:  draft.Content,
+			ParentID: &parentID,
+			UserID:   userID,
+		}
+		expErr = fmt.Errorf("test error")
+	)
+
+	tests := []struct {
+		name     string
+		entityID uuid.UUID
+		userID   uuid.UUID
+		setup    func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock)
+		err      error
+	}{
+		{
+			name:     "success",
+			entityID: entityID,
+			userID:   userID,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetListItemForUpdateMock.Expect(ctx, entityID).Return(current, nil)
+				repo.GetDraftMock.Expect(ctx, entityID, userID).Return(draft, nil)
+				timeGen.NowMock.Expect().Return(now)
+				repo.UpdateMock.Expect(ctx, updateReq, now).Return(nil)
+				repo.DeleteDraftMock.Expect(ctx, entityID, userID).Return(nil)
+			},
+		},
+		{
+			name:     "success/never_published",
+			entityID: entityID,
+			userID:   userID,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetListItemForUpdateMock.Expect(ctx, entityID).Return(entity.ListItem{ID: entityID, ParentID: &parentID}, nil)
+				repo.GetDraftMock.Expect(ctx, entityID, userID).Return(entity.Draft{Name: draft.Name, Content: draft.Content}, nil)
+				timeGen.NowMock.Expect().Return(now)
+				repo.UpdateMock.Expect(ctx, updateReq, now).Return(nil)
+				repo.DeleteDraftMock.Expect(ctx, entityID, userID).Return(nil)
+			},
+		},
+		{
+			name:     "error/draft_outdated",
+			entityID: entityID,
+			userID:   userID,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetListItemForUpdateMock.Expect(ctx, entityID).Return(entity.ListItem{ID: entityID, CurrentVersion: &v2}, nil)
+				repo.GetDraftMock.Expect(ctx, entityID, userID).Return(draft, nil)
+			},
+			err: entity.ErrDraftOutdated(),
+		},
+		{
+			name:   "error/validation/nil_entity_id",
+			userID: userID,
+			err:    apperr.ErrNilUUID(entity.FieldEntityID),
+		},
+		{
+			name:     "error/validation/nil_user_id",
+			entityID: entityID,
+			err:      apperr.ErrNilUUID(entity.FieldUserID),
+		},
+		{
+			name:     "error/repo/lock_row",
+			entityID: entityID,
+			userID:   userID,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetListItemForUpdateMock.Expect(ctx, entityID).Return(entity.ListItem{}, entity.ErrEntityNotFound())
+			},
+			err: entity.ErrEntityNotFound(),
+		},
+		{
+			name:     "error/repo/get_draft",
+			entityID: entityID,
+			userID:   userID,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetListItemForUpdateMock.Expect(ctx, entityID).Return(current, nil)
+				repo.GetDraftMock.Expect(ctx, entityID, userID).Return(entity.Draft{}, entity.ErrDraftNotFound())
+			},
+			err: entity.ErrDraftNotFound(),
+		},
+		{
+			name:     "error/repo/update",
+			entityID: entityID,
+			userID:   userID,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetListItemForUpdateMock.Expect(ctx, entityID).Return(current, nil)
+				repo.GetDraftMock.Expect(ctx, entityID, userID).Return(draft, nil)
+				timeGen.NowMock.Expect().Return(now)
+				repo.UpdateMock.Expect(ctx, updateReq, now).Return(expErr)
+			},
+			err: expErr,
+		},
+		{
+			name:     "error/repo/delete_draft",
+			entityID: entityID,
+			userID:   userID,
+			setup: func(repo *mocks.RepositoryMock, timeGen *mocks.TimeGeneratorMock) {
+				repo.GetListItemForUpdateMock.Expect(ctx, entityID).Return(current, nil)
+				repo.GetDraftMock.Expect(ctx, entityID, userID).Return(draft, nil)
+				timeGen.NowMock.Expect().Return(now)
+				repo.UpdateMock.Expect(ctx, updateReq, now).Return(nil)
+				repo.DeleteDraftMock.Expect(ctx, entityID, userID).Return(expErr)
+			},
+			err: expErr,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := mocks.NewRepositoryMock(t)
+			timeGen := mocks.NewTimeGeneratorMock(t)
+			if tt.setup != nil {
+				tt.setup(repo, timeGen)
+			}
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: mocks.NewIDGeneratorMock(t), Time: timeGen}, mocks.NewValidatorMock(t), Cfg())
+			require.NoError(t, err)
+
+			err = c.PublishDraft(ctx, tt.entityID, tt.userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
 				return

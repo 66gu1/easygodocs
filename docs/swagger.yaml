@@ -112,6 +112,22 @@ definitions:
       user_id:
         type: string
     type: object
+  entity.Draft:
+    properties:
+      base_version:
+        description: BaseVersion is the published version the draft was started from.
+        type: integer
+      content:
+        type: string
+      entity_id:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   entity.Entity:
     properties:
       content:
@@ -141,6 +157,9 @@ definitions:
         items:
           $ref: '#/definitions/entity.Node'
         type: array
+      current_version:
+        description: CurrentVersion is nil for an entity that has never been published.
+        type: integer
       id:
         type: string
       name:
@@ -186,12 +205,17 @@ definitions:
       password:
         type: string
     type: object
+  http.SaveDraftInput:
+    properties:
+      content:
+        type: string
+      name:
+        type: string
+    type: object
   http.UpdateEntityInput:
     properties:
       content:
         type: string
-      is_draft:
-        type: boolean
       name:
         type: string
       parent_id:
@@ -264,8 +288,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Creates a new entity. Requires write permission for the parent
-        entity. if root entity, requires admin role.
+      description: |-
+        Creates a new entity. Requires write permission for the parent entity. if root entity, requires admin role.
+        With is_draft the entity is not published: it is visible only to its creator and can't have children.
       parameters:
       - description: Create entity payload
         in: body
@@ -337,8 +362,9 @@ paths:
     put:
       consumes:
       - application/json
-      description: Updates an existing entity. Requires write permission. If changes
-        parent, requires write permission for the new and old parents as well.
+      description: Updates an existing entity and publishes the changes as a new version.
+        Requires write permission. If changes parent, requires write permission for
+        the new and old parents as well.
       parameters:
       - description: Entity ID
         in: path
@@ -363,6 +389,105 @@ paths:
       summary: Update entity
       tags:
       - entities
+  /entities/{entity_id}/draft:
+    delete:
+      description: Deletes the current user's draft of the entity. Requires write
+        permission.
+      parameters:
+      - description: Entity ID
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.AppError'
+      security:
+      - BearerAuth: []
+      summary: Discard own draft
+      tags:
+      - drafts
+    get:
+      description: Returns the current user's draft of the entity. Requires write
+        permission.
+      parameters:
+      - description: Entity ID
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/entity.Draft'
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.AppError'
+      security:
+      - BearerAuth: []
+      summary: Get own draft
+      tags:
+      - drafts
+    put:
+      consumes:
+      - application/json
+      description: Creates or overwrites the current user's draft of the entity. The
+        published version doesn't change. Requires write permission.
+      parameters:
+      - description: Entity ID
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      - description: Draft payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.SaveDraftInput'
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.AppError'
+      security:
+      - BearerAuth: []
+      summary: Save own draft
+      tags:
+      - drafts
+  /entities/{entity_id}/draft/publish:
+    post:
+      description: |-
+        Publishes the current user's draft as a new version of the entity and deletes the draft.
+        Fails with 409 if the entity has been published since the draft was started. Requires write permission.
+      parameters:
+      - description: Entity ID
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          schema:
+            $ref: '#/definitions/apperr.AppError'
+      security:
+      - BearerAuth: []
+      summary: Publish own draft
+      tags:
+      - drafts
   /entities/{entity_id}/versions:
     get:
       description: Returns list of all versions for an entity. Requires read permission.

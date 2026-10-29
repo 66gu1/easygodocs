@@ -22,6 +22,10 @@ type Core interface {
 	GetListItem(ctx context.Context, id uuid.UUID) (entity.ListItem, error)
 	Update(ctx context.Context, req entity.UpdateEntityReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	SaveDraft(ctx context.Context, req entity.SaveDraftReq) error
+	GetDraft(ctx context.Context, entityID, userID uuid.UUID) (entity.Draft, error)
+	DeleteDraft(ctx context.Context, entityID, userID uuid.UUID) error
+	PublishDraft(ctx context.Context, entityID, userID uuid.UUID) error
 }
 
 type AuthCore interface {
@@ -47,7 +51,12 @@ type UpdateEntityCmd struct {
 	Name     string     `json:"name"`
 	Content  string     `json:"content"`
 	ParentID *uuid.UUID `json:"parent_id,omitempty"`
-	IsDraft  bool       `json:"is_draft,omitempty"`
+}
+
+type SaveDraftCmd struct {
+	EntityID uuid.UUID `json:"entity_id"`
+	Name     string    `json:"name"`
+	Content  string    `json:"content"`
 }
 
 type Service struct {
@@ -173,7 +182,6 @@ func (s *Service) Update(ctx context.Context, cmd UpdateEntityCmd) error {
 		Name:          cmd.Name,
 		Content:       cmd.Content,
 		ParentID:      cmd.ParentID,
-		IsDraft:       cmd.IsDraft,
 		UserID:        userID,
 		ParentChanged: parentChanged,
 		EntityType:    oldEntity.Type,
@@ -199,6 +207,77 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 
 	return nil
+}
+
+// Drafts are personal: every operation works with the current user's draft
+// and requires write permission for the entity.
+
+func (s *Service) SaveDraft(ctx context.Context, cmd SaveDraftCmd) error {
+	userID, err := s.checkDraftAccess(ctx, cmd.EntityID)
+	if err != nil {
+		return fmt.Errorf("entity.service.SaveDraft: %w", err)
+	}
+	req := entity.SaveDraftReq{
+		EntityID: cmd.EntityID,
+		UserID:   userID,
+		Name:     cmd.Name,
+		Content:  cmd.Content,
+	}
+	if err = s.core.SaveDraft(ctx, req); err != nil {
+		return fmt.Errorf("entity.service.SaveDraft: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) GetDraft(ctx context.Context, entityID uuid.UUID) (entity.Draft, error) {
+	userID, err := s.checkDraftAccess(ctx, entityID)
+	if err != nil {
+		return entity.Draft{}, fmt.Errorf("entity.service.GetDraft: %w", err)
+	}
+	draft, err := s.core.GetDraft(ctx, entityID, userID)
+	if err != nil {
+		return entity.Draft{}, fmt.Errorf("entity.service.GetDraft: %w", err)
+	}
+
+	return draft, nil
+}
+
+func (s *Service) DeleteDraft(ctx context.Context, entityID uuid.UUID) error {
+	userID, err := s.checkDraftAccess(ctx, entityID)
+	if err != nil {
+		return fmt.Errorf("entity.service.DeleteDraft: %w", err)
+	}
+	if err = s.core.DeleteDraft(ctx, entityID, userID); err != nil {
+		return fmt.Errorf("entity.service.DeleteDraft: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) PublishDraft(ctx context.Context, entityID uuid.UUID) error {
+	userID, err := s.checkDraftAccess(ctx, entityID)
+	if err != nil {
+		return fmt.Errorf("entity.service.PublishDraft: %w", err)
+	}
+	if err = s.core.PublishDraft(ctx, entityID, userID); err != nil {
+		return fmt.Errorf("entity.service.PublishDraft: %w", err)
+	}
+
+	return nil
+}
+
+// checkDraftAccess checks write permission for the entity and returns the current user ID.
+func (s *Service) checkDraftAccess(ctx context.Context, entityID uuid.UUID) (uuid.UUID, error) {
+	if err := s.perm.CheckEntityPermission(ctx, entityID, auth.RoleWrite); err != nil {
+		return uuid.Nil, fmt.Errorf("checkDraftAccess: %w", err)
+	}
+	userID, err := contextx.GetUserID(ctx)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("checkDraftAccess: %w", err)
+	}
+
+	return userID, nil
 }
 
 type DefaultPermissionChecker struct {

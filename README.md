@@ -55,10 +55,13 @@ All entities (both departments and articles) support **content versioning**:
 - Any version can be retrieved via the API.
 - The latest version is marked as *current*.
 
-Entities can also be saved as **drafts**:
-- Drafts are visible only to their creator and to admins.
-- Once published, a draft becomes the new current version.
-- An already published entity can be moved back to draft **only if it has no child entities**.
+Changes can be prepared in **drafts** without affecting readers:
+- Every user with write permission has their own draft of an entity (`/entities/{id}/draft`).
+  Readers keep seeing the published version until the draft is published.
+- Publishing a draft creates a new version. If someone else has published the entity since the draft
+  was started, publishing fails with `409 Conflict` instead of silently overwriting their changes.
+- A new entity can be created unpublished (`is_draft: true`). It is visible only to its creator and admins
+  and can't have children until it is published.
 
 This provides an audit trail of changes and allows safe editing workflows while preserving hierarchy consistency.
 

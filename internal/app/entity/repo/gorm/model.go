@@ -69,11 +69,12 @@ func (m *versionModel) toDTO() entity.Entity {
 
 type entityListItemModel struct {
 	db.Base
-	ID       uuid.UUID
-	Type     entity.Type
-	Name     string
-	ParentID *uuid.UUID
-	Depth    int
+	ID             uuid.UUID
+	Type           entity.Type
+	Name           string
+	ParentID       *uuid.UUID
+	CurrentVersion *int
+	Depth          int
 }
 
 func (m *entityListItemModel) TableName() string {
@@ -82,10 +83,35 @@ func (m *entityListItemModel) TableName() string {
 
 func (m entityListItemModel) toDTO() entity.ListItem {
 	return entity.ListItem{
-		ID:       m.ID,
-		Type:     m.Type,
-		Name:     m.Name,
-		ParentID: m.ParentID,
-		Depth:    m.Depth,
+		ID:             m.ID,
+		Type:           m.Type,
+		Name:           m.Name,
+		ParentID:       m.ParentID,
+		CurrentVersion: m.CurrentVersion,
+		Depth:          m.Depth,
+	}
+}
+
+type draftModel struct {
+	EntityID    uuid.UUID
+	UserID      uuid.UUID
+	Name        string
+	Content     string
+	BaseVersion *int
+	UpdatedAt   time.Time
+}
+
+func (m *draftModel) TableName() string {
+	return "entity_drafts"
+}
+
+func (m *draftModel) toDTO() entity.Draft {
+	return entity.Draft{
+		EntityID:    m.EntityID,
+		UserID:      m.UserID,
+		Name:        m.Name,
+		Content:     m.Content,
+		BaseVersion: m.BaseVersion,
+		UpdatedAt:   m.UpdatedAt,
 	}
 }

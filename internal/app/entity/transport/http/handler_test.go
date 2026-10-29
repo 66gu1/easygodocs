@@ -586,3 +586,165 @@ func TestHandler_Delete(t *testing.T) {
 		})
 	}
 }
+
+func TestHandler_Drafts(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	input := entity_http.SaveDraftInput{Name: "name", Content: "content"}
+	body, err := json.Marshal(input)
+	require.NoError(t, err)
+	cmd := entity_usecase.SaveDraftCmd{EntityID: id, Name: input.Name, Content: input.Content}
+	draft := entity.Draft{EntityID: id, UserID: uuid.New(), Name: input.Name, Content: input.Content}
+
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		body       []byte
+		wantStatus int
+		setup      func(s *mocks.ServiceMock)
+	}{
+		{
+			name:       "get/ok -> 200",
+			method:     http.MethodGet,
+			path:       "/entity/" + id.String() + "/draft",
+			wantStatus: http.StatusOK,
+			setup: func(s *mocks.ServiceMock) {
+				s.GetDraftMock.Expect(minimock.AnyContext, id).Return(draft, nil)
+			},
+		},
+		{
+			name:       "get/not found -> 404",
+			method:     http.MethodGet,
+			path:       "/entity/" + id.String() + "/draft",
+			wantStatus: http.StatusNotFound,
+			setup: func(s *mocks.ServiceMock) {
+				s.GetDraftMock.Expect(minimock.AnyContext, id).Return(entity.Draft{}, entity.ErrDraftNotFound())
+			},
+		},
+		{
+			name:       "get/invalid UUID -> 400",
+			method:     http.MethodGet,
+			path:       "/entity/invalid/draft",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "save/ok -> 204",
+			method:     http.MethodPut,
+			path:       "/entity/" + id.String() + "/draft",
+			body:       body,
+			wantStatus: http.StatusNoContent,
+			setup: func(s *mocks.ServiceMock) {
+				s.SaveDraftMock.Expect(minimock.AnyContext, cmd).Return(nil)
+			},
+		},
+		{
+			name:       "save/invalid JSON -> 400",
+			method:     http.MethodPut,
+			path:       "/entity/" + id.String() + "/draft",
+			body:       []byte("invalid"),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "save/invalid UUID -> 400",
+			method:     http.MethodPut,
+			path:       "/entity/invalid/draft",
+			body:       body,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "save/service error -> 500",
+			method:     http.MethodPut,
+			path:       "/entity/" + id.String() + "/draft",
+			body:       body,
+			wantStatus: http.StatusInternalServerError,
+			setup: func(s *mocks.ServiceMock) {
+				s.SaveDraftMock.Expect(minimock.AnyContext, cmd).Return(fmt.Errorf("service error"))
+			},
+		},
+		{
+			name:       "delete/ok -> 204",
+			method:     http.MethodDelete,
+			path:       "/entity/" + id.String() + "/draft",
+			wantStatus: http.StatusNoContent,
+			setup: func(s *mocks.ServiceMock) {
+				s.DeleteDraftMock.Expect(minimock.AnyContext, id).Return(nil)
+			},
+		},
+		{
+			name:       "delete/invalid UUID -> 400",
+			method:     http.MethodDelete,
+			path:       "/entity/invalid/draft",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "delete/service error -> 500",
+			method:     http.MethodDelete,
+			path:       "/entity/" + id.String() + "/draft",
+			wantStatus: http.StatusInternalServerError,
+			setup: func(s *mocks.ServiceMock) {
+				s.DeleteDraftMock.Expect(minimock.AnyContext, id).Return(fmt.Errorf("service error"))
+			},
+		},
+		{
+			name:       "publish/ok -> 204",
+			method:     http.MethodPost,
+			path:       "/entity/" + id.String() + "/draft/publish",
+			wantStatus: http.StatusNoContent,
+			setup: func(s *mocks.ServiceMock) {
+				s.PublishDraftMock.Expect(minimock.AnyContext, id).Return(nil)
+			},
+		},
+		{
+			name:       "publish/outdated -> 409",
+			method:     http.MethodPost,
+			path:       "/entity/" + id.String() + "/draft/publish",
+			wantStatus: http.StatusConflict,
+			setup: func(s *mocks.ServiceMock) {
+				s.PublishDraftMock.Expect(minimock.AnyContext, id).Return(entity.ErrDraftOutdated())
+			},
+		},
+		{
+			name:       "publish/invalid UUID -> 400",
+			method:     http.MethodPost,
+			path:       "/entity/invalid/draft/publish",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mock := mocks.NewServiceMock(t)
+			if tc.setup != nil {
+				tc.setup(mock)
+			}
+			h := entity_http.NewHandler(mock)
+			r := chi.NewRouter()
+			r.Route("/entity/{"+entity_http.URLParamEntityID+"}/draft", func(r chi.Router) {
+				r.Get("/", h.GetDraft)
+				r.Put("/", h.SaveDraft)
+				r.Delete("/", h.DeleteDraft)
+				r.Post("/publish", h.PublishDraft)
+			})
+
+			req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+
+			r.ServeHTTP(rr, req)
+
+			require.Equal(t, tc.wantStatus, rr.Code)
+			switch tc.wantStatus {
+			case http.StatusNoContent:
+			case http.StatusOK:
+				var got entity.Draft
+				require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+				require.Equal(t, draft, got)
+			default:
+				require.NotZero(t, rr.Body.Len(), "error response body is empty; want some payload")
+			}
+		})
+	}
+}

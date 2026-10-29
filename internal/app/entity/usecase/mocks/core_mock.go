@@ -34,12 +34,26 @@ type CoreMock struct {
 	beforeDeleteCounter uint64
 	DeleteMock          mCoreMockDelete
 
+	funcDeleteDraft          func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (err error)
+	funcDeleteDraftOrigin    string
+	inspectFuncDeleteDraft   func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID)
+	afterDeleteDraftCounter  uint64
+	beforeDeleteDraftCounter uint64
+	DeleteDraftMock          mCoreMockDeleteDraft
+
 	funcGet          func(ctx context.Context, id uuid.UUID) (e1 entity.Entity, err error)
 	funcGetOrigin    string
 	inspectFuncGet   func(ctx context.Context, id uuid.UUID)
 	afterGetCounter  uint64
 	beforeGetCounter uint64
 	GetMock          mCoreMockGet
+
+	funcGetDraft          func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (d1 entity.Draft, err error)
+	funcGetDraftOrigin    string
+	inspectFuncGetDraft   func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID)
+	afterGetDraftCounter  uint64
+	beforeGetDraftCounter uint64
+	GetDraftMock          mCoreMockGetDraft
 
 	funcGetListItem          func(ctx context.Context, id uuid.UUID) (l1 entity.ListItem, err error)
 	funcGetListItemOrigin    string
@@ -76,6 +90,20 @@ type CoreMock struct {
 	beforeGetVersionsListCounter uint64
 	GetVersionsListMock          mCoreMockGetVersionsList
 
+	funcPublishDraft          func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (err error)
+	funcPublishDraftOrigin    string
+	inspectFuncPublishDraft   func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID)
+	afterPublishDraftCounter  uint64
+	beforePublishDraftCounter uint64
+	PublishDraftMock          mCoreMockPublishDraft
+
+	funcSaveDraft          func(ctx context.Context, req entity.SaveDraftReq) (err error)
+	funcSaveDraftOrigin    string
+	inspectFuncSaveDraft   func(ctx context.Context, req entity.SaveDraftReq)
+	afterSaveDraftCounter  uint64
+	beforeSaveDraftCounter uint64
+	SaveDraftMock          mCoreMockSaveDraft
+
 	funcUpdate          func(ctx context.Context, req entity.UpdateEntityReq) (err error)
 	funcUpdateOrigin    string
 	inspectFuncUpdate   func(ctx context.Context, req entity.UpdateEntityReq)
@@ -98,8 +126,14 @@ func NewCoreMock(t minimock.Tester) *CoreMock {
 	m.DeleteMock = mCoreMockDelete{mock: m}
 	m.DeleteMock.callArgs = []*CoreMockDeleteParams{}
 
+	m.DeleteDraftMock = mCoreMockDeleteDraft{mock: m}
+	m.DeleteDraftMock.callArgs = []*CoreMockDeleteDraftParams{}
+
 	m.GetMock = mCoreMockGet{mock: m}
 	m.GetMock.callArgs = []*CoreMockGetParams{}
+
+	m.GetDraftMock = mCoreMockGetDraft{mock: m}
+	m.GetDraftMock.callArgs = []*CoreMockGetDraftParams{}
 
 	m.GetListItemMock = mCoreMockGetListItem{mock: m}
 	m.GetListItemMock.callArgs = []*CoreMockGetListItemParams{}
@@ -115,6 +149,12 @@ func NewCoreMock(t minimock.Tester) *CoreMock {
 
 	m.GetVersionsListMock = mCoreMockGetVersionsList{mock: m}
 	m.GetVersionsListMock.callArgs = []*CoreMockGetVersionsListParams{}
+
+	m.PublishDraftMock = mCoreMockPublishDraft{mock: m}
+	m.PublishDraftMock.callArgs = []*CoreMockPublishDraftParams{}
+
+	m.SaveDraftMock = mCoreMockSaveDraft{mock: m}
+	m.SaveDraftMock.callArgs = []*CoreMockSaveDraftParams{}
 
 	m.UpdateMock = mCoreMockUpdate{mock: m}
 	m.UpdateMock.callArgs = []*CoreMockUpdateParams{}
@@ -809,6 +849,379 @@ func (m *CoreMock) MinimockDeleteInspect() {
 	}
 }
 
+type mCoreMockDeleteDraft struct {
+	optional           bool
+	mock               *CoreMock
+	defaultExpectation *CoreMockDeleteDraftExpectation
+	expectations       []*CoreMockDeleteDraftExpectation
+
+	callArgs []*CoreMockDeleteDraftParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// CoreMockDeleteDraftExpectation specifies expectation struct of the Core.DeleteDraft
+type CoreMockDeleteDraftExpectation struct {
+	mock               *CoreMock
+	params             *CoreMockDeleteDraftParams
+	paramPtrs          *CoreMockDeleteDraftParamPtrs
+	expectationOrigins CoreMockDeleteDraftExpectationOrigins
+	results            *CoreMockDeleteDraftResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// CoreMockDeleteDraftParams contains parameters of the Core.DeleteDraft
+type CoreMockDeleteDraftParams struct {
+	ctx      context.Context
+	entityID uuid.UUID
+	userID   uuid.UUID
+}
+
+// CoreMockDeleteDraftParamPtrs contains pointers to parameters of the Core.DeleteDraft
+type CoreMockDeleteDraftParamPtrs struct {
+	ctx      *context.Context
+	entityID *uuid.UUID
+	userID   *uuid.UUID
+}
+
+// CoreMockDeleteDraftResults contains results of the Core.DeleteDraft
+type CoreMockDeleteDraftResults struct {
+	err error
+}
+
+// CoreMockDeleteDraftOrigins contains origins of expectations of the Core.DeleteDraft
+type CoreMockDeleteDraftExpectationOrigins struct {
+	origin         string
+	originCtx      string
+	originEntityID string
+	originUserID   string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmDeleteDraft *mCoreMockDeleteDraft) Optional() *mCoreMockDeleteDraft {
+	mmDeleteDraft.optional = true
+	return mmDeleteDraft
+}
+
+// Expect sets up expected params for Core.DeleteDraft
+func (mmDeleteDraft *mCoreMockDeleteDraft) Expect(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) *mCoreMockDeleteDraft {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by Set")
+	}
+
+	if mmDeleteDraft.defaultExpectation == nil {
+		mmDeleteDraft.defaultExpectation = &CoreMockDeleteDraftExpectation{}
+	}
+
+	if mmDeleteDraft.defaultExpectation.paramPtrs != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by ExpectParams functions")
+	}
+
+	mmDeleteDraft.defaultExpectation.params = &CoreMockDeleteDraftParams{ctx, entityID, userID}
+	mmDeleteDraft.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmDeleteDraft.expectations {
+		if minimock.Equal(e.params, mmDeleteDraft.defaultExpectation.params) {
+			mmDeleteDraft.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmDeleteDraft.defaultExpectation.params)
+		}
+	}
+
+	return mmDeleteDraft
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Core.DeleteDraft
+func (mmDeleteDraft *mCoreMockDeleteDraft) ExpectCtxParam1(ctx context.Context) *mCoreMockDeleteDraft {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by Set")
+	}
+
+	if mmDeleteDraft.defaultExpectation == nil {
+		mmDeleteDraft.defaultExpectation = &CoreMockDeleteDraftExpectation{}
+	}
+
+	if mmDeleteDraft.defaultExpectation.params != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by Expect")
+	}
+
+	if mmDeleteDraft.defaultExpectation.paramPtrs == nil {
+		mmDeleteDraft.defaultExpectation.paramPtrs = &CoreMockDeleteDraftParamPtrs{}
+	}
+	mmDeleteDraft.defaultExpectation.paramPtrs.ctx = &ctx
+	mmDeleteDraft.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmDeleteDraft
+}
+
+// ExpectEntityIDParam2 sets up expected param entityID for Core.DeleteDraft
+func (mmDeleteDraft *mCoreMockDeleteDraft) ExpectEntityIDParam2(entityID uuid.UUID) *mCoreMockDeleteDraft {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by Set")
+	}
+
+	if mmDeleteDraft.defaultExpectation == nil {
+		mmDeleteDraft.defaultExpectation = &CoreMockDeleteDraftExpectation{}
+	}
+
+	if mmDeleteDraft.defaultExpectation.params != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by Expect")
+	}
+
+	if mmDeleteDraft.defaultExpectation.paramPtrs == nil {
+		mmDeleteDraft.defaultExpectation.paramPtrs = &CoreMockDeleteDraftParamPtrs{}
+	}
+	mmDeleteDraft.defaultExpectation.paramPtrs.entityID = &entityID
+	mmDeleteDraft.defaultExpectation.expectationOrigins.originEntityID = minimock.CallerInfo(1)
+
+	return mmDeleteDraft
+}
+
+// ExpectUserIDParam3 sets up expected param userID for Core.DeleteDraft
+func (mmDeleteDraft *mCoreMockDeleteDraft) ExpectUserIDParam3(userID uuid.UUID) *mCoreMockDeleteDraft {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by Set")
+	}
+
+	if mmDeleteDraft.defaultExpectation == nil {
+		mmDeleteDraft.defaultExpectation = &CoreMockDeleteDraftExpectation{}
+	}
+
+	if mmDeleteDraft.defaultExpectation.params != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by Expect")
+	}
+
+	if mmDeleteDraft.defaultExpectation.paramPtrs == nil {
+		mmDeleteDraft.defaultExpectation.paramPtrs = &CoreMockDeleteDraftParamPtrs{}
+	}
+	mmDeleteDraft.defaultExpectation.paramPtrs.userID = &userID
+	mmDeleteDraft.defaultExpectation.expectationOrigins.originUserID = minimock.CallerInfo(1)
+
+	return mmDeleteDraft
+}
+
+// Inspect accepts an inspector function that has same arguments as the Core.DeleteDraft
+func (mmDeleteDraft *mCoreMockDeleteDraft) Inspect(f func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID)) *mCoreMockDeleteDraft {
+	if mmDeleteDraft.mock.inspectFuncDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("Inspect function is already set for CoreMock.DeleteDraft")
+	}
+
+	mmDeleteDraft.mock.inspectFuncDeleteDraft = f
+
+	return mmDeleteDraft
+}
+
+// Return sets up results that will be returned by Core.DeleteDraft
+func (mmDeleteDraft *mCoreMockDeleteDraft) Return(err error) *CoreMock {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by Set")
+	}
+
+	if mmDeleteDraft.defaultExpectation == nil {
+		mmDeleteDraft.defaultExpectation = &CoreMockDeleteDraftExpectation{mock: mmDeleteDraft.mock}
+	}
+	mmDeleteDraft.defaultExpectation.results = &CoreMockDeleteDraftResults{err}
+	mmDeleteDraft.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmDeleteDraft.mock
+}
+
+// Set uses given function f to mock the Core.DeleteDraft method
+func (mmDeleteDraft *mCoreMockDeleteDraft) Set(f func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (err error)) *CoreMock {
+	if mmDeleteDraft.defaultExpectation != nil {
+		mmDeleteDraft.mock.t.Fatalf("Default expectation is already set for the Core.DeleteDraft method")
+	}
+
+	if len(mmDeleteDraft.expectations) > 0 {
+		mmDeleteDraft.mock.t.Fatalf("Some expectations are already set for the Core.DeleteDraft method")
+	}
+
+	mmDeleteDraft.mock.funcDeleteDraft = f
+	mmDeleteDraft.mock.funcDeleteDraftOrigin = minimock.CallerInfo(1)
+	return mmDeleteDraft.mock
+}
+
+// When sets expectation for the Core.DeleteDraft which will trigger the result defined by the following
+// Then helper
+func (mmDeleteDraft *mCoreMockDeleteDraft) When(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) *CoreMockDeleteDraftExpectation {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("CoreMock.DeleteDraft mock is already set by Set")
+	}
+
+	expectation := &CoreMockDeleteDraftExpectation{
+		mock:               mmDeleteDraft.mock,
+		params:             &CoreMockDeleteDraftParams{ctx, entityID, userID},
+		expectationOrigins: CoreMockDeleteDraftExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmDeleteDraft.expectations = append(mmDeleteDraft.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Core.DeleteDraft return parameters for the expectation previously defined by the When method
+func (e *CoreMockDeleteDraftExpectation) Then(err error) *CoreMock {
+	e.results = &CoreMockDeleteDraftResults{err}
+	return e.mock
+}
+
+// Times sets number of times Core.DeleteDraft should be invoked
+func (mmDeleteDraft *mCoreMockDeleteDraft) Times(n uint64) *mCoreMockDeleteDraft {
+	if n == 0 {
+		mmDeleteDraft.mock.t.Fatalf("Times of CoreMock.DeleteDraft mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmDeleteDraft.expectedInvocations, n)
+	mmDeleteDraft.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmDeleteDraft
+}
+
+func (mmDeleteDraft *mCoreMockDeleteDraft) invocationsDone() bool {
+	if len(mmDeleteDraft.expectations) == 0 && mmDeleteDraft.defaultExpectation == nil && mmDeleteDraft.mock.funcDeleteDraft == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmDeleteDraft.mock.afterDeleteDraftCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmDeleteDraft.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// DeleteDraft implements mm_usecase.Core
+func (mmDeleteDraft *CoreMock) DeleteDraft(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (err error) {
+	mm_atomic.AddUint64(&mmDeleteDraft.beforeDeleteDraftCounter, 1)
+	defer mm_atomic.AddUint64(&mmDeleteDraft.afterDeleteDraftCounter, 1)
+
+	mmDeleteDraft.t.Helper()
+
+	if mmDeleteDraft.inspectFuncDeleteDraft != nil {
+		mmDeleteDraft.inspectFuncDeleteDraft(ctx, entityID, userID)
+	}
+
+	mm_params := CoreMockDeleteDraftParams{ctx, entityID, userID}
+
+	// Record call args
+	mmDeleteDraft.DeleteDraftMock.mutex.Lock()
+	mmDeleteDraft.DeleteDraftMock.callArgs = append(mmDeleteDraft.DeleteDraftMock.callArgs, &mm_params)
+	mmDeleteDraft.DeleteDraftMock.mutex.Unlock()
+
+	for _, e := range mmDeleteDraft.DeleteDraftMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmDeleteDraft.DeleteDraftMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmDeleteDraft.DeleteDraftMock.defaultExpectation.Counter, 1)
+		mm_want := mmDeleteDraft.DeleteDraftMock.defaultExpectation.params
+		mm_want_ptrs := mmDeleteDraft.DeleteDraftMock.defaultExpectation.paramPtrs
+
+		mm_got := CoreMockDeleteDraftParams{ctx, entityID, userID}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmDeleteDraft.t.Errorf("CoreMock.DeleteDraft got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDeleteDraft.DeleteDraftMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.entityID != nil && !minimock.Equal(*mm_want_ptrs.entityID, mm_got.entityID) {
+				mmDeleteDraft.t.Errorf("CoreMock.DeleteDraft got unexpected parameter entityID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDeleteDraft.DeleteDraftMock.defaultExpectation.expectationOrigins.originEntityID, *mm_want_ptrs.entityID, mm_got.entityID, minimock.Diff(*mm_want_ptrs.entityID, mm_got.entityID))
+			}
+
+			if mm_want_ptrs.userID != nil && !minimock.Equal(*mm_want_ptrs.userID, mm_got.userID) {
+				mmDeleteDraft.t.Errorf("CoreMock.DeleteDraft got unexpected parameter userID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDeleteDraft.DeleteDraftMock.defaultExpectation.expectationOrigins.originUserID, *mm_want_ptrs.userID, mm_got.userID, minimock.Diff(*mm_want_ptrs.userID, mm_got.userID))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmDeleteDraft.t.Errorf("CoreMock.DeleteDraft got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmDeleteDraft.DeleteDraftMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmDeleteDraft.DeleteDraftMock.defaultExpectation.results
+		if mm_results == nil {
+			mmDeleteDraft.t.Fatal("No results are set for the CoreMock.DeleteDraft")
+		}
+		return (*mm_results).err
+	}
+	if mmDeleteDraft.funcDeleteDraft != nil {
+		return mmDeleteDraft.funcDeleteDraft(ctx, entityID, userID)
+	}
+	mmDeleteDraft.t.Fatalf("Unexpected call to CoreMock.DeleteDraft. %v %v %v", ctx, entityID, userID)
+	return
+}
+
+// DeleteDraftAfterCounter returns a count of finished CoreMock.DeleteDraft invocations
+func (mmDeleteDraft *CoreMock) DeleteDraftAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmDeleteDraft.afterDeleteDraftCounter)
+}
+
+// DeleteDraftBeforeCounter returns a count of CoreMock.DeleteDraft invocations
+func (mmDeleteDraft *CoreMock) DeleteDraftBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmDeleteDraft.beforeDeleteDraftCounter)
+}
+
+// Calls returns a list of arguments used in each call to CoreMock.DeleteDraft.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmDeleteDraft *mCoreMockDeleteDraft) Calls() []*CoreMockDeleteDraftParams {
+	mmDeleteDraft.mutex.RLock()
+
+	argCopy := make([]*CoreMockDeleteDraftParams, len(mmDeleteDraft.callArgs))
+	copy(argCopy, mmDeleteDraft.callArgs)
+
+	mmDeleteDraft.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockDeleteDraftDone returns true if the count of the DeleteDraft invocations corresponds
+// the number of defined expectations
+func (m *CoreMock) MinimockDeleteDraftDone() bool {
+	if m.DeleteDraftMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.DeleteDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.DeleteDraftMock.invocationsDone()
+}
+
+// MinimockDeleteDraftInspect logs each unmet expectation
+func (m *CoreMock) MinimockDeleteDraftInspect() {
+	for _, e := range m.DeleteDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to CoreMock.DeleteDraft at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterDeleteDraftCounter := mm_atomic.LoadUint64(&m.afterDeleteDraftCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.DeleteDraftMock.defaultExpectation != nil && afterDeleteDraftCounter < 1 {
+		if m.DeleteDraftMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to CoreMock.DeleteDraft at\n%s", m.DeleteDraftMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to CoreMock.DeleteDraft at\n%s with params: %#v", m.DeleteDraftMock.defaultExpectation.expectationOrigins.origin, *m.DeleteDraftMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcDeleteDraft != nil && afterDeleteDraftCounter < 1 {
+		m.t.Errorf("Expected call to CoreMock.DeleteDraft at\n%s", m.funcDeleteDraftOrigin)
+	}
+
+	if !m.DeleteDraftMock.invocationsDone() && afterDeleteDraftCounter > 0 {
+		m.t.Errorf("Expected %d calls to CoreMock.DeleteDraft at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.DeleteDraftMock.expectedInvocations), m.DeleteDraftMock.expectedInvocationsOrigin, afterDeleteDraftCounter)
+	}
+}
+
 type mCoreMockGet struct {
 	optional           bool
 	mock               *CoreMock
@@ -1149,6 +1562,380 @@ func (m *CoreMock) MinimockGetInspect() {
 	if !m.GetMock.invocationsDone() && afterGetCounter > 0 {
 		m.t.Errorf("Expected %d calls to CoreMock.Get at\n%s but found %d calls",
 			mm_atomic.LoadUint64(&m.GetMock.expectedInvocations), m.GetMock.expectedInvocationsOrigin, afterGetCounter)
+	}
+}
+
+type mCoreMockGetDraft struct {
+	optional           bool
+	mock               *CoreMock
+	defaultExpectation *CoreMockGetDraftExpectation
+	expectations       []*CoreMockGetDraftExpectation
+
+	callArgs []*CoreMockGetDraftParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// CoreMockGetDraftExpectation specifies expectation struct of the Core.GetDraft
+type CoreMockGetDraftExpectation struct {
+	mock               *CoreMock
+	params             *CoreMockGetDraftParams
+	paramPtrs          *CoreMockGetDraftParamPtrs
+	expectationOrigins CoreMockGetDraftExpectationOrigins
+	results            *CoreMockGetDraftResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// CoreMockGetDraftParams contains parameters of the Core.GetDraft
+type CoreMockGetDraftParams struct {
+	ctx      context.Context
+	entityID uuid.UUID
+	userID   uuid.UUID
+}
+
+// CoreMockGetDraftParamPtrs contains pointers to parameters of the Core.GetDraft
+type CoreMockGetDraftParamPtrs struct {
+	ctx      *context.Context
+	entityID *uuid.UUID
+	userID   *uuid.UUID
+}
+
+// CoreMockGetDraftResults contains results of the Core.GetDraft
+type CoreMockGetDraftResults struct {
+	d1  entity.Draft
+	err error
+}
+
+// CoreMockGetDraftOrigins contains origins of expectations of the Core.GetDraft
+type CoreMockGetDraftExpectationOrigins struct {
+	origin         string
+	originCtx      string
+	originEntityID string
+	originUserID   string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmGetDraft *mCoreMockGetDraft) Optional() *mCoreMockGetDraft {
+	mmGetDraft.optional = true
+	return mmGetDraft
+}
+
+// Expect sets up expected params for Core.GetDraft
+func (mmGetDraft *mCoreMockGetDraft) Expect(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) *mCoreMockGetDraft {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by Set")
+	}
+
+	if mmGetDraft.defaultExpectation == nil {
+		mmGetDraft.defaultExpectation = &CoreMockGetDraftExpectation{}
+	}
+
+	if mmGetDraft.defaultExpectation.paramPtrs != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by ExpectParams functions")
+	}
+
+	mmGetDraft.defaultExpectation.params = &CoreMockGetDraftParams{ctx, entityID, userID}
+	mmGetDraft.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmGetDraft.expectations {
+		if minimock.Equal(e.params, mmGetDraft.defaultExpectation.params) {
+			mmGetDraft.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmGetDraft.defaultExpectation.params)
+		}
+	}
+
+	return mmGetDraft
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Core.GetDraft
+func (mmGetDraft *mCoreMockGetDraft) ExpectCtxParam1(ctx context.Context) *mCoreMockGetDraft {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by Set")
+	}
+
+	if mmGetDraft.defaultExpectation == nil {
+		mmGetDraft.defaultExpectation = &CoreMockGetDraftExpectation{}
+	}
+
+	if mmGetDraft.defaultExpectation.params != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by Expect")
+	}
+
+	if mmGetDraft.defaultExpectation.paramPtrs == nil {
+		mmGetDraft.defaultExpectation.paramPtrs = &CoreMockGetDraftParamPtrs{}
+	}
+	mmGetDraft.defaultExpectation.paramPtrs.ctx = &ctx
+	mmGetDraft.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmGetDraft
+}
+
+// ExpectEntityIDParam2 sets up expected param entityID for Core.GetDraft
+func (mmGetDraft *mCoreMockGetDraft) ExpectEntityIDParam2(entityID uuid.UUID) *mCoreMockGetDraft {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by Set")
+	}
+
+	if mmGetDraft.defaultExpectation == nil {
+		mmGetDraft.defaultExpectation = &CoreMockGetDraftExpectation{}
+	}
+
+	if mmGetDraft.defaultExpectation.params != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by Expect")
+	}
+
+	if mmGetDraft.defaultExpectation.paramPtrs == nil {
+		mmGetDraft.defaultExpectation.paramPtrs = &CoreMockGetDraftParamPtrs{}
+	}
+	mmGetDraft.defaultExpectation.paramPtrs.entityID = &entityID
+	mmGetDraft.defaultExpectation.expectationOrigins.originEntityID = minimock.CallerInfo(1)
+
+	return mmGetDraft
+}
+
+// ExpectUserIDParam3 sets up expected param userID for Core.GetDraft
+func (mmGetDraft *mCoreMockGetDraft) ExpectUserIDParam3(userID uuid.UUID) *mCoreMockGetDraft {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by Set")
+	}
+
+	if mmGetDraft.defaultExpectation == nil {
+		mmGetDraft.defaultExpectation = &CoreMockGetDraftExpectation{}
+	}
+
+	if mmGetDraft.defaultExpectation.params != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by Expect")
+	}
+
+	if mmGetDraft.defaultExpectation.paramPtrs == nil {
+		mmGetDraft.defaultExpectation.paramPtrs = &CoreMockGetDraftParamPtrs{}
+	}
+	mmGetDraft.defaultExpectation.paramPtrs.userID = &userID
+	mmGetDraft.defaultExpectation.expectationOrigins.originUserID = minimock.CallerInfo(1)
+
+	return mmGetDraft
+}
+
+// Inspect accepts an inspector function that has same arguments as the Core.GetDraft
+func (mmGetDraft *mCoreMockGetDraft) Inspect(f func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID)) *mCoreMockGetDraft {
+	if mmGetDraft.mock.inspectFuncGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("Inspect function is already set for CoreMock.GetDraft")
+	}
+
+	mmGetDraft.mock.inspectFuncGetDraft = f
+
+	return mmGetDraft
+}
+
+// Return sets up results that will be returned by Core.GetDraft
+func (mmGetDraft *mCoreMockGetDraft) Return(d1 entity.Draft, err error) *CoreMock {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by Set")
+	}
+
+	if mmGetDraft.defaultExpectation == nil {
+		mmGetDraft.defaultExpectation = &CoreMockGetDraftExpectation{mock: mmGetDraft.mock}
+	}
+	mmGetDraft.defaultExpectation.results = &CoreMockGetDraftResults{d1, err}
+	mmGetDraft.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmGetDraft.mock
+}
+
+// Set uses given function f to mock the Core.GetDraft method
+func (mmGetDraft *mCoreMockGetDraft) Set(f func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (d1 entity.Draft, err error)) *CoreMock {
+	if mmGetDraft.defaultExpectation != nil {
+		mmGetDraft.mock.t.Fatalf("Default expectation is already set for the Core.GetDraft method")
+	}
+
+	if len(mmGetDraft.expectations) > 0 {
+		mmGetDraft.mock.t.Fatalf("Some expectations are already set for the Core.GetDraft method")
+	}
+
+	mmGetDraft.mock.funcGetDraft = f
+	mmGetDraft.mock.funcGetDraftOrigin = minimock.CallerInfo(1)
+	return mmGetDraft.mock
+}
+
+// When sets expectation for the Core.GetDraft which will trigger the result defined by the following
+// Then helper
+func (mmGetDraft *mCoreMockGetDraft) When(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) *CoreMockGetDraftExpectation {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("CoreMock.GetDraft mock is already set by Set")
+	}
+
+	expectation := &CoreMockGetDraftExpectation{
+		mock:               mmGetDraft.mock,
+		params:             &CoreMockGetDraftParams{ctx, entityID, userID},
+		expectationOrigins: CoreMockGetDraftExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmGetDraft.expectations = append(mmGetDraft.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Core.GetDraft return parameters for the expectation previously defined by the When method
+func (e *CoreMockGetDraftExpectation) Then(d1 entity.Draft, err error) *CoreMock {
+	e.results = &CoreMockGetDraftResults{d1, err}
+	return e.mock
+}
+
+// Times sets number of times Core.GetDraft should be invoked
+func (mmGetDraft *mCoreMockGetDraft) Times(n uint64) *mCoreMockGetDraft {
+	if n == 0 {
+		mmGetDraft.mock.t.Fatalf("Times of CoreMock.GetDraft mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmGetDraft.expectedInvocations, n)
+	mmGetDraft.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmGetDraft
+}
+
+func (mmGetDraft *mCoreMockGetDraft) invocationsDone() bool {
+	if len(mmGetDraft.expectations) == 0 && mmGetDraft.defaultExpectation == nil && mmGetDraft.mock.funcGetDraft == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmGetDraft.mock.afterGetDraftCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmGetDraft.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// GetDraft implements mm_usecase.Core
+func (mmGetDraft *CoreMock) GetDraft(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (d1 entity.Draft, err error) {
+	mm_atomic.AddUint64(&mmGetDraft.beforeGetDraftCounter, 1)
+	defer mm_atomic.AddUint64(&mmGetDraft.afterGetDraftCounter, 1)
+
+	mmGetDraft.t.Helper()
+
+	if mmGetDraft.inspectFuncGetDraft != nil {
+		mmGetDraft.inspectFuncGetDraft(ctx, entityID, userID)
+	}
+
+	mm_params := CoreMockGetDraftParams{ctx, entityID, userID}
+
+	// Record call args
+	mmGetDraft.GetDraftMock.mutex.Lock()
+	mmGetDraft.GetDraftMock.callArgs = append(mmGetDraft.GetDraftMock.callArgs, &mm_params)
+	mmGetDraft.GetDraftMock.mutex.Unlock()
+
+	for _, e := range mmGetDraft.GetDraftMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.d1, e.results.err
+		}
+	}
+
+	if mmGetDraft.GetDraftMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmGetDraft.GetDraftMock.defaultExpectation.Counter, 1)
+		mm_want := mmGetDraft.GetDraftMock.defaultExpectation.params
+		mm_want_ptrs := mmGetDraft.GetDraftMock.defaultExpectation.paramPtrs
+
+		mm_got := CoreMockGetDraftParams{ctx, entityID, userID}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmGetDraft.t.Errorf("CoreMock.GetDraft got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetDraft.GetDraftMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.entityID != nil && !minimock.Equal(*mm_want_ptrs.entityID, mm_got.entityID) {
+				mmGetDraft.t.Errorf("CoreMock.GetDraft got unexpected parameter entityID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetDraft.GetDraftMock.defaultExpectation.expectationOrigins.originEntityID, *mm_want_ptrs.entityID, mm_got.entityID, minimock.Diff(*mm_want_ptrs.entityID, mm_got.entityID))
+			}
+
+			if mm_want_ptrs.userID != nil && !minimock.Equal(*mm_want_ptrs.userID, mm_got.userID) {
+				mmGetDraft.t.Errorf("CoreMock.GetDraft got unexpected parameter userID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetDraft.GetDraftMock.defaultExpectation.expectationOrigins.originUserID, *mm_want_ptrs.userID, mm_got.userID, minimock.Diff(*mm_want_ptrs.userID, mm_got.userID))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmGetDraft.t.Errorf("CoreMock.GetDraft got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmGetDraft.GetDraftMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmGetDraft.GetDraftMock.defaultExpectation.results
+		if mm_results == nil {
+			mmGetDraft.t.Fatal("No results are set for the CoreMock.GetDraft")
+		}
+		return (*mm_results).d1, (*mm_results).err
+	}
+	if mmGetDraft.funcGetDraft != nil {
+		return mmGetDraft.funcGetDraft(ctx, entityID, userID)
+	}
+	mmGetDraft.t.Fatalf("Unexpected call to CoreMock.GetDraft. %v %v %v", ctx, entityID, userID)
+	return
+}
+
+// GetDraftAfterCounter returns a count of finished CoreMock.GetDraft invocations
+func (mmGetDraft *CoreMock) GetDraftAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetDraft.afterGetDraftCounter)
+}
+
+// GetDraftBeforeCounter returns a count of CoreMock.GetDraft invocations
+func (mmGetDraft *CoreMock) GetDraftBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetDraft.beforeGetDraftCounter)
+}
+
+// Calls returns a list of arguments used in each call to CoreMock.GetDraft.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmGetDraft *mCoreMockGetDraft) Calls() []*CoreMockGetDraftParams {
+	mmGetDraft.mutex.RLock()
+
+	argCopy := make([]*CoreMockGetDraftParams, len(mmGetDraft.callArgs))
+	copy(argCopy, mmGetDraft.callArgs)
+
+	mmGetDraft.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockGetDraftDone returns true if the count of the GetDraft invocations corresponds
+// the number of defined expectations
+func (m *CoreMock) MinimockGetDraftDone() bool {
+	if m.GetDraftMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.GetDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.GetDraftMock.invocationsDone()
+}
+
+// MinimockGetDraftInspect logs each unmet expectation
+func (m *CoreMock) MinimockGetDraftInspect() {
+	for _, e := range m.GetDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to CoreMock.GetDraft at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterGetDraftCounter := mm_atomic.LoadUint64(&m.afterGetDraftCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.GetDraftMock.defaultExpectation != nil && afterGetDraftCounter < 1 {
+		if m.GetDraftMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to CoreMock.GetDraft at\n%s", m.GetDraftMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to CoreMock.GetDraft at\n%s with params: %#v", m.GetDraftMock.defaultExpectation.expectationOrigins.origin, *m.GetDraftMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcGetDraft != nil && afterGetDraftCounter < 1 {
+		m.t.Errorf("Expected call to CoreMock.GetDraft at\n%s", m.funcGetDraftOrigin)
+	}
+
+	if !m.GetDraftMock.invocationsDone() && afterGetDraftCounter > 0 {
+		m.t.Errorf("Expected %d calls to CoreMock.GetDraft at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.GetDraftMock.expectedInvocations), m.GetDraftMock.expectedInvocationsOrigin, afterGetDraftCounter)
 	}
 }
 
@@ -2960,6 +3747,721 @@ func (m *CoreMock) MinimockGetVersionsListInspect() {
 	}
 }
 
+type mCoreMockPublishDraft struct {
+	optional           bool
+	mock               *CoreMock
+	defaultExpectation *CoreMockPublishDraftExpectation
+	expectations       []*CoreMockPublishDraftExpectation
+
+	callArgs []*CoreMockPublishDraftParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// CoreMockPublishDraftExpectation specifies expectation struct of the Core.PublishDraft
+type CoreMockPublishDraftExpectation struct {
+	mock               *CoreMock
+	params             *CoreMockPublishDraftParams
+	paramPtrs          *CoreMockPublishDraftParamPtrs
+	expectationOrigins CoreMockPublishDraftExpectationOrigins
+	results            *CoreMockPublishDraftResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// CoreMockPublishDraftParams contains parameters of the Core.PublishDraft
+type CoreMockPublishDraftParams struct {
+	ctx      context.Context
+	entityID uuid.UUID
+	userID   uuid.UUID
+}
+
+// CoreMockPublishDraftParamPtrs contains pointers to parameters of the Core.PublishDraft
+type CoreMockPublishDraftParamPtrs struct {
+	ctx      *context.Context
+	entityID *uuid.UUID
+	userID   *uuid.UUID
+}
+
+// CoreMockPublishDraftResults contains results of the Core.PublishDraft
+type CoreMockPublishDraftResults struct {
+	err error
+}
+
+// CoreMockPublishDraftOrigins contains origins of expectations of the Core.PublishDraft
+type CoreMockPublishDraftExpectationOrigins struct {
+	origin         string
+	originCtx      string
+	originEntityID string
+	originUserID   string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmPublishDraft *mCoreMockPublishDraft) Optional() *mCoreMockPublishDraft {
+	mmPublishDraft.optional = true
+	return mmPublishDraft
+}
+
+// Expect sets up expected params for Core.PublishDraft
+func (mmPublishDraft *mCoreMockPublishDraft) Expect(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) *mCoreMockPublishDraft {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by Set")
+	}
+
+	if mmPublishDraft.defaultExpectation == nil {
+		mmPublishDraft.defaultExpectation = &CoreMockPublishDraftExpectation{}
+	}
+
+	if mmPublishDraft.defaultExpectation.paramPtrs != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by ExpectParams functions")
+	}
+
+	mmPublishDraft.defaultExpectation.params = &CoreMockPublishDraftParams{ctx, entityID, userID}
+	mmPublishDraft.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmPublishDraft.expectations {
+		if minimock.Equal(e.params, mmPublishDraft.defaultExpectation.params) {
+			mmPublishDraft.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmPublishDraft.defaultExpectation.params)
+		}
+	}
+
+	return mmPublishDraft
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Core.PublishDraft
+func (mmPublishDraft *mCoreMockPublishDraft) ExpectCtxParam1(ctx context.Context) *mCoreMockPublishDraft {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by Set")
+	}
+
+	if mmPublishDraft.defaultExpectation == nil {
+		mmPublishDraft.defaultExpectation = &CoreMockPublishDraftExpectation{}
+	}
+
+	if mmPublishDraft.defaultExpectation.params != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by Expect")
+	}
+
+	if mmPublishDraft.defaultExpectation.paramPtrs == nil {
+		mmPublishDraft.defaultExpectation.paramPtrs = &CoreMockPublishDraftParamPtrs{}
+	}
+	mmPublishDraft.defaultExpectation.paramPtrs.ctx = &ctx
+	mmPublishDraft.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmPublishDraft
+}
+
+// ExpectEntityIDParam2 sets up expected param entityID for Core.PublishDraft
+func (mmPublishDraft *mCoreMockPublishDraft) ExpectEntityIDParam2(entityID uuid.UUID) *mCoreMockPublishDraft {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by Set")
+	}
+
+	if mmPublishDraft.defaultExpectation == nil {
+		mmPublishDraft.defaultExpectation = &CoreMockPublishDraftExpectation{}
+	}
+
+	if mmPublishDraft.defaultExpectation.params != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by Expect")
+	}
+
+	if mmPublishDraft.defaultExpectation.paramPtrs == nil {
+		mmPublishDraft.defaultExpectation.paramPtrs = &CoreMockPublishDraftParamPtrs{}
+	}
+	mmPublishDraft.defaultExpectation.paramPtrs.entityID = &entityID
+	mmPublishDraft.defaultExpectation.expectationOrigins.originEntityID = minimock.CallerInfo(1)
+
+	return mmPublishDraft
+}
+
+// ExpectUserIDParam3 sets up expected param userID for Core.PublishDraft
+func (mmPublishDraft *mCoreMockPublishDraft) ExpectUserIDParam3(userID uuid.UUID) *mCoreMockPublishDraft {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by Set")
+	}
+
+	if mmPublishDraft.defaultExpectation == nil {
+		mmPublishDraft.defaultExpectation = &CoreMockPublishDraftExpectation{}
+	}
+
+	if mmPublishDraft.defaultExpectation.params != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by Expect")
+	}
+
+	if mmPublishDraft.defaultExpectation.paramPtrs == nil {
+		mmPublishDraft.defaultExpectation.paramPtrs = &CoreMockPublishDraftParamPtrs{}
+	}
+	mmPublishDraft.defaultExpectation.paramPtrs.userID = &userID
+	mmPublishDraft.defaultExpectation.expectationOrigins.originUserID = minimock.CallerInfo(1)
+
+	return mmPublishDraft
+}
+
+// Inspect accepts an inspector function that has same arguments as the Core.PublishDraft
+func (mmPublishDraft *mCoreMockPublishDraft) Inspect(f func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID)) *mCoreMockPublishDraft {
+	if mmPublishDraft.mock.inspectFuncPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("Inspect function is already set for CoreMock.PublishDraft")
+	}
+
+	mmPublishDraft.mock.inspectFuncPublishDraft = f
+
+	return mmPublishDraft
+}
+
+// Return sets up results that will be returned by Core.PublishDraft
+func (mmPublishDraft *mCoreMockPublishDraft) Return(err error) *CoreMock {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by Set")
+	}
+
+	if mmPublishDraft.defaultExpectation == nil {
+		mmPublishDraft.defaultExpectation = &CoreMockPublishDraftExpectation{mock: mmPublishDraft.mock}
+	}
+	mmPublishDraft.defaultExpectation.results = &CoreMockPublishDraftResults{err}
+	mmPublishDraft.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmPublishDraft.mock
+}
+
+// Set uses given function f to mock the Core.PublishDraft method
+func (mmPublishDraft *mCoreMockPublishDraft) Set(f func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (err error)) *CoreMock {
+	if mmPublishDraft.defaultExpectation != nil {
+		mmPublishDraft.mock.t.Fatalf("Default expectation is already set for the Core.PublishDraft method")
+	}
+
+	if len(mmPublishDraft.expectations) > 0 {
+		mmPublishDraft.mock.t.Fatalf("Some expectations are already set for the Core.PublishDraft method")
+	}
+
+	mmPublishDraft.mock.funcPublishDraft = f
+	mmPublishDraft.mock.funcPublishDraftOrigin = minimock.CallerInfo(1)
+	return mmPublishDraft.mock
+}
+
+// When sets expectation for the Core.PublishDraft which will trigger the result defined by the following
+// Then helper
+func (mmPublishDraft *mCoreMockPublishDraft) When(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) *CoreMockPublishDraftExpectation {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("CoreMock.PublishDraft mock is already set by Set")
+	}
+
+	expectation := &CoreMockPublishDraftExpectation{
+		mock:               mmPublishDraft.mock,
+		params:             &CoreMockPublishDraftParams{ctx, entityID, userID},
+		expectationOrigins: CoreMockPublishDraftExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmPublishDraft.expectations = append(mmPublishDraft.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Core.PublishDraft return parameters for the expectation previously defined by the When method
+func (e *CoreMockPublishDraftExpectation) Then(err error) *CoreMock {
+	e.results = &CoreMockPublishDraftResults{err}
+	return e.mock
+}
+
+// Times sets number of times Core.PublishDraft should be invoked
+func (mmPublishDraft *mCoreMockPublishDraft) Times(n uint64) *mCoreMockPublishDraft {
+	if n == 0 {
+		mmPublishDraft.mock.t.Fatalf("Times of CoreMock.PublishDraft mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmPublishDraft.expectedInvocations, n)
+	mmPublishDraft.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmPublishDraft
+}
+
+func (mmPublishDraft *mCoreMockPublishDraft) invocationsDone() bool {
+	if len(mmPublishDraft.expectations) == 0 && mmPublishDraft.defaultExpectation == nil && mmPublishDraft.mock.funcPublishDraft == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmPublishDraft.mock.afterPublishDraftCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmPublishDraft.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// PublishDraft implements mm_usecase.Core
+func (mmPublishDraft *CoreMock) PublishDraft(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (err error) {
+	mm_atomic.AddUint64(&mmPublishDraft.beforePublishDraftCounter, 1)
+	defer mm_atomic.AddUint64(&mmPublishDraft.afterPublishDraftCounter, 1)
+
+	mmPublishDraft.t.Helper()
+
+	if mmPublishDraft.inspectFuncPublishDraft != nil {
+		mmPublishDraft.inspectFuncPublishDraft(ctx, entityID, userID)
+	}
+
+	mm_params := CoreMockPublishDraftParams{ctx, entityID, userID}
+
+	// Record call args
+	mmPublishDraft.PublishDraftMock.mutex.Lock()
+	mmPublishDraft.PublishDraftMock.callArgs = append(mmPublishDraft.PublishDraftMock.callArgs, &mm_params)
+	mmPublishDraft.PublishDraftMock.mutex.Unlock()
+
+	for _, e := range mmPublishDraft.PublishDraftMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmPublishDraft.PublishDraftMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmPublishDraft.PublishDraftMock.defaultExpectation.Counter, 1)
+		mm_want := mmPublishDraft.PublishDraftMock.defaultExpectation.params
+		mm_want_ptrs := mmPublishDraft.PublishDraftMock.defaultExpectation.paramPtrs
+
+		mm_got := CoreMockPublishDraftParams{ctx, entityID, userID}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmPublishDraft.t.Errorf("CoreMock.PublishDraft got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmPublishDraft.PublishDraftMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.entityID != nil && !minimock.Equal(*mm_want_ptrs.entityID, mm_got.entityID) {
+				mmPublishDraft.t.Errorf("CoreMock.PublishDraft got unexpected parameter entityID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmPublishDraft.PublishDraftMock.defaultExpectation.expectationOrigins.originEntityID, *mm_want_ptrs.entityID, mm_got.entityID, minimock.Diff(*mm_want_ptrs.entityID, mm_got.entityID))
+			}
+
+			if mm_want_ptrs.userID != nil && !minimock.Equal(*mm_want_ptrs.userID, mm_got.userID) {
+				mmPublishDraft.t.Errorf("CoreMock.PublishDraft got unexpected parameter userID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmPublishDraft.PublishDraftMock.defaultExpectation.expectationOrigins.originUserID, *mm_want_ptrs.userID, mm_got.userID, minimock.Diff(*mm_want_ptrs.userID, mm_got.userID))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmPublishDraft.t.Errorf("CoreMock.PublishDraft got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmPublishDraft.PublishDraftMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmPublishDraft.PublishDraftMock.defaultExpectation.results
+		if mm_results == nil {
+			mmPublishDraft.t.Fatal("No results are set for the CoreMock.PublishDraft")
+		}
+		return (*mm_results).err
+	}
+	if mmPublishDraft.funcPublishDraft != nil {
+		return mmPublishDraft.funcPublishDraft(ctx, entityID, userID)
+	}
+	mmPublishDraft.t.Fatalf("Unexpected call to CoreMock.PublishDraft. %v %v %v", ctx, entityID, userID)
+	return
+}
+
+// PublishDraftAfterCounter returns a count of finished CoreMock.PublishDraft invocations
+func (mmPublishDraft *CoreMock) PublishDraftAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmPublishDraft.afterPublishDraftCounter)
+}
+
+// PublishDraftBeforeCounter returns a count of CoreMock.PublishDraft invocations
+func (mmPublishDraft *CoreMock) PublishDraftBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmPublishDraft.beforePublishDraftCounter)
+}
+
+// Calls returns a list of arguments used in each call to CoreMock.PublishDraft.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmPublishDraft *mCoreMockPublishDraft) Calls() []*CoreMockPublishDraftParams {
+	mmPublishDraft.mutex.RLock()
+
+	argCopy := make([]*CoreMockPublishDraftParams, len(mmPublishDraft.callArgs))
+	copy(argCopy, mmPublishDraft.callArgs)
+
+	mmPublishDraft.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockPublishDraftDone returns true if the count of the PublishDraft invocations corresponds
+// the number of defined expectations
+func (m *CoreMock) MinimockPublishDraftDone() bool {
+	if m.PublishDraftMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.PublishDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.PublishDraftMock.invocationsDone()
+}
+
+// MinimockPublishDraftInspect logs each unmet expectation
+func (m *CoreMock) MinimockPublishDraftInspect() {
+	for _, e := range m.PublishDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to CoreMock.PublishDraft at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterPublishDraftCounter := mm_atomic.LoadUint64(&m.afterPublishDraftCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.PublishDraftMock.defaultExpectation != nil && afterPublishDraftCounter < 1 {
+		if m.PublishDraftMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to CoreMock.PublishDraft at\n%s", m.PublishDraftMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to CoreMock.PublishDraft at\n%s with params: %#v", m.PublishDraftMock.defaultExpectation.expectationOrigins.origin, *m.PublishDraftMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcPublishDraft != nil && afterPublishDraftCounter < 1 {
+		m.t.Errorf("Expected call to CoreMock.PublishDraft at\n%s", m.funcPublishDraftOrigin)
+	}
+
+	if !m.PublishDraftMock.invocationsDone() && afterPublishDraftCounter > 0 {
+		m.t.Errorf("Expected %d calls to CoreMock.PublishDraft at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.PublishDraftMock.expectedInvocations), m.PublishDraftMock.expectedInvocationsOrigin, afterPublishDraftCounter)
+	}
+}
+
+type mCoreMockSaveDraft struct {
+	optional           bool
+	mock               *CoreMock
+	defaultExpectation *CoreMockSaveDraftExpectation
+	expectations       []*CoreMockSaveDraftExpectation
+
+	callArgs []*CoreMockSaveDraftParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// CoreMockSaveDraftExpectation specifies expectation struct of the Core.SaveDraft
+type CoreMockSaveDraftExpectation struct {
+	mock               *CoreMock
+	params             *CoreMockSaveDraftParams
+	paramPtrs          *CoreMockSaveDraftParamPtrs
+	expectationOrigins CoreMockSaveDraftExpectationOrigins
+	results            *CoreMockSaveDraftResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// CoreMockSaveDraftParams contains parameters of the Core.SaveDraft
+type CoreMockSaveDraftParams struct {
+	ctx context.Context
+	req entity.SaveDraftReq
+}
+
+// CoreMockSaveDraftParamPtrs contains pointers to parameters of the Core.SaveDraft
+type CoreMockSaveDraftParamPtrs struct {
+	ctx *context.Context
+	req *entity.SaveDraftReq
+}
+
+// CoreMockSaveDraftResults contains results of the Core.SaveDraft
+type CoreMockSaveDraftResults struct {
+	err error
+}
+
+// CoreMockSaveDraftOrigins contains origins of expectations of the Core.SaveDraft
+type CoreMockSaveDraftExpectationOrigins struct {
+	origin    string
+	originCtx string
+	originReq string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmSaveDraft *mCoreMockSaveDraft) Optional() *mCoreMockSaveDraft {
+	mmSaveDraft.optional = true
+	return mmSaveDraft
+}
+
+// Expect sets up expected params for Core.SaveDraft
+func (mmSaveDraft *mCoreMockSaveDraft) Expect(ctx context.Context, req entity.SaveDraftReq) *mCoreMockSaveDraft {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("CoreMock.SaveDraft mock is already set by Set")
+	}
+
+	if mmSaveDraft.defaultExpectation == nil {
+		mmSaveDraft.defaultExpectation = &CoreMockSaveDraftExpectation{}
+	}
+
+	if mmSaveDraft.defaultExpectation.paramPtrs != nil {
+		mmSaveDraft.mock.t.Fatalf("CoreMock.SaveDraft mock is already set by ExpectParams functions")
+	}
+
+	mmSaveDraft.defaultExpectation.params = &CoreMockSaveDraftParams{ctx, req}
+	mmSaveDraft.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmSaveDraft.expectations {
+		if minimock.Equal(e.params, mmSaveDraft.defaultExpectation.params) {
+			mmSaveDraft.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmSaveDraft.defaultExpectation.params)
+		}
+	}
+
+	return mmSaveDraft
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Core.SaveDraft
+func (mmSaveDraft *mCoreMockSaveDraft) ExpectCtxParam1(ctx context.Context) *mCoreMockSaveDraft {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("CoreMock.SaveDraft mock is already set by Set")
+	}
+
+	if mmSaveDraft.defaultExpectation == nil {
+		mmSaveDraft.defaultExpectation = &CoreMockSaveDraftExpectation{}
+	}
+
+	if mmSaveDraft.defaultExpectation.params != nil {
+		mmSaveDraft.mock.t.Fatalf("CoreMock.SaveDraft mock is already set by Expect")
+	}
+
+	if mmSaveDraft.defaultExpectation.paramPtrs == nil {
+		mmSaveDraft.defaultExpectation.paramPtrs = &CoreMockSaveDraftParamPtrs{}
+	}
+	mmSaveDraft.defaultExpectation.paramPtrs.ctx = &ctx
+	mmSaveDraft.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmSaveDraft
+}
+
+// ExpectReqParam2 sets up expected param req for Core.SaveDraft
+func (mmSaveDraft *mCoreMockSaveDraft) ExpectReqParam2(req entity.SaveDraftReq) *mCoreMockSaveDraft {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("CoreMock.SaveDraft mock is already set by Set")
+	}
+
+	if mmSaveDraft.defaultExpectation == nil {
+		mmSaveDraft.defaultExpectation = &CoreMockSaveDraftExpectation{}
+	}
+
+	if mmSaveDraft.defaultExpectation.params != nil {
+		mmSaveDraft.mock.t.Fatalf("CoreMock.SaveDraft mock is already set by Expect")
+	}
+
+	if mmSaveDraft.defaultExpectation.paramPtrs == nil {
+		mmSaveDraft.defaultExpectation.paramPtrs = &CoreMockSaveDraftParamPtrs{}
+	}
+	mmSaveDraft.defaultExpectation.paramPtrs.req = &req
+	mmSaveDraft.defaultExpectation.expectationOrigins.originReq = minimock.CallerInfo(1)
+
+	return mmSaveDraft
+}
+
+// Inspect accepts an inspector function that has same arguments as the Core.SaveDraft
+func (mmSaveDraft *mCoreMockSaveDraft) Inspect(f func(ctx context.Context, req entity.SaveDraftReq)) *mCoreMockSaveDraft {
+	if mmSaveDraft.mock.inspectFuncSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("Inspect function is already set for CoreMock.SaveDraft")
+	}
+
+	mmSaveDraft.mock.inspectFuncSaveDraft = f
+
+	return mmSaveDraft
+}
+
+// Return sets up results that will be returned by Core.SaveDraft
+func (mmSaveDraft *mCoreMockSaveDraft) Return(err error) *CoreMock {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("CoreMock.SaveDraft mock is already set by Set")
+	}
+
+	if mmSaveDraft.defaultExpectation == nil {
+		mmSaveDraft.defaultExpectation = &CoreMockSaveDraftExpectation{mock: mmSaveDraft.mock}
+	}
+	mmSaveDraft.defaultExpectation.results = &CoreMockSaveDraftResults{err}
+	mmSaveDraft.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmSaveDraft.mock
+}
+
+// Set uses given function f to mock the Core.SaveDraft method
+func (mmSaveDraft *mCoreMockSaveDraft) Set(f func(ctx context.Context, req entity.SaveDraftReq) (err error)) *CoreMock {
+	if mmSaveDraft.defaultExpectation != nil {
+		mmSaveDraft.mock.t.Fatalf("Default expectation is already set for the Core.SaveDraft method")
+	}
+
+	if len(mmSaveDraft.expectations) > 0 {
+		mmSaveDraft.mock.t.Fatalf("Some expectations are already set for the Core.SaveDraft method")
+	}
+
+	mmSaveDraft.mock.funcSaveDraft = f
+	mmSaveDraft.mock.funcSaveDraftOrigin = minimock.CallerInfo(1)
+	return mmSaveDraft.mock
+}
+
+// When sets expectation for the Core.SaveDraft which will trigger the result defined by the following
+// Then helper
+func (mmSaveDraft *mCoreMockSaveDraft) When(ctx context.Context, req entity.SaveDraftReq) *CoreMockSaveDraftExpectation {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("CoreMock.SaveDraft mock is already set by Set")
+	}
+
+	expectation := &CoreMockSaveDraftExpectation{
+		mock:               mmSaveDraft.mock,
+		params:             &CoreMockSaveDraftParams{ctx, req},
+		expectationOrigins: CoreMockSaveDraftExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmSaveDraft.expectations = append(mmSaveDraft.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Core.SaveDraft return parameters for the expectation previously defined by the When method
+func (e *CoreMockSaveDraftExpectation) Then(err error) *CoreMock {
+	e.results = &CoreMockSaveDraftResults{err}
+	return e.mock
+}
+
+// Times sets number of times Core.SaveDraft should be invoked
+func (mmSaveDraft *mCoreMockSaveDraft) Times(n uint64) *mCoreMockSaveDraft {
+	if n == 0 {
+		mmSaveDraft.mock.t.Fatalf("Times of CoreMock.SaveDraft mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmSaveDraft.expectedInvocations, n)
+	mmSaveDraft.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmSaveDraft
+}
+
+func (mmSaveDraft *mCoreMockSaveDraft) invocationsDone() bool {
+	if len(mmSaveDraft.expectations) == 0 && mmSaveDraft.defaultExpectation == nil && mmSaveDraft.mock.funcSaveDraft == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmSaveDraft.mock.afterSaveDraftCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmSaveDraft.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// SaveDraft implements mm_usecase.Core
+func (mmSaveDraft *CoreMock) SaveDraft(ctx context.Context, req entity.SaveDraftReq) (err error) {
+	mm_atomic.AddUint64(&mmSaveDraft.beforeSaveDraftCounter, 1)
+	defer mm_atomic.AddUint64(&mmSaveDraft.afterSaveDraftCounter, 1)
+
+	mmSaveDraft.t.Helper()
+
+	if mmSaveDraft.inspectFuncSaveDraft != nil {
+		mmSaveDraft.inspectFuncSaveDraft(ctx, req)
+	}
+
+	mm_params := CoreMockSaveDraftParams{ctx, req}
+
+	// Record call args
+	mmSaveDraft.SaveDraftMock.mutex.Lock()
+	mmSaveDraft.SaveDraftMock.callArgs = append(mmSaveDraft.SaveDraftMock.callArgs, &mm_params)
+	mmSaveDraft.SaveDraftMock.mutex.Unlock()
+
+	for _, e := range mmSaveDraft.SaveDraftMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmSaveDraft.SaveDraftMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmSaveDraft.SaveDraftMock.defaultExpectation.Counter, 1)
+		mm_want := mmSaveDraft.SaveDraftMock.defaultExpectation.params
+		mm_want_ptrs := mmSaveDraft.SaveDraftMock.defaultExpectation.paramPtrs
+
+		mm_got := CoreMockSaveDraftParams{ctx, req}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmSaveDraft.t.Errorf("CoreMock.SaveDraft got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmSaveDraft.SaveDraftMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.req != nil && !minimock.Equal(*mm_want_ptrs.req, mm_got.req) {
+				mmSaveDraft.t.Errorf("CoreMock.SaveDraft got unexpected parameter req, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmSaveDraft.SaveDraftMock.defaultExpectation.expectationOrigins.originReq, *mm_want_ptrs.req, mm_got.req, minimock.Diff(*mm_want_ptrs.req, mm_got.req))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmSaveDraft.t.Errorf("CoreMock.SaveDraft got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmSaveDraft.SaveDraftMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmSaveDraft.SaveDraftMock.defaultExpectation.results
+		if mm_results == nil {
+			mmSaveDraft.t.Fatal("No results are set for the CoreMock.SaveDraft")
+		}
+		return (*mm_results).err
+	}
+	if mmSaveDraft.funcSaveDraft != nil {
+		return mmSaveDraft.funcSaveDraft(ctx, req)
+	}
+	mmSaveDraft.t.Fatalf("Unexpected call to CoreMock.SaveDraft. %v %v", ctx, req)
+	return
+}
+
+// SaveDraftAfterCounter returns a count of finished CoreMock.SaveDraft invocations
+func (mmSaveDraft *CoreMock) SaveDraftAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmSaveDraft.afterSaveDraftCounter)
+}
+
+// SaveDraftBeforeCounter returns a count of CoreMock.SaveDraft invocations
+func (mmSaveDraft *CoreMock) SaveDraftBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmSaveDraft.beforeSaveDraftCounter)
+}
+
+// Calls returns a list of arguments used in each call to CoreMock.SaveDraft.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmSaveDraft *mCoreMockSaveDraft) Calls() []*CoreMockSaveDraftParams {
+	mmSaveDraft.mutex.RLock()
+
+	argCopy := make([]*CoreMockSaveDraftParams, len(mmSaveDraft.callArgs))
+	copy(argCopy, mmSaveDraft.callArgs)
+
+	mmSaveDraft.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockSaveDraftDone returns true if the count of the SaveDraft invocations corresponds
+// the number of defined expectations
+func (m *CoreMock) MinimockSaveDraftDone() bool {
+	if m.SaveDraftMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.SaveDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.SaveDraftMock.invocationsDone()
+}
+
+// MinimockSaveDraftInspect logs each unmet expectation
+func (m *CoreMock) MinimockSaveDraftInspect() {
+	for _, e := range m.SaveDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to CoreMock.SaveDraft at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterSaveDraftCounter := mm_atomic.LoadUint64(&m.afterSaveDraftCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.SaveDraftMock.defaultExpectation != nil && afterSaveDraftCounter < 1 {
+		if m.SaveDraftMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to CoreMock.SaveDraft at\n%s", m.SaveDraftMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to CoreMock.SaveDraft at\n%s with params: %#v", m.SaveDraftMock.defaultExpectation.expectationOrigins.origin, *m.SaveDraftMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcSaveDraft != nil && afterSaveDraftCounter < 1 {
+		m.t.Errorf("Expected call to CoreMock.SaveDraft at\n%s", m.funcSaveDraftOrigin)
+	}
+
+	if !m.SaveDraftMock.invocationsDone() && afterSaveDraftCounter > 0 {
+		m.t.Errorf("Expected %d calls to CoreMock.SaveDraft at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.SaveDraftMock.expectedInvocations), m.SaveDraftMock.expectedInvocationsOrigin, afterSaveDraftCounter)
+	}
+}
+
 type mCoreMockUpdate struct {
 	optional           bool
 	mock               *CoreMock
@@ -3310,7 +4812,11 @@ func (m *CoreMock) MinimockFinish() {
 
 			m.MinimockDeleteInspect()
 
+			m.MinimockDeleteDraftInspect()
+
 			m.MinimockGetInspect()
+
+			m.MinimockGetDraftInspect()
 
 			m.MinimockGetListItemInspect()
 
@@ -3321,6 +4827,10 @@ func (m *CoreMock) MinimockFinish() {
 			m.MinimockGetVersionInspect()
 
 			m.MinimockGetVersionsListInspect()
+
+			m.MinimockPublishDraftInspect()
+
+			m.MinimockSaveDraftInspect()
 
 			m.MinimockUpdateInspect()
 		}
@@ -3348,11 +4858,15 @@ func (m *CoreMock) minimockDone() bool {
 	return done &&
 		m.MinimockCreateDone() &&
 		m.MinimockDeleteDone() &&
+		m.MinimockDeleteDraftDone() &&
 		m.MinimockGetDone() &&
+		m.MinimockGetDraftDone() &&
 		m.MinimockGetListItemDone() &&
 		m.MinimockGetPermittedIDsDone() &&
 		m.MinimockGetTreeDone() &&
 		m.MinimockGetVersionDone() &&
 		m.MinimockGetVersionsListDone() &&
+		m.MinimockPublishDraftDone() &&
+		m.MinimockSaveDraftDone() &&
 		m.MinimockUpdateDone()
 }

@@ -54,7 +54,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates a new entity. Requires write permission for the parent entity. if root entity, requires admin role.",
+                "description": "Creates a new entity. Requires write permission for the parent entity. if root entity, requires admin role.\nWith is_draft the entity is not published: it is visible only to its creator and can't have children.",
                 "consumes": [
                     "application/json"
                 ],
@@ -137,7 +137,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Updates an existing entity. Requires write permission. If changes parent, requires write permission for the new and old parents as well.",
+                "description": "Updates an existing entity and publishes the changes as a new version. Requires write permission. If changes parent, requires write permission for the new and old parents as well.",
                 "consumes": [
                     "application/json"
                 ],
@@ -186,6 +186,156 @@ const docTemplate = `{
                     "entities"
                 ],
                 "summary": "Delete entity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity ID",
+                        "name": "entity_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "default": {
+                        "description": "Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperr.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/entities/{entity_id}/draft": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the current user's draft of the entity. Requires write permission.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "drafts"
+                ],
+                "summary": "Get own draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity ID",
+                        "name": "entity_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entity.Draft"
+                        }
+                    },
+                    "default": {
+                        "description": "Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperr.AppError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates or overwrites the current user's draft of the entity. The published version doesn't change. Requires write permission.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "drafts"
+                ],
+                "summary": "Save own draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity ID",
+                        "name": "entity_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Draft payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.SaveDraftInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "default": {
+                        "description": "Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperr.AppError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes the current user's draft of the entity. Requires write permission.",
+                "tags": [
+                    "drafts"
+                ],
+                "summary": "Discard own draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity ID",
+                        "name": "entity_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "default": {
+                        "description": "Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperr.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/entities/{entity_id}/draft/publish": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Publishes the current user's draft as a new version of the entity and deletes the draft.\nFails with 409 if the entity has been published since the draft was started. Requires write permission.",
+                "tags": [
+                    "drafts"
+                ],
+                "summary": "Publish own draft",
                 "parameters": [
                     {
                         "type": "string",
@@ -1003,6 +1153,30 @@ const docTemplate = `{
                 }
             }
         },
+        "entity.Draft": {
+            "type": "object",
+            "properties": {
+                "base_version": {
+                    "description": "BaseVersion is the published version the draft was started from.",
+                    "type": "integer"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "entity_id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "entity.Entity": {
             "type": "object",
             "properties": {
@@ -1046,6 +1220,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/entity.Node"
                     }
+                },
+                "current_version": {
+                    "description": "CurrentVersion is nil for an entity that has never been published.",
+                    "type": "integer"
                 },
                 "id": {
                     "type": "string"
@@ -1116,14 +1294,22 @@ const docTemplate = `{
                 }
             }
         },
-        "http.UpdateEntityInput": {
+        "http.SaveDraftInput": {
             "type": "object",
             "properties": {
                 "content": {
                     "type": "string"
                 },
-                "is_draft": {
-                    "type": "boolean"
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.UpdateEntityInput": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"

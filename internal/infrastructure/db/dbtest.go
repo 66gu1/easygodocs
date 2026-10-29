@@ -160,7 +160,7 @@ func (td *TestDB) sqlDSN(dbname string) string {
 func runGooseUp(t *testing.T, sdb *sql.DB) {
 	t.Helper()
 
-	migrationsDir := findMigrationsDir()
+	migrationsDir := MigrationsDir()
 	if _, err := os.Stat(migrationsDir); err != nil {
 		t.Fatalf("migrations dir not found: %s (%v). Set MIGRATIONS_DIR env var.", migrationsDir, err)
 	}
@@ -170,7 +170,8 @@ func runGooseUp(t *testing.T, sdb *sql.DB) {
 	}
 }
 
-func findMigrationsDir() string {
+// MigrationsDir returns the migrations directory: $MIGRATIONS_DIR or "migrations" in the module root.
+func MigrationsDir() string {
 	if v := os.Getenv("MIGRATIONS_DIR"); v != "" {
 		return v
 	}

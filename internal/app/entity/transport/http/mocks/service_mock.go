@@ -35,12 +35,26 @@ type ServiceMock struct {
 	beforeDeleteCounter uint64
 	DeleteMock          mServiceMockDelete
 
+	funcDeleteDraft          func(ctx context.Context, entityID uuid.UUID) (err error)
+	funcDeleteDraftOrigin    string
+	inspectFuncDeleteDraft   func(ctx context.Context, entityID uuid.UUID)
+	afterDeleteDraftCounter  uint64
+	beforeDeleteDraftCounter uint64
+	DeleteDraftMock          mServiceMockDeleteDraft
+
 	funcGet          func(ctx context.Context, id uuid.UUID) (e1 entity.Entity, err error)
 	funcGetOrigin    string
 	inspectFuncGet   func(ctx context.Context, id uuid.UUID)
 	afterGetCounter  uint64
 	beforeGetCounter uint64
 	GetMock          mServiceMockGet
+
+	funcGetDraft          func(ctx context.Context, entityID uuid.UUID) (d1 entity.Draft, err error)
+	funcGetDraftOrigin    string
+	inspectFuncGetDraft   func(ctx context.Context, entityID uuid.UUID)
+	afterGetDraftCounter  uint64
+	beforeGetDraftCounter uint64
+	GetDraftMock          mServiceMockGetDraft
 
 	funcGetTree          func(ctx context.Context) (t1 entity.Tree, err error)
 	funcGetTreeOrigin    string
@@ -62,6 +76,20 @@ type ServiceMock struct {
 	afterGetVersionsListCounter  uint64
 	beforeGetVersionsListCounter uint64
 	GetVersionsListMock          mServiceMockGetVersionsList
+
+	funcPublishDraft          func(ctx context.Context, entityID uuid.UUID) (err error)
+	funcPublishDraftOrigin    string
+	inspectFuncPublishDraft   func(ctx context.Context, entityID uuid.UUID)
+	afterPublishDraftCounter  uint64
+	beforePublishDraftCounter uint64
+	PublishDraftMock          mServiceMockPublishDraft
+
+	funcSaveDraft          func(ctx context.Context, cmd usecase.SaveDraftCmd) (err error)
+	funcSaveDraftOrigin    string
+	inspectFuncSaveDraft   func(ctx context.Context, cmd usecase.SaveDraftCmd)
+	afterSaveDraftCounter  uint64
+	beforeSaveDraftCounter uint64
+	SaveDraftMock          mServiceMockSaveDraft
 
 	funcUpdate          func(ctx context.Context, req usecase.UpdateEntityCmd) (err error)
 	funcUpdateOrigin    string
@@ -85,8 +113,14 @@ func NewServiceMock(t minimock.Tester) *ServiceMock {
 	m.DeleteMock = mServiceMockDelete{mock: m}
 	m.DeleteMock.callArgs = []*ServiceMockDeleteParams{}
 
+	m.DeleteDraftMock = mServiceMockDeleteDraft{mock: m}
+	m.DeleteDraftMock.callArgs = []*ServiceMockDeleteDraftParams{}
+
 	m.GetMock = mServiceMockGet{mock: m}
 	m.GetMock.callArgs = []*ServiceMockGetParams{}
+
+	m.GetDraftMock = mServiceMockGetDraft{mock: m}
+	m.GetDraftMock.callArgs = []*ServiceMockGetDraftParams{}
 
 	m.GetTreeMock = mServiceMockGetTree{mock: m}
 	m.GetTreeMock.callArgs = []*ServiceMockGetTreeParams{}
@@ -96,6 +130,12 @@ func NewServiceMock(t minimock.Tester) *ServiceMock {
 
 	m.GetVersionsListMock = mServiceMockGetVersionsList{mock: m}
 	m.GetVersionsListMock.callArgs = []*ServiceMockGetVersionsListParams{}
+
+	m.PublishDraftMock = mServiceMockPublishDraft{mock: m}
+	m.PublishDraftMock.callArgs = []*ServiceMockPublishDraftParams{}
+
+	m.SaveDraftMock = mServiceMockSaveDraft{mock: m}
+	m.SaveDraftMock.callArgs = []*ServiceMockSaveDraftParams{}
 
 	m.UpdateMock = mServiceMockUpdate{mock: m}
 	m.UpdateMock.callArgs = []*ServiceMockUpdateParams{}
@@ -790,6 +830,348 @@ func (m *ServiceMock) MinimockDeleteInspect() {
 	}
 }
 
+type mServiceMockDeleteDraft struct {
+	optional           bool
+	mock               *ServiceMock
+	defaultExpectation *ServiceMockDeleteDraftExpectation
+	expectations       []*ServiceMockDeleteDraftExpectation
+
+	callArgs []*ServiceMockDeleteDraftParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// ServiceMockDeleteDraftExpectation specifies expectation struct of the Service.DeleteDraft
+type ServiceMockDeleteDraftExpectation struct {
+	mock               *ServiceMock
+	params             *ServiceMockDeleteDraftParams
+	paramPtrs          *ServiceMockDeleteDraftParamPtrs
+	expectationOrigins ServiceMockDeleteDraftExpectationOrigins
+	results            *ServiceMockDeleteDraftResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// ServiceMockDeleteDraftParams contains parameters of the Service.DeleteDraft
+type ServiceMockDeleteDraftParams struct {
+	ctx      context.Context
+	entityID uuid.UUID
+}
+
+// ServiceMockDeleteDraftParamPtrs contains pointers to parameters of the Service.DeleteDraft
+type ServiceMockDeleteDraftParamPtrs struct {
+	ctx      *context.Context
+	entityID *uuid.UUID
+}
+
+// ServiceMockDeleteDraftResults contains results of the Service.DeleteDraft
+type ServiceMockDeleteDraftResults struct {
+	err error
+}
+
+// ServiceMockDeleteDraftOrigins contains origins of expectations of the Service.DeleteDraft
+type ServiceMockDeleteDraftExpectationOrigins struct {
+	origin         string
+	originCtx      string
+	originEntityID string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmDeleteDraft *mServiceMockDeleteDraft) Optional() *mServiceMockDeleteDraft {
+	mmDeleteDraft.optional = true
+	return mmDeleteDraft
+}
+
+// Expect sets up expected params for Service.DeleteDraft
+func (mmDeleteDraft *mServiceMockDeleteDraft) Expect(ctx context.Context, entityID uuid.UUID) *mServiceMockDeleteDraft {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("ServiceMock.DeleteDraft mock is already set by Set")
+	}
+
+	if mmDeleteDraft.defaultExpectation == nil {
+		mmDeleteDraft.defaultExpectation = &ServiceMockDeleteDraftExpectation{}
+	}
+
+	if mmDeleteDraft.defaultExpectation.paramPtrs != nil {
+		mmDeleteDraft.mock.t.Fatalf("ServiceMock.DeleteDraft mock is already set by ExpectParams functions")
+	}
+
+	mmDeleteDraft.defaultExpectation.params = &ServiceMockDeleteDraftParams{ctx, entityID}
+	mmDeleteDraft.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmDeleteDraft.expectations {
+		if minimock.Equal(e.params, mmDeleteDraft.defaultExpectation.params) {
+			mmDeleteDraft.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmDeleteDraft.defaultExpectation.params)
+		}
+	}
+
+	return mmDeleteDraft
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Service.DeleteDraft
+func (mmDeleteDraft *mServiceMockDeleteDraft) ExpectCtxParam1(ctx context.Context) *mServiceMockDeleteDraft {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("ServiceMock.DeleteDraft mock is already set by Set")
+	}
+
+	if mmDeleteDraft.defaultExpectation == nil {
+		mmDeleteDraft.defaultExpectation = &ServiceMockDeleteDraftExpectation{}
+	}
+
+	if mmDeleteDraft.defaultExpectation.params != nil {
+		mmDeleteDraft.mock.t.Fatalf("ServiceMock.DeleteDraft mock is already set by Expect")
+	}
+
+	if mmDeleteDraft.defaultExpectation.paramPtrs == nil {
+		mmDeleteDraft.defaultExpectation.paramPtrs = &ServiceMockDeleteDraftParamPtrs{}
+	}
+	mmDeleteDraft.defaultExpectation.paramPtrs.ctx = &ctx
+	mmDeleteDraft.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmDeleteDraft
+}
+
+// ExpectEntityIDParam2 sets up expected param entityID for Service.DeleteDraft
+func (mmDeleteDraft *mServiceMockDeleteDraft) ExpectEntityIDParam2(entityID uuid.UUID) *mServiceMockDeleteDraft {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("ServiceMock.DeleteDraft mock is already set by Set")
+	}
+
+	if mmDeleteDraft.defaultExpectation == nil {
+		mmDeleteDraft.defaultExpectation = &ServiceMockDeleteDraftExpectation{}
+	}
+
+	if mmDeleteDraft.defaultExpectation.params != nil {
+		mmDeleteDraft.mock.t.Fatalf("ServiceMock.DeleteDraft mock is already set by Expect")
+	}
+
+	if mmDeleteDraft.defaultExpectation.paramPtrs == nil {
+		mmDeleteDraft.defaultExpectation.paramPtrs = &ServiceMockDeleteDraftParamPtrs{}
+	}
+	mmDeleteDraft.defaultExpectation.paramPtrs.entityID = &entityID
+	mmDeleteDraft.defaultExpectation.expectationOrigins.originEntityID = minimock.CallerInfo(1)
+
+	return mmDeleteDraft
+}
+
+// Inspect accepts an inspector function that has same arguments as the Service.DeleteDraft
+func (mmDeleteDraft *mServiceMockDeleteDraft) Inspect(f func(ctx context.Context, entityID uuid.UUID)) *mServiceMockDeleteDraft {
+	if mmDeleteDraft.mock.inspectFuncDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("Inspect function is already set for ServiceMock.DeleteDraft")
+	}
+
+	mmDeleteDraft.mock.inspectFuncDeleteDraft = f
+
+	return mmDeleteDraft
+}
+
+// Return sets up results that will be returned by Service.DeleteDraft
+func (mmDeleteDraft *mServiceMockDeleteDraft) Return(err error) *ServiceMock {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("ServiceMock.DeleteDraft mock is already set by Set")
+	}
+
+	if mmDeleteDraft.defaultExpectation == nil {
+		mmDeleteDraft.defaultExpectation = &ServiceMockDeleteDraftExpectation{mock: mmDeleteDraft.mock}
+	}
+	mmDeleteDraft.defaultExpectation.results = &ServiceMockDeleteDraftResults{err}
+	mmDeleteDraft.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmDeleteDraft.mock
+}
+
+// Set uses given function f to mock the Service.DeleteDraft method
+func (mmDeleteDraft *mServiceMockDeleteDraft) Set(f func(ctx context.Context, entityID uuid.UUID) (err error)) *ServiceMock {
+	if mmDeleteDraft.defaultExpectation != nil {
+		mmDeleteDraft.mock.t.Fatalf("Default expectation is already set for the Service.DeleteDraft method")
+	}
+
+	if len(mmDeleteDraft.expectations) > 0 {
+		mmDeleteDraft.mock.t.Fatalf("Some expectations are already set for the Service.DeleteDraft method")
+	}
+
+	mmDeleteDraft.mock.funcDeleteDraft = f
+	mmDeleteDraft.mock.funcDeleteDraftOrigin = minimock.CallerInfo(1)
+	return mmDeleteDraft.mock
+}
+
+// When sets expectation for the Service.DeleteDraft which will trigger the result defined by the following
+// Then helper
+func (mmDeleteDraft *mServiceMockDeleteDraft) When(ctx context.Context, entityID uuid.UUID) *ServiceMockDeleteDraftExpectation {
+	if mmDeleteDraft.mock.funcDeleteDraft != nil {
+		mmDeleteDraft.mock.t.Fatalf("ServiceMock.DeleteDraft mock is already set by Set")
+	}
+
+	expectation := &ServiceMockDeleteDraftExpectation{
+		mock:               mmDeleteDraft.mock,
+		params:             &ServiceMockDeleteDraftParams{ctx, entityID},
+		expectationOrigins: ServiceMockDeleteDraftExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmDeleteDraft.expectations = append(mmDeleteDraft.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Service.DeleteDraft return parameters for the expectation previously defined by the When method
+func (e *ServiceMockDeleteDraftExpectation) Then(err error) *ServiceMock {
+	e.results = &ServiceMockDeleteDraftResults{err}
+	return e.mock
+}
+
+// Times sets number of times Service.DeleteDraft should be invoked
+func (mmDeleteDraft *mServiceMockDeleteDraft) Times(n uint64) *mServiceMockDeleteDraft {
+	if n == 0 {
+		mmDeleteDraft.mock.t.Fatalf("Times of ServiceMock.DeleteDraft mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmDeleteDraft.expectedInvocations, n)
+	mmDeleteDraft.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmDeleteDraft
+}
+
+func (mmDeleteDraft *mServiceMockDeleteDraft) invocationsDone() bool {
+	if len(mmDeleteDraft.expectations) == 0 && mmDeleteDraft.defaultExpectation == nil && mmDeleteDraft.mock.funcDeleteDraft == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmDeleteDraft.mock.afterDeleteDraftCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmDeleteDraft.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// DeleteDraft implements mm_http.Service
+func (mmDeleteDraft *ServiceMock) DeleteDraft(ctx context.Context, entityID uuid.UUID) (err error) {
+	mm_atomic.AddUint64(&mmDeleteDraft.beforeDeleteDraftCounter, 1)
+	defer mm_atomic.AddUint64(&mmDeleteDraft.afterDeleteDraftCounter, 1)
+
+	mmDeleteDraft.t.Helper()
+
+	if mmDeleteDraft.inspectFuncDeleteDraft != nil {
+		mmDeleteDraft.inspectFuncDeleteDraft(ctx, entityID)
+	}
+
+	mm_params := ServiceMockDeleteDraftParams{ctx, entityID}
+
+	// Record call args
+	mmDeleteDraft.DeleteDraftMock.mutex.Lock()
+	mmDeleteDraft.DeleteDraftMock.callArgs = append(mmDeleteDraft.DeleteDraftMock.callArgs, &mm_params)
+	mmDeleteDraft.DeleteDraftMock.mutex.Unlock()
+
+	for _, e := range mmDeleteDraft.DeleteDraftMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmDeleteDraft.DeleteDraftMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmDeleteDraft.DeleteDraftMock.defaultExpectation.Counter, 1)
+		mm_want := mmDeleteDraft.DeleteDraftMock.defaultExpectation.params
+		mm_want_ptrs := mmDeleteDraft.DeleteDraftMock.defaultExpectation.paramPtrs
+
+		mm_got := ServiceMockDeleteDraftParams{ctx, entityID}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmDeleteDraft.t.Errorf("ServiceMock.DeleteDraft got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDeleteDraft.DeleteDraftMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.entityID != nil && !minimock.Equal(*mm_want_ptrs.entityID, mm_got.entityID) {
+				mmDeleteDraft.t.Errorf("ServiceMock.DeleteDraft got unexpected parameter entityID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDeleteDraft.DeleteDraftMock.defaultExpectation.expectationOrigins.originEntityID, *mm_want_ptrs.entityID, mm_got.entityID, minimock.Diff(*mm_want_ptrs.entityID, mm_got.entityID))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmDeleteDraft.t.Errorf("ServiceMock.DeleteDraft got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmDeleteDraft.DeleteDraftMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmDeleteDraft.DeleteDraftMock.defaultExpectation.results
+		if mm_results == nil {
+			mmDeleteDraft.t.Fatal("No results are set for the ServiceMock.DeleteDraft")
+		}
+		return (*mm_results).err
+	}
+	if mmDeleteDraft.funcDeleteDraft != nil {
+		return mmDeleteDraft.funcDeleteDraft(ctx, entityID)
+	}
+	mmDeleteDraft.t.Fatalf("Unexpected call to ServiceMock.DeleteDraft. %v %v", ctx, entityID)
+	return
+}
+
+// DeleteDraftAfterCounter returns a count of finished ServiceMock.DeleteDraft invocations
+func (mmDeleteDraft *ServiceMock) DeleteDraftAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmDeleteDraft.afterDeleteDraftCounter)
+}
+
+// DeleteDraftBeforeCounter returns a count of ServiceMock.DeleteDraft invocations
+func (mmDeleteDraft *ServiceMock) DeleteDraftBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmDeleteDraft.beforeDeleteDraftCounter)
+}
+
+// Calls returns a list of arguments used in each call to ServiceMock.DeleteDraft.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmDeleteDraft *mServiceMockDeleteDraft) Calls() []*ServiceMockDeleteDraftParams {
+	mmDeleteDraft.mutex.RLock()
+
+	argCopy := make([]*ServiceMockDeleteDraftParams, len(mmDeleteDraft.callArgs))
+	copy(argCopy, mmDeleteDraft.callArgs)
+
+	mmDeleteDraft.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockDeleteDraftDone returns true if the count of the DeleteDraft invocations corresponds
+// the number of defined expectations
+func (m *ServiceMock) MinimockDeleteDraftDone() bool {
+	if m.DeleteDraftMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.DeleteDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.DeleteDraftMock.invocationsDone()
+}
+
+// MinimockDeleteDraftInspect logs each unmet expectation
+func (m *ServiceMock) MinimockDeleteDraftInspect() {
+	for _, e := range m.DeleteDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to ServiceMock.DeleteDraft at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterDeleteDraftCounter := mm_atomic.LoadUint64(&m.afterDeleteDraftCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.DeleteDraftMock.defaultExpectation != nil && afterDeleteDraftCounter < 1 {
+		if m.DeleteDraftMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to ServiceMock.DeleteDraft at\n%s", m.DeleteDraftMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to ServiceMock.DeleteDraft at\n%s with params: %#v", m.DeleteDraftMock.defaultExpectation.expectationOrigins.origin, *m.DeleteDraftMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcDeleteDraft != nil && afterDeleteDraftCounter < 1 {
+		m.t.Errorf("Expected call to ServiceMock.DeleteDraft at\n%s", m.funcDeleteDraftOrigin)
+	}
+
+	if !m.DeleteDraftMock.invocationsDone() && afterDeleteDraftCounter > 0 {
+		m.t.Errorf("Expected %d calls to ServiceMock.DeleteDraft at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.DeleteDraftMock.expectedInvocations), m.DeleteDraftMock.expectedInvocationsOrigin, afterDeleteDraftCounter)
+	}
+}
+
 type mServiceMockGet struct {
 	optional           bool
 	mock               *ServiceMock
@@ -1130,6 +1512,349 @@ func (m *ServiceMock) MinimockGetInspect() {
 	if !m.GetMock.invocationsDone() && afterGetCounter > 0 {
 		m.t.Errorf("Expected %d calls to ServiceMock.Get at\n%s but found %d calls",
 			mm_atomic.LoadUint64(&m.GetMock.expectedInvocations), m.GetMock.expectedInvocationsOrigin, afterGetCounter)
+	}
+}
+
+type mServiceMockGetDraft struct {
+	optional           bool
+	mock               *ServiceMock
+	defaultExpectation *ServiceMockGetDraftExpectation
+	expectations       []*ServiceMockGetDraftExpectation
+
+	callArgs []*ServiceMockGetDraftParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// ServiceMockGetDraftExpectation specifies expectation struct of the Service.GetDraft
+type ServiceMockGetDraftExpectation struct {
+	mock               *ServiceMock
+	params             *ServiceMockGetDraftParams
+	paramPtrs          *ServiceMockGetDraftParamPtrs
+	expectationOrigins ServiceMockGetDraftExpectationOrigins
+	results            *ServiceMockGetDraftResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// ServiceMockGetDraftParams contains parameters of the Service.GetDraft
+type ServiceMockGetDraftParams struct {
+	ctx      context.Context
+	entityID uuid.UUID
+}
+
+// ServiceMockGetDraftParamPtrs contains pointers to parameters of the Service.GetDraft
+type ServiceMockGetDraftParamPtrs struct {
+	ctx      *context.Context
+	entityID *uuid.UUID
+}
+
+// ServiceMockGetDraftResults contains results of the Service.GetDraft
+type ServiceMockGetDraftResults struct {
+	d1  entity.Draft
+	err error
+}
+
+// ServiceMockGetDraftOrigins contains origins of expectations of the Service.GetDraft
+type ServiceMockGetDraftExpectationOrigins struct {
+	origin         string
+	originCtx      string
+	originEntityID string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmGetDraft *mServiceMockGetDraft) Optional() *mServiceMockGetDraft {
+	mmGetDraft.optional = true
+	return mmGetDraft
+}
+
+// Expect sets up expected params for Service.GetDraft
+func (mmGetDraft *mServiceMockGetDraft) Expect(ctx context.Context, entityID uuid.UUID) *mServiceMockGetDraft {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("ServiceMock.GetDraft mock is already set by Set")
+	}
+
+	if mmGetDraft.defaultExpectation == nil {
+		mmGetDraft.defaultExpectation = &ServiceMockGetDraftExpectation{}
+	}
+
+	if mmGetDraft.defaultExpectation.paramPtrs != nil {
+		mmGetDraft.mock.t.Fatalf("ServiceMock.GetDraft mock is already set by ExpectParams functions")
+	}
+
+	mmGetDraft.defaultExpectation.params = &ServiceMockGetDraftParams{ctx, entityID}
+	mmGetDraft.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmGetDraft.expectations {
+		if minimock.Equal(e.params, mmGetDraft.defaultExpectation.params) {
+			mmGetDraft.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmGetDraft.defaultExpectation.params)
+		}
+	}
+
+	return mmGetDraft
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Service.GetDraft
+func (mmGetDraft *mServiceMockGetDraft) ExpectCtxParam1(ctx context.Context) *mServiceMockGetDraft {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("ServiceMock.GetDraft mock is already set by Set")
+	}
+
+	if mmGetDraft.defaultExpectation == nil {
+		mmGetDraft.defaultExpectation = &ServiceMockGetDraftExpectation{}
+	}
+
+	if mmGetDraft.defaultExpectation.params != nil {
+		mmGetDraft.mock.t.Fatalf("ServiceMock.GetDraft mock is already set by Expect")
+	}
+
+	if mmGetDraft.defaultExpectation.paramPtrs == nil {
+		mmGetDraft.defaultExpectation.paramPtrs = &ServiceMockGetDraftParamPtrs{}
+	}
+	mmGetDraft.defaultExpectation.paramPtrs.ctx = &ctx
+	mmGetDraft.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmGetDraft
+}
+
+// ExpectEntityIDParam2 sets up expected param entityID for Service.GetDraft
+func (mmGetDraft *mServiceMockGetDraft) ExpectEntityIDParam2(entityID uuid.UUID) *mServiceMockGetDraft {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("ServiceMock.GetDraft mock is already set by Set")
+	}
+
+	if mmGetDraft.defaultExpectation == nil {
+		mmGetDraft.defaultExpectation = &ServiceMockGetDraftExpectation{}
+	}
+
+	if mmGetDraft.defaultExpectation.params != nil {
+		mmGetDraft.mock.t.Fatalf("ServiceMock.GetDraft mock is already set by Expect")
+	}
+
+	if mmGetDraft.defaultExpectation.paramPtrs == nil {
+		mmGetDraft.defaultExpectation.paramPtrs = &ServiceMockGetDraftParamPtrs{}
+	}
+	mmGetDraft.defaultExpectation.paramPtrs.entityID = &entityID
+	mmGetDraft.defaultExpectation.expectationOrigins.originEntityID = minimock.CallerInfo(1)
+
+	return mmGetDraft
+}
+
+// Inspect accepts an inspector function that has same arguments as the Service.GetDraft
+func (mmGetDraft *mServiceMockGetDraft) Inspect(f func(ctx context.Context, entityID uuid.UUID)) *mServiceMockGetDraft {
+	if mmGetDraft.mock.inspectFuncGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("Inspect function is already set for ServiceMock.GetDraft")
+	}
+
+	mmGetDraft.mock.inspectFuncGetDraft = f
+
+	return mmGetDraft
+}
+
+// Return sets up results that will be returned by Service.GetDraft
+func (mmGetDraft *mServiceMockGetDraft) Return(d1 entity.Draft, err error) *ServiceMock {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("ServiceMock.GetDraft mock is already set by Set")
+	}
+
+	if mmGetDraft.defaultExpectation == nil {
+		mmGetDraft.defaultExpectation = &ServiceMockGetDraftExpectation{mock: mmGetDraft.mock}
+	}
+	mmGetDraft.defaultExpectation.results = &ServiceMockGetDraftResults{d1, err}
+	mmGetDraft.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmGetDraft.mock
+}
+
+// Set uses given function f to mock the Service.GetDraft method
+func (mmGetDraft *mServiceMockGetDraft) Set(f func(ctx context.Context, entityID uuid.UUID) (d1 entity.Draft, err error)) *ServiceMock {
+	if mmGetDraft.defaultExpectation != nil {
+		mmGetDraft.mock.t.Fatalf("Default expectation is already set for the Service.GetDraft method")
+	}
+
+	if len(mmGetDraft.expectations) > 0 {
+		mmGetDraft.mock.t.Fatalf("Some expectations are already set for the Service.GetDraft method")
+	}
+
+	mmGetDraft.mock.funcGetDraft = f
+	mmGetDraft.mock.funcGetDraftOrigin = minimock.CallerInfo(1)
+	return mmGetDraft.mock
+}
+
+// When sets expectation for the Service.GetDraft which will trigger the result defined by the following
+// Then helper
+func (mmGetDraft *mServiceMockGetDraft) When(ctx context.Context, entityID uuid.UUID) *ServiceMockGetDraftExpectation {
+	if mmGetDraft.mock.funcGetDraft != nil {
+		mmGetDraft.mock.t.Fatalf("ServiceMock.GetDraft mock is already set by Set")
+	}
+
+	expectation := &ServiceMockGetDraftExpectation{
+		mock:               mmGetDraft.mock,
+		params:             &ServiceMockGetDraftParams{ctx, entityID},
+		expectationOrigins: ServiceMockGetDraftExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmGetDraft.expectations = append(mmGetDraft.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Service.GetDraft return parameters for the expectation previously defined by the When method
+func (e *ServiceMockGetDraftExpectation) Then(d1 entity.Draft, err error) *ServiceMock {
+	e.results = &ServiceMockGetDraftResults{d1, err}
+	return e.mock
+}
+
+// Times sets number of times Service.GetDraft should be invoked
+func (mmGetDraft *mServiceMockGetDraft) Times(n uint64) *mServiceMockGetDraft {
+	if n == 0 {
+		mmGetDraft.mock.t.Fatalf("Times of ServiceMock.GetDraft mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmGetDraft.expectedInvocations, n)
+	mmGetDraft.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmGetDraft
+}
+
+func (mmGetDraft *mServiceMockGetDraft) invocationsDone() bool {
+	if len(mmGetDraft.expectations) == 0 && mmGetDraft.defaultExpectation == nil && mmGetDraft.mock.funcGetDraft == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmGetDraft.mock.afterGetDraftCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmGetDraft.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// GetDraft implements mm_http.Service
+func (mmGetDraft *ServiceMock) GetDraft(ctx context.Context, entityID uuid.UUID) (d1 entity.Draft, err error) {
+	mm_atomic.AddUint64(&mmGetDraft.beforeGetDraftCounter, 1)
+	defer mm_atomic.AddUint64(&mmGetDraft.afterGetDraftCounter, 1)
+
+	mmGetDraft.t.Helper()
+
+	if mmGetDraft.inspectFuncGetDraft != nil {
+		mmGetDraft.inspectFuncGetDraft(ctx, entityID)
+	}
+
+	mm_params := ServiceMockGetDraftParams{ctx, entityID}
+
+	// Record call args
+	mmGetDraft.GetDraftMock.mutex.Lock()
+	mmGetDraft.GetDraftMock.callArgs = append(mmGetDraft.GetDraftMock.callArgs, &mm_params)
+	mmGetDraft.GetDraftMock.mutex.Unlock()
+
+	for _, e := range mmGetDraft.GetDraftMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.d1, e.results.err
+		}
+	}
+
+	if mmGetDraft.GetDraftMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmGetDraft.GetDraftMock.defaultExpectation.Counter, 1)
+		mm_want := mmGetDraft.GetDraftMock.defaultExpectation.params
+		mm_want_ptrs := mmGetDraft.GetDraftMock.defaultExpectation.paramPtrs
+
+		mm_got := ServiceMockGetDraftParams{ctx, entityID}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmGetDraft.t.Errorf("ServiceMock.GetDraft got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetDraft.GetDraftMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.entityID != nil && !minimock.Equal(*mm_want_ptrs.entityID, mm_got.entityID) {
+				mmGetDraft.t.Errorf("ServiceMock.GetDraft got unexpected parameter entityID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmGetDraft.GetDraftMock.defaultExpectation.expectationOrigins.originEntityID, *mm_want_ptrs.entityID, mm_got.entityID, minimock.Diff(*mm_want_ptrs.entityID, mm_got.entityID))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmGetDraft.t.Errorf("ServiceMock.GetDraft got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmGetDraft.GetDraftMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmGetDraft.GetDraftMock.defaultExpectation.results
+		if mm_results == nil {
+			mmGetDraft.t.Fatal("No results are set for the ServiceMock.GetDraft")
+		}
+		return (*mm_results).d1, (*mm_results).err
+	}
+	if mmGetDraft.funcGetDraft != nil {
+		return mmGetDraft.funcGetDraft(ctx, entityID)
+	}
+	mmGetDraft.t.Fatalf("Unexpected call to ServiceMock.GetDraft. %v %v", ctx, entityID)
+	return
+}
+
+// GetDraftAfterCounter returns a count of finished ServiceMock.GetDraft invocations
+func (mmGetDraft *ServiceMock) GetDraftAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetDraft.afterGetDraftCounter)
+}
+
+// GetDraftBeforeCounter returns a count of ServiceMock.GetDraft invocations
+func (mmGetDraft *ServiceMock) GetDraftBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetDraft.beforeGetDraftCounter)
+}
+
+// Calls returns a list of arguments used in each call to ServiceMock.GetDraft.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmGetDraft *mServiceMockGetDraft) Calls() []*ServiceMockGetDraftParams {
+	mmGetDraft.mutex.RLock()
+
+	argCopy := make([]*ServiceMockGetDraftParams, len(mmGetDraft.callArgs))
+	copy(argCopy, mmGetDraft.callArgs)
+
+	mmGetDraft.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockGetDraftDone returns true if the count of the GetDraft invocations corresponds
+// the number of defined expectations
+func (m *ServiceMock) MinimockGetDraftDone() bool {
+	if m.GetDraftMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.GetDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.GetDraftMock.invocationsDone()
+}
+
+// MinimockGetDraftInspect logs each unmet expectation
+func (m *ServiceMock) MinimockGetDraftInspect() {
+	for _, e := range m.GetDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to ServiceMock.GetDraft at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterGetDraftCounter := mm_atomic.LoadUint64(&m.afterGetDraftCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.GetDraftMock.defaultExpectation != nil && afterGetDraftCounter < 1 {
+		if m.GetDraftMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to ServiceMock.GetDraft at\n%s", m.GetDraftMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to ServiceMock.GetDraft at\n%s with params: %#v", m.GetDraftMock.defaultExpectation.expectationOrigins.origin, *m.GetDraftMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcGetDraft != nil && afterGetDraftCounter < 1 {
+		m.t.Errorf("Expected call to ServiceMock.GetDraft at\n%s", m.funcGetDraftOrigin)
+	}
+
+	if !m.GetDraftMock.invocationsDone() && afterGetDraftCounter > 0 {
+		m.t.Errorf("Expected %d calls to ServiceMock.GetDraft at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.GetDraftMock.expectedInvocations), m.GetDraftMock.expectedInvocationsOrigin, afterGetDraftCounter)
 	}
 }
 
@@ -2162,6 +2887,690 @@ func (m *ServiceMock) MinimockGetVersionsListInspect() {
 	}
 }
 
+type mServiceMockPublishDraft struct {
+	optional           bool
+	mock               *ServiceMock
+	defaultExpectation *ServiceMockPublishDraftExpectation
+	expectations       []*ServiceMockPublishDraftExpectation
+
+	callArgs []*ServiceMockPublishDraftParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// ServiceMockPublishDraftExpectation specifies expectation struct of the Service.PublishDraft
+type ServiceMockPublishDraftExpectation struct {
+	mock               *ServiceMock
+	params             *ServiceMockPublishDraftParams
+	paramPtrs          *ServiceMockPublishDraftParamPtrs
+	expectationOrigins ServiceMockPublishDraftExpectationOrigins
+	results            *ServiceMockPublishDraftResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// ServiceMockPublishDraftParams contains parameters of the Service.PublishDraft
+type ServiceMockPublishDraftParams struct {
+	ctx      context.Context
+	entityID uuid.UUID
+}
+
+// ServiceMockPublishDraftParamPtrs contains pointers to parameters of the Service.PublishDraft
+type ServiceMockPublishDraftParamPtrs struct {
+	ctx      *context.Context
+	entityID *uuid.UUID
+}
+
+// ServiceMockPublishDraftResults contains results of the Service.PublishDraft
+type ServiceMockPublishDraftResults struct {
+	err error
+}
+
+// ServiceMockPublishDraftOrigins contains origins of expectations of the Service.PublishDraft
+type ServiceMockPublishDraftExpectationOrigins struct {
+	origin         string
+	originCtx      string
+	originEntityID string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmPublishDraft *mServiceMockPublishDraft) Optional() *mServiceMockPublishDraft {
+	mmPublishDraft.optional = true
+	return mmPublishDraft
+}
+
+// Expect sets up expected params for Service.PublishDraft
+func (mmPublishDraft *mServiceMockPublishDraft) Expect(ctx context.Context, entityID uuid.UUID) *mServiceMockPublishDraft {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("ServiceMock.PublishDraft mock is already set by Set")
+	}
+
+	if mmPublishDraft.defaultExpectation == nil {
+		mmPublishDraft.defaultExpectation = &ServiceMockPublishDraftExpectation{}
+	}
+
+	if mmPublishDraft.defaultExpectation.paramPtrs != nil {
+		mmPublishDraft.mock.t.Fatalf("ServiceMock.PublishDraft mock is already set by ExpectParams functions")
+	}
+
+	mmPublishDraft.defaultExpectation.params = &ServiceMockPublishDraftParams{ctx, entityID}
+	mmPublishDraft.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmPublishDraft.expectations {
+		if minimock.Equal(e.params, mmPublishDraft.defaultExpectation.params) {
+			mmPublishDraft.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmPublishDraft.defaultExpectation.params)
+		}
+	}
+
+	return mmPublishDraft
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Service.PublishDraft
+func (mmPublishDraft *mServiceMockPublishDraft) ExpectCtxParam1(ctx context.Context) *mServiceMockPublishDraft {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("ServiceMock.PublishDraft mock is already set by Set")
+	}
+
+	if mmPublishDraft.defaultExpectation == nil {
+		mmPublishDraft.defaultExpectation = &ServiceMockPublishDraftExpectation{}
+	}
+
+	if mmPublishDraft.defaultExpectation.params != nil {
+		mmPublishDraft.mock.t.Fatalf("ServiceMock.PublishDraft mock is already set by Expect")
+	}
+
+	if mmPublishDraft.defaultExpectation.paramPtrs == nil {
+		mmPublishDraft.defaultExpectation.paramPtrs = &ServiceMockPublishDraftParamPtrs{}
+	}
+	mmPublishDraft.defaultExpectation.paramPtrs.ctx = &ctx
+	mmPublishDraft.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmPublishDraft
+}
+
+// ExpectEntityIDParam2 sets up expected param entityID for Service.PublishDraft
+func (mmPublishDraft *mServiceMockPublishDraft) ExpectEntityIDParam2(entityID uuid.UUID) *mServiceMockPublishDraft {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("ServiceMock.PublishDraft mock is already set by Set")
+	}
+
+	if mmPublishDraft.defaultExpectation == nil {
+		mmPublishDraft.defaultExpectation = &ServiceMockPublishDraftExpectation{}
+	}
+
+	if mmPublishDraft.defaultExpectation.params != nil {
+		mmPublishDraft.mock.t.Fatalf("ServiceMock.PublishDraft mock is already set by Expect")
+	}
+
+	if mmPublishDraft.defaultExpectation.paramPtrs == nil {
+		mmPublishDraft.defaultExpectation.paramPtrs = &ServiceMockPublishDraftParamPtrs{}
+	}
+	mmPublishDraft.defaultExpectation.paramPtrs.entityID = &entityID
+	mmPublishDraft.defaultExpectation.expectationOrigins.originEntityID = minimock.CallerInfo(1)
+
+	return mmPublishDraft
+}
+
+// Inspect accepts an inspector function that has same arguments as the Service.PublishDraft
+func (mmPublishDraft *mServiceMockPublishDraft) Inspect(f func(ctx context.Context, entityID uuid.UUID)) *mServiceMockPublishDraft {
+	if mmPublishDraft.mock.inspectFuncPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("Inspect function is already set for ServiceMock.PublishDraft")
+	}
+
+	mmPublishDraft.mock.inspectFuncPublishDraft = f
+
+	return mmPublishDraft
+}
+
+// Return sets up results that will be returned by Service.PublishDraft
+func (mmPublishDraft *mServiceMockPublishDraft) Return(err error) *ServiceMock {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("ServiceMock.PublishDraft mock is already set by Set")
+	}
+
+	if mmPublishDraft.defaultExpectation == nil {
+		mmPublishDraft.defaultExpectation = &ServiceMockPublishDraftExpectation{mock: mmPublishDraft.mock}
+	}
+	mmPublishDraft.defaultExpectation.results = &ServiceMockPublishDraftResults{err}
+	mmPublishDraft.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmPublishDraft.mock
+}
+
+// Set uses given function f to mock the Service.PublishDraft method
+func (mmPublishDraft *mServiceMockPublishDraft) Set(f func(ctx context.Context, entityID uuid.UUID) (err error)) *ServiceMock {
+	if mmPublishDraft.defaultExpectation != nil {
+		mmPublishDraft.mock.t.Fatalf("Default expectation is already set for the Service.PublishDraft method")
+	}
+
+	if len(mmPublishDraft.expectations) > 0 {
+		mmPublishDraft.mock.t.Fatalf("Some expectations are already set for the Service.PublishDraft method")
+	}
+
+	mmPublishDraft.mock.funcPublishDraft = f
+	mmPublishDraft.mock.funcPublishDraftOrigin = minimock.CallerInfo(1)
+	return mmPublishDraft.mock
+}
+
+// When sets expectation for the Service.PublishDraft which will trigger the result defined by the following
+// Then helper
+func (mmPublishDraft *mServiceMockPublishDraft) When(ctx context.Context, entityID uuid.UUID) *ServiceMockPublishDraftExpectation {
+	if mmPublishDraft.mock.funcPublishDraft != nil {
+		mmPublishDraft.mock.t.Fatalf("ServiceMock.PublishDraft mock is already set by Set")
+	}
+
+	expectation := &ServiceMockPublishDraftExpectation{
+		mock:               mmPublishDraft.mock,
+		params:             &ServiceMockPublishDraftParams{ctx, entityID},
+		expectationOrigins: ServiceMockPublishDraftExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmPublishDraft.expectations = append(mmPublishDraft.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Service.PublishDraft return parameters for the expectation previously defined by the When method
+func (e *ServiceMockPublishDraftExpectation) Then(err error) *ServiceMock {
+	e.results = &ServiceMockPublishDraftResults{err}
+	return e.mock
+}
+
+// Times sets number of times Service.PublishDraft should be invoked
+func (mmPublishDraft *mServiceMockPublishDraft) Times(n uint64) *mServiceMockPublishDraft {
+	if n == 0 {
+		mmPublishDraft.mock.t.Fatalf("Times of ServiceMock.PublishDraft mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmPublishDraft.expectedInvocations, n)
+	mmPublishDraft.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmPublishDraft
+}
+
+func (mmPublishDraft *mServiceMockPublishDraft) invocationsDone() bool {
+	if len(mmPublishDraft.expectations) == 0 && mmPublishDraft.defaultExpectation == nil && mmPublishDraft.mock.funcPublishDraft == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmPublishDraft.mock.afterPublishDraftCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmPublishDraft.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// PublishDraft implements mm_http.Service
+func (mmPublishDraft *ServiceMock) PublishDraft(ctx context.Context, entityID uuid.UUID) (err error) {
+	mm_atomic.AddUint64(&mmPublishDraft.beforePublishDraftCounter, 1)
+	defer mm_atomic.AddUint64(&mmPublishDraft.afterPublishDraftCounter, 1)
+
+	mmPublishDraft.t.Helper()
+
+	if mmPublishDraft.inspectFuncPublishDraft != nil {
+		mmPublishDraft.inspectFuncPublishDraft(ctx, entityID)
+	}
+
+	mm_params := ServiceMockPublishDraftParams{ctx, entityID}
+
+	// Record call args
+	mmPublishDraft.PublishDraftMock.mutex.Lock()
+	mmPublishDraft.PublishDraftMock.callArgs = append(mmPublishDraft.PublishDraftMock.callArgs, &mm_params)
+	mmPublishDraft.PublishDraftMock.mutex.Unlock()
+
+	for _, e := range mmPublishDraft.PublishDraftMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmPublishDraft.PublishDraftMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmPublishDraft.PublishDraftMock.defaultExpectation.Counter, 1)
+		mm_want := mmPublishDraft.PublishDraftMock.defaultExpectation.params
+		mm_want_ptrs := mmPublishDraft.PublishDraftMock.defaultExpectation.paramPtrs
+
+		mm_got := ServiceMockPublishDraftParams{ctx, entityID}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmPublishDraft.t.Errorf("ServiceMock.PublishDraft got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmPublishDraft.PublishDraftMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.entityID != nil && !minimock.Equal(*mm_want_ptrs.entityID, mm_got.entityID) {
+				mmPublishDraft.t.Errorf("ServiceMock.PublishDraft got unexpected parameter entityID, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmPublishDraft.PublishDraftMock.defaultExpectation.expectationOrigins.originEntityID, *mm_want_ptrs.entityID, mm_got.entityID, minimock.Diff(*mm_want_ptrs.entityID, mm_got.entityID))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmPublishDraft.t.Errorf("ServiceMock.PublishDraft got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmPublishDraft.PublishDraftMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmPublishDraft.PublishDraftMock.defaultExpectation.results
+		if mm_results == nil {
+			mmPublishDraft.t.Fatal("No results are set for the ServiceMock.PublishDraft")
+		}
+		return (*mm_results).err
+	}
+	if mmPublishDraft.funcPublishDraft != nil {
+		return mmPublishDraft.funcPublishDraft(ctx, entityID)
+	}
+	mmPublishDraft.t.Fatalf("Unexpected call to ServiceMock.PublishDraft. %v %v", ctx, entityID)
+	return
+}
+
+// PublishDraftAfterCounter returns a count of finished ServiceMock.PublishDraft invocations
+func (mmPublishDraft *ServiceMock) PublishDraftAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmPublishDraft.afterPublishDraftCounter)
+}
+
+// PublishDraftBeforeCounter returns a count of ServiceMock.PublishDraft invocations
+func (mmPublishDraft *ServiceMock) PublishDraftBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmPublishDraft.beforePublishDraftCounter)
+}
+
+// Calls returns a list of arguments used in each call to ServiceMock.PublishDraft.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmPublishDraft *mServiceMockPublishDraft) Calls() []*ServiceMockPublishDraftParams {
+	mmPublishDraft.mutex.RLock()
+
+	argCopy := make([]*ServiceMockPublishDraftParams, len(mmPublishDraft.callArgs))
+	copy(argCopy, mmPublishDraft.callArgs)
+
+	mmPublishDraft.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockPublishDraftDone returns true if the count of the PublishDraft invocations corresponds
+// the number of defined expectations
+func (m *ServiceMock) MinimockPublishDraftDone() bool {
+	if m.PublishDraftMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.PublishDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.PublishDraftMock.invocationsDone()
+}
+
+// MinimockPublishDraftInspect logs each unmet expectation
+func (m *ServiceMock) MinimockPublishDraftInspect() {
+	for _, e := range m.PublishDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to ServiceMock.PublishDraft at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterPublishDraftCounter := mm_atomic.LoadUint64(&m.afterPublishDraftCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.PublishDraftMock.defaultExpectation != nil && afterPublishDraftCounter < 1 {
+		if m.PublishDraftMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to ServiceMock.PublishDraft at\n%s", m.PublishDraftMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to ServiceMock.PublishDraft at\n%s with params: %#v", m.PublishDraftMock.defaultExpectation.expectationOrigins.origin, *m.PublishDraftMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcPublishDraft != nil && afterPublishDraftCounter < 1 {
+		m.t.Errorf("Expected call to ServiceMock.PublishDraft at\n%s", m.funcPublishDraftOrigin)
+	}
+
+	if !m.PublishDraftMock.invocationsDone() && afterPublishDraftCounter > 0 {
+		m.t.Errorf("Expected %d calls to ServiceMock.PublishDraft at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.PublishDraftMock.expectedInvocations), m.PublishDraftMock.expectedInvocationsOrigin, afterPublishDraftCounter)
+	}
+}
+
+type mServiceMockSaveDraft struct {
+	optional           bool
+	mock               *ServiceMock
+	defaultExpectation *ServiceMockSaveDraftExpectation
+	expectations       []*ServiceMockSaveDraftExpectation
+
+	callArgs []*ServiceMockSaveDraftParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// ServiceMockSaveDraftExpectation specifies expectation struct of the Service.SaveDraft
+type ServiceMockSaveDraftExpectation struct {
+	mock               *ServiceMock
+	params             *ServiceMockSaveDraftParams
+	paramPtrs          *ServiceMockSaveDraftParamPtrs
+	expectationOrigins ServiceMockSaveDraftExpectationOrigins
+	results            *ServiceMockSaveDraftResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// ServiceMockSaveDraftParams contains parameters of the Service.SaveDraft
+type ServiceMockSaveDraftParams struct {
+	ctx context.Context
+	cmd usecase.SaveDraftCmd
+}
+
+// ServiceMockSaveDraftParamPtrs contains pointers to parameters of the Service.SaveDraft
+type ServiceMockSaveDraftParamPtrs struct {
+	ctx *context.Context
+	cmd *usecase.SaveDraftCmd
+}
+
+// ServiceMockSaveDraftResults contains results of the Service.SaveDraft
+type ServiceMockSaveDraftResults struct {
+	err error
+}
+
+// ServiceMockSaveDraftOrigins contains origins of expectations of the Service.SaveDraft
+type ServiceMockSaveDraftExpectationOrigins struct {
+	origin    string
+	originCtx string
+	originCmd string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmSaveDraft *mServiceMockSaveDraft) Optional() *mServiceMockSaveDraft {
+	mmSaveDraft.optional = true
+	return mmSaveDraft
+}
+
+// Expect sets up expected params for Service.SaveDraft
+func (mmSaveDraft *mServiceMockSaveDraft) Expect(ctx context.Context, cmd usecase.SaveDraftCmd) *mServiceMockSaveDraft {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("ServiceMock.SaveDraft mock is already set by Set")
+	}
+
+	if mmSaveDraft.defaultExpectation == nil {
+		mmSaveDraft.defaultExpectation = &ServiceMockSaveDraftExpectation{}
+	}
+
+	if mmSaveDraft.defaultExpectation.paramPtrs != nil {
+		mmSaveDraft.mock.t.Fatalf("ServiceMock.SaveDraft mock is already set by ExpectParams functions")
+	}
+
+	mmSaveDraft.defaultExpectation.params = &ServiceMockSaveDraftParams{ctx, cmd}
+	mmSaveDraft.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmSaveDraft.expectations {
+		if minimock.Equal(e.params, mmSaveDraft.defaultExpectation.params) {
+			mmSaveDraft.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmSaveDraft.defaultExpectation.params)
+		}
+	}
+
+	return mmSaveDraft
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Service.SaveDraft
+func (mmSaveDraft *mServiceMockSaveDraft) ExpectCtxParam1(ctx context.Context) *mServiceMockSaveDraft {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("ServiceMock.SaveDraft mock is already set by Set")
+	}
+
+	if mmSaveDraft.defaultExpectation == nil {
+		mmSaveDraft.defaultExpectation = &ServiceMockSaveDraftExpectation{}
+	}
+
+	if mmSaveDraft.defaultExpectation.params != nil {
+		mmSaveDraft.mock.t.Fatalf("ServiceMock.SaveDraft mock is already set by Expect")
+	}
+
+	if mmSaveDraft.defaultExpectation.paramPtrs == nil {
+		mmSaveDraft.defaultExpectation.paramPtrs = &ServiceMockSaveDraftParamPtrs{}
+	}
+	mmSaveDraft.defaultExpectation.paramPtrs.ctx = &ctx
+	mmSaveDraft.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmSaveDraft
+}
+
+// ExpectCmdParam2 sets up expected param cmd for Service.SaveDraft
+func (mmSaveDraft *mServiceMockSaveDraft) ExpectCmdParam2(cmd usecase.SaveDraftCmd) *mServiceMockSaveDraft {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("ServiceMock.SaveDraft mock is already set by Set")
+	}
+
+	if mmSaveDraft.defaultExpectation == nil {
+		mmSaveDraft.defaultExpectation = &ServiceMockSaveDraftExpectation{}
+	}
+
+	if mmSaveDraft.defaultExpectation.params != nil {
+		mmSaveDraft.mock.t.Fatalf("ServiceMock.SaveDraft mock is already set by Expect")
+	}
+
+	if mmSaveDraft.defaultExpectation.paramPtrs == nil {
+		mmSaveDraft.defaultExpectation.paramPtrs = &ServiceMockSaveDraftParamPtrs{}
+	}
+	mmSaveDraft.defaultExpectation.paramPtrs.cmd = &cmd
+	mmSaveDraft.defaultExpectation.expectationOrigins.originCmd = minimock.CallerInfo(1)
+
+	return mmSaveDraft
+}
+
+// Inspect accepts an inspector function that has same arguments as the Service.SaveDraft
+func (mmSaveDraft *mServiceMockSaveDraft) Inspect(f func(ctx context.Context, cmd usecase.SaveDraftCmd)) *mServiceMockSaveDraft {
+	if mmSaveDraft.mock.inspectFuncSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("Inspect function is already set for ServiceMock.SaveDraft")
+	}
+
+	mmSaveDraft.mock.inspectFuncSaveDraft = f
+
+	return mmSaveDraft
+}
+
+// Return sets up results that will be returned by Service.SaveDraft
+func (mmSaveDraft *mServiceMockSaveDraft) Return(err error) *ServiceMock {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("ServiceMock.SaveDraft mock is already set by Set")
+	}
+
+	if mmSaveDraft.defaultExpectation == nil {
+		mmSaveDraft.defaultExpectation = &ServiceMockSaveDraftExpectation{mock: mmSaveDraft.mock}
+	}
+	mmSaveDraft.defaultExpectation.results = &ServiceMockSaveDraftResults{err}
+	mmSaveDraft.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmSaveDraft.mock
+}
+
+// Set uses given function f to mock the Service.SaveDraft method
+func (mmSaveDraft *mServiceMockSaveDraft) Set(f func(ctx context.Context, cmd usecase.SaveDraftCmd) (err error)) *ServiceMock {
+	if mmSaveDraft.defaultExpectation != nil {
+		mmSaveDraft.mock.t.Fatalf("Default expectation is already set for the Service.SaveDraft method")
+	}
+
+	if len(mmSaveDraft.expectations) > 0 {
+		mmSaveDraft.mock.t.Fatalf("Some expectations are already set for the Service.SaveDraft method")
+	}
+
+	mmSaveDraft.mock.funcSaveDraft = f
+	mmSaveDraft.mock.funcSaveDraftOrigin = minimock.CallerInfo(1)
+	return mmSaveDraft.mock
+}
+
+// When sets expectation for the Service.SaveDraft which will trigger the result defined by the following
+// Then helper
+func (mmSaveDraft *mServiceMockSaveDraft) When(ctx context.Context, cmd usecase.SaveDraftCmd) *ServiceMockSaveDraftExpectation {
+	if mmSaveDraft.mock.funcSaveDraft != nil {
+		mmSaveDraft.mock.t.Fatalf("ServiceMock.SaveDraft mock is already set by Set")
+	}
+
+	expectation := &ServiceMockSaveDraftExpectation{
+		mock:               mmSaveDraft.mock,
+		params:             &ServiceMockSaveDraftParams{ctx, cmd},
+		expectationOrigins: ServiceMockSaveDraftExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmSaveDraft.expectations = append(mmSaveDraft.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Service.SaveDraft return parameters for the expectation previously defined by the When method
+func (e *ServiceMockSaveDraftExpectation) Then(err error) *ServiceMock {
+	e.results = &ServiceMockSaveDraftResults{err}
+	return e.mock
+}
+
+// Times sets number of times Service.SaveDraft should be invoked
+func (mmSaveDraft *mServiceMockSaveDraft) Times(n uint64) *mServiceMockSaveDraft {
+	if n == 0 {
+		mmSaveDraft.mock.t.Fatalf("Times of ServiceMock.SaveDraft mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmSaveDraft.expectedInvocations, n)
+	mmSaveDraft.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmSaveDraft
+}
+
+func (mmSaveDraft *mServiceMockSaveDraft) invocationsDone() bool {
+	if len(mmSaveDraft.expectations) == 0 && mmSaveDraft.defaultExpectation == nil && mmSaveDraft.mock.funcSaveDraft == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmSaveDraft.mock.afterSaveDraftCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmSaveDraft.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// SaveDraft implements mm_http.Service
+func (mmSaveDraft *ServiceMock) SaveDraft(ctx context.Context, cmd usecase.SaveDraftCmd) (err error) {
+	mm_atomic.AddUint64(&mmSaveDraft.beforeSaveDraftCounter, 1)
+	defer mm_atomic.AddUint64(&mmSaveDraft.afterSaveDraftCounter, 1)
+
+	mmSaveDraft.t.Helper()
+
+	if mmSaveDraft.inspectFuncSaveDraft != nil {
+		mmSaveDraft.inspectFuncSaveDraft(ctx, cmd)
+	}
+
+	mm_params := ServiceMockSaveDraftParams{ctx, cmd}
+
+	// Record call args
+	mmSaveDraft.SaveDraftMock.mutex.Lock()
+	mmSaveDraft.SaveDraftMock.callArgs = append(mmSaveDraft.SaveDraftMock.callArgs, &mm_params)
+	mmSaveDraft.SaveDraftMock.mutex.Unlock()
+
+	for _, e := range mmSaveDraft.SaveDraftMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmSaveDraft.SaveDraftMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmSaveDraft.SaveDraftMock.defaultExpectation.Counter, 1)
+		mm_want := mmSaveDraft.SaveDraftMock.defaultExpectation.params
+		mm_want_ptrs := mmSaveDraft.SaveDraftMock.defaultExpectation.paramPtrs
+
+		mm_got := ServiceMockSaveDraftParams{ctx, cmd}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmSaveDraft.t.Errorf("ServiceMock.SaveDraft got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmSaveDraft.SaveDraftMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.cmd != nil && !minimock.Equal(*mm_want_ptrs.cmd, mm_got.cmd) {
+				mmSaveDraft.t.Errorf("ServiceMock.SaveDraft got unexpected parameter cmd, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmSaveDraft.SaveDraftMock.defaultExpectation.expectationOrigins.originCmd, *mm_want_ptrs.cmd, mm_got.cmd, minimock.Diff(*mm_want_ptrs.cmd, mm_got.cmd))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmSaveDraft.t.Errorf("ServiceMock.SaveDraft got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmSaveDraft.SaveDraftMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmSaveDraft.SaveDraftMock.defaultExpectation.results
+		if mm_results == nil {
+			mmSaveDraft.t.Fatal("No results are set for the ServiceMock.SaveDraft")
+		}
+		return (*mm_results).err
+	}
+	if mmSaveDraft.funcSaveDraft != nil {
+		return mmSaveDraft.funcSaveDraft(ctx, cmd)
+	}
+	mmSaveDraft.t.Fatalf("Unexpected call to ServiceMock.SaveDraft. %v %v", ctx, cmd)
+	return
+}
+
+// SaveDraftAfterCounter returns a count of finished ServiceMock.SaveDraft invocations
+func (mmSaveDraft *ServiceMock) SaveDraftAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmSaveDraft.afterSaveDraftCounter)
+}
+
+// SaveDraftBeforeCounter returns a count of ServiceMock.SaveDraft invocations
+func (mmSaveDraft *ServiceMock) SaveDraftBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmSaveDraft.beforeSaveDraftCounter)
+}
+
+// Calls returns a list of arguments used in each call to ServiceMock.SaveDraft.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmSaveDraft *mServiceMockSaveDraft) Calls() []*ServiceMockSaveDraftParams {
+	mmSaveDraft.mutex.RLock()
+
+	argCopy := make([]*ServiceMockSaveDraftParams, len(mmSaveDraft.callArgs))
+	copy(argCopy, mmSaveDraft.callArgs)
+
+	mmSaveDraft.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockSaveDraftDone returns true if the count of the SaveDraft invocations corresponds
+// the number of defined expectations
+func (m *ServiceMock) MinimockSaveDraftDone() bool {
+	if m.SaveDraftMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.SaveDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.SaveDraftMock.invocationsDone()
+}
+
+// MinimockSaveDraftInspect logs each unmet expectation
+func (m *ServiceMock) MinimockSaveDraftInspect() {
+	for _, e := range m.SaveDraftMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to ServiceMock.SaveDraft at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterSaveDraftCounter := mm_atomic.LoadUint64(&m.afterSaveDraftCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.SaveDraftMock.defaultExpectation != nil && afterSaveDraftCounter < 1 {
+		if m.SaveDraftMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to ServiceMock.SaveDraft at\n%s", m.SaveDraftMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to ServiceMock.SaveDraft at\n%s with params: %#v", m.SaveDraftMock.defaultExpectation.expectationOrigins.origin, *m.SaveDraftMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcSaveDraft != nil && afterSaveDraftCounter < 1 {
+		m.t.Errorf("Expected call to ServiceMock.SaveDraft at\n%s", m.funcSaveDraftOrigin)
+	}
+
+	if !m.SaveDraftMock.invocationsDone() && afterSaveDraftCounter > 0 {
+		m.t.Errorf("Expected %d calls to ServiceMock.SaveDraft at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.SaveDraftMock.expectedInvocations), m.SaveDraftMock.expectedInvocationsOrigin, afterSaveDraftCounter)
+	}
+}
+
 type mServiceMockUpdate struct {
 	optional           bool
 	mock               *ServiceMock
@@ -2512,13 +3921,21 @@ func (m *ServiceMock) MinimockFinish() {
 
 			m.MinimockDeleteInspect()
 
+			m.MinimockDeleteDraftInspect()
+
 			m.MinimockGetInspect()
+
+			m.MinimockGetDraftInspect()
 
 			m.MinimockGetTreeInspect()
 
 			m.MinimockGetVersionInspect()
 
 			m.MinimockGetVersionsListInspect()
+
+			m.MinimockPublishDraftInspect()
+
+			m.MinimockSaveDraftInspect()
 
 			m.MinimockUpdateInspect()
 		}
@@ -2546,9 +3963,13 @@ func (m *ServiceMock) minimockDone() bool {
 	return done &&
 		m.MinimockCreateDone() &&
 		m.MinimockDeleteDone() &&
+		m.MinimockDeleteDraftDone() &&
 		m.MinimockGetDone() &&
+		m.MinimockGetDraftDone() &&
 		m.MinimockGetTreeDone() &&
 		m.MinimockGetVersionDone() &&
 		m.MinimockGetVersionsListDone() &&
+		m.MinimockPublishDraftDone() &&
+		m.MinimockSaveDraftDone() &&
 		m.MinimockUpdateDone()
 }

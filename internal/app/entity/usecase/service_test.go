@@ -414,7 +414,6 @@ func TestService_Update(t *testing.T) {
 			ID:       id,
 			Name:     "name",
 			Content:  "content",
-			IsDraft:  true,
 			ParentID: &parentID,
 		}
 		userID   = uuid.New()
@@ -429,7 +428,6 @@ func TestService_Update(t *testing.T) {
 			Name:          cmd.Name,
 			Content:       cmd.Content,
 			ParentID:      &parentID,
-			IsDraft:       cmd.IsDraft,
 			UserID:        userID,
 			ParentChanged: true,
 			EntityType:    listItem.Type,
@@ -589,6 +587,121 @@ func TestService_Delete(t *testing.T) {
 				require.NoError(t, err)
 			}
 		})
+	}
+}
+
+func TestService_Drafts(t *testing.T) {
+	t.Parallel()
+	var (
+		userID   = uuid.New()
+		entityID = uuid.New()
+		ctx      = contextx.SetUserID(t.Context(), userID)
+		cmd      = usecase.SaveDraftCmd{EntityID: entityID, Name: "name", Content: "content"}
+		draft    = entity.Draft{EntityID: entityID, UserID: userID, Name: cmd.Name, Content: cmd.Content}
+		expErr   = fmt.Errorf("exp")
+	)
+
+	// every draft operation checks write permission for the entity and works with the current user's draft
+	ops := []struct {
+		name   string
+		expect func(mock serviceMocks, err error)
+		call   func(s *usecase.Service, ctx context.Context) error
+	}{
+		{
+			name: "SaveDraft",
+			expect: func(mock serviceMocks, err error) {
+				mock.core.SaveDraftMock.Expect(ctx, entity.SaveDraftReq{
+					EntityID: entityID, UserID: userID, Name: cmd.Name, Content: cmd.Content,
+				}).Return(err)
+			},
+			call: func(s *usecase.Service, ctx context.Context) error { return s.SaveDraft(ctx, cmd) },
+		},
+		{
+			name: "GetDraft",
+			expect: func(mock serviceMocks, err error) {
+				mock.core.GetDraftMock.Expect(ctx, entityID, userID).Return(draft, err)
+			},
+			call: func(s *usecase.Service, ctx context.Context) error {
+				got, err := s.GetDraft(ctx, entityID)
+				if err != nil {
+					return fmt.Errorf("GetDraft: %w", err)
+				}
+				if got != draft {
+					return fmt.Errorf("unexpected draft: %+v", got)
+				}
+				return nil
+			},
+		},
+		{
+			name: "DeleteDraft",
+			expect: func(mock serviceMocks, err error) {
+				mock.core.DeleteDraftMock.Expect(ctx, entityID, userID).Return(err)
+			},
+			call: func(s *usecase.Service, ctx context.Context) error { return s.DeleteDraft(ctx, entityID) },
+		},
+		{
+			name: "PublishDraft",
+			expect: func(mock serviceMocks, err error) {
+				mock.core.PublishDraftMock.Expect(ctx, entityID, userID).Return(err)
+			},
+			call: func(s *usecase.Service, ctx context.Context) error { return s.PublishDraft(ctx, entityID) },
+		},
+	}
+	for _, op := range ops {
+		tests := []struct {
+			name  string
+			ctx   context.Context
+			setup func(mock serviceMocks)
+			err   error
+		}{
+			{
+				name: "ok",
+				ctx:  ctx,
+				setup: func(mock serviceMocks) {
+					mock.perm.CheckEntityPermissionMock.Expect(ctx, entityID, auth.RoleWrite).Return(nil)
+					op.expect(mock, nil)
+				},
+			},
+			{
+				name: "core error",
+				ctx:  ctx,
+				setup: func(mock serviceMocks) {
+					mock.perm.CheckEntityPermissionMock.Expect(ctx, entityID, auth.RoleWrite).Return(nil)
+					op.expect(mock, expErr)
+				},
+				err: expErr,
+			},
+			{
+				name: "no permission",
+				ctx:  ctx,
+				setup: func(mock serviceMocks) {
+					mock.perm.CheckEntityPermissionMock.Expect(ctx, entityID, auth.RoleWrite).Return(apperr.ErrForbidden())
+				},
+				err: apperr.ErrForbidden(),
+			},
+			{
+				name: "no user id in context",
+				ctx:  t.Context(),
+				setup: func(mock serviceMocks) {
+					mock.perm.CheckEntityPermissionMock.Expect(t.Context(), entityID, auth.RoleWrite).Return(nil)
+				},
+				err: apperr.ErrUnauthorized(),
+			},
+		}
+		for _, tt := range tests {
+			t.Run(op.name+"/"+tt.name, func(t *testing.T) {
+				t.Parallel()
+				m := newServiceMocks(t)
+				tt.setup(m)
+
+				err := op.call(usecase.NewService(m.core, m.perm), tt.ctx)
+				if tt.err != nil {
+					require.ErrorIs(t, err, tt.err)
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
 	}
 }
 

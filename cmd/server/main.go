@@ -188,6 +188,13 @@ func main() {
 							r.Get("/", entityHandler.GetVersion) // GET /entities/{entity_id}/versions/{version}
 						})
 					})
+
+					r.Route("/draft", func(r chi.Router) {
+						r.Get("/", entityHandler.GetDraft)             // GET    /entities/{entity_id}/draft
+						r.Put("/", entityHandler.SaveDraft)            // PUT    /entities/{entity_id}/draft
+						r.Delete("/", entityHandler.DeleteDraft)       // DELETE /entities/{entity_id}/draft
+						r.Post("/publish", entityHandler.PublishDraft) // POST   /entities/{entity_id}/draft/publish
+					})
 				})
 			})
 		})
