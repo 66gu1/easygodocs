@@ -11,7 +11,6 @@ import (
 	mm_time "time"
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
-	mm_usecase "github.com/66gu1/easygodocs/internal/app/entity/usecase"
 	"github.com/gojuno/minimock/v3"
 	"github.com/google/uuid"
 )
@@ -28,19 +27,19 @@ type PermissionCheckerMock struct {
 	beforeCheckEntityPermissionCounter uint64
 	CheckEntityPermissionMock          mPermissionCheckerMockCheckEntityPermission
 
+	funcCheckParentPermission          func(ctx context.Context, role auth.Role, parentIDs ...*uuid.UUID) (err error)
+	funcCheckParentPermissionOrigin    string
+	inspectFuncCheckParentPermission   func(ctx context.Context, role auth.Role, parentIDs ...*uuid.UUID)
+	afterCheckParentPermissionCounter  uint64
+	beforeCheckParentPermissionCounter uint64
+	CheckParentPermissionMock          mPermissionCheckerMockCheckParentPermission
+
 	funcGetDirectPermissions          func(ctx context.Context, role auth.Role) (ua1 []uuid.UUID, b1 bool, err error)
 	funcGetDirectPermissionsOrigin    string
 	inspectFuncGetDirectPermissions   func(ctx context.Context, role auth.Role)
 	afterGetDirectPermissionsCounter  uint64
 	beforeGetDirectPermissionsCounter uint64
 	GetDirectPermissionsMock          mPermissionCheckerMockGetDirectPermissions
-
-	funcGetEffectivePermissions          func(ctx context.Context, role auth.Role) (e1 mm_usecase.EffectivePermissions, err error)
-	funcGetEffectivePermissionsOrigin    string
-	inspectFuncGetEffectivePermissions   func(ctx context.Context, role auth.Role)
-	afterGetEffectivePermissionsCounter  uint64
-	beforeGetEffectivePermissionsCounter uint64
-	GetEffectivePermissionsMock          mPermissionCheckerMockGetEffectivePermissions
 }
 
 // NewPermissionCheckerMock returns a mock for mm_usecase.PermissionChecker
@@ -54,11 +53,11 @@ func NewPermissionCheckerMock(t minimock.Tester) *PermissionCheckerMock {
 	m.CheckEntityPermissionMock = mPermissionCheckerMockCheckEntityPermission{mock: m}
 	m.CheckEntityPermissionMock.callArgs = []*PermissionCheckerMockCheckEntityPermissionParams{}
 
+	m.CheckParentPermissionMock = mPermissionCheckerMockCheckParentPermission{mock: m}
+	m.CheckParentPermissionMock.callArgs = []*PermissionCheckerMockCheckParentPermissionParams{}
+
 	m.GetDirectPermissionsMock = mPermissionCheckerMockGetDirectPermissions{mock: m}
 	m.GetDirectPermissionsMock.callArgs = []*PermissionCheckerMockGetDirectPermissionsParams{}
-
-	m.GetEffectivePermissionsMock = mPermissionCheckerMockGetEffectivePermissions{mock: m}
-	m.GetEffectivePermissionsMock.callArgs = []*PermissionCheckerMockGetEffectivePermissionsParams{}
 
 	t.Cleanup(m.MinimockFinish)
 
@@ -438,6 +437,379 @@ func (m *PermissionCheckerMock) MinimockCheckEntityPermissionInspect() {
 	}
 }
 
+type mPermissionCheckerMockCheckParentPermission struct {
+	optional           bool
+	mock               *PermissionCheckerMock
+	defaultExpectation *PermissionCheckerMockCheckParentPermissionExpectation
+	expectations       []*PermissionCheckerMockCheckParentPermissionExpectation
+
+	callArgs []*PermissionCheckerMockCheckParentPermissionParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// PermissionCheckerMockCheckParentPermissionExpectation specifies expectation struct of the PermissionChecker.CheckParentPermission
+type PermissionCheckerMockCheckParentPermissionExpectation struct {
+	mock               *PermissionCheckerMock
+	params             *PermissionCheckerMockCheckParentPermissionParams
+	paramPtrs          *PermissionCheckerMockCheckParentPermissionParamPtrs
+	expectationOrigins PermissionCheckerMockCheckParentPermissionExpectationOrigins
+	results            *PermissionCheckerMockCheckParentPermissionResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// PermissionCheckerMockCheckParentPermissionParams contains parameters of the PermissionChecker.CheckParentPermission
+type PermissionCheckerMockCheckParentPermissionParams struct {
+	ctx       context.Context
+	role      auth.Role
+	parentIDs []*uuid.UUID
+}
+
+// PermissionCheckerMockCheckParentPermissionParamPtrs contains pointers to parameters of the PermissionChecker.CheckParentPermission
+type PermissionCheckerMockCheckParentPermissionParamPtrs struct {
+	ctx       *context.Context
+	role      *auth.Role
+	parentIDs *[]*uuid.UUID
+}
+
+// PermissionCheckerMockCheckParentPermissionResults contains results of the PermissionChecker.CheckParentPermission
+type PermissionCheckerMockCheckParentPermissionResults struct {
+	err error
+}
+
+// PermissionCheckerMockCheckParentPermissionOrigins contains origins of expectations of the PermissionChecker.CheckParentPermission
+type PermissionCheckerMockCheckParentPermissionExpectationOrigins struct {
+	origin          string
+	originCtx       string
+	originRole      string
+	originParentIDs string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) Optional() *mPermissionCheckerMockCheckParentPermission {
+	mmCheckParentPermission.optional = true
+	return mmCheckParentPermission
+}
+
+// Expect sets up expected params for PermissionChecker.CheckParentPermission
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) Expect(ctx context.Context, role auth.Role, parentIDs ...*uuid.UUID) *mPermissionCheckerMockCheckParentPermission {
+	if mmCheckParentPermission.mock.funcCheckParentPermission != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by Set")
+	}
+
+	if mmCheckParentPermission.defaultExpectation == nil {
+		mmCheckParentPermission.defaultExpectation = &PermissionCheckerMockCheckParentPermissionExpectation{}
+	}
+
+	if mmCheckParentPermission.defaultExpectation.paramPtrs != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by ExpectParams functions")
+	}
+
+	mmCheckParentPermission.defaultExpectation.params = &PermissionCheckerMockCheckParentPermissionParams{ctx, role, parentIDs}
+	mmCheckParentPermission.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmCheckParentPermission.expectations {
+		if minimock.Equal(e.params, mmCheckParentPermission.defaultExpectation.params) {
+			mmCheckParentPermission.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmCheckParentPermission.defaultExpectation.params)
+		}
+	}
+
+	return mmCheckParentPermission
+}
+
+// ExpectCtxParam1 sets up expected param ctx for PermissionChecker.CheckParentPermission
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) ExpectCtxParam1(ctx context.Context) *mPermissionCheckerMockCheckParentPermission {
+	if mmCheckParentPermission.mock.funcCheckParentPermission != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by Set")
+	}
+
+	if mmCheckParentPermission.defaultExpectation == nil {
+		mmCheckParentPermission.defaultExpectation = &PermissionCheckerMockCheckParentPermissionExpectation{}
+	}
+
+	if mmCheckParentPermission.defaultExpectation.params != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by Expect")
+	}
+
+	if mmCheckParentPermission.defaultExpectation.paramPtrs == nil {
+		mmCheckParentPermission.defaultExpectation.paramPtrs = &PermissionCheckerMockCheckParentPermissionParamPtrs{}
+	}
+	mmCheckParentPermission.defaultExpectation.paramPtrs.ctx = &ctx
+	mmCheckParentPermission.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmCheckParentPermission
+}
+
+// ExpectRoleParam2 sets up expected param role for PermissionChecker.CheckParentPermission
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) ExpectRoleParam2(role auth.Role) *mPermissionCheckerMockCheckParentPermission {
+	if mmCheckParentPermission.mock.funcCheckParentPermission != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by Set")
+	}
+
+	if mmCheckParentPermission.defaultExpectation == nil {
+		mmCheckParentPermission.defaultExpectation = &PermissionCheckerMockCheckParentPermissionExpectation{}
+	}
+
+	if mmCheckParentPermission.defaultExpectation.params != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by Expect")
+	}
+
+	if mmCheckParentPermission.defaultExpectation.paramPtrs == nil {
+		mmCheckParentPermission.defaultExpectation.paramPtrs = &PermissionCheckerMockCheckParentPermissionParamPtrs{}
+	}
+	mmCheckParentPermission.defaultExpectation.paramPtrs.role = &role
+	mmCheckParentPermission.defaultExpectation.expectationOrigins.originRole = minimock.CallerInfo(1)
+
+	return mmCheckParentPermission
+}
+
+// ExpectParentIDsParam3 sets up expected param parentIDs for PermissionChecker.CheckParentPermission
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) ExpectParentIDsParam3(parentIDs ...*uuid.UUID) *mPermissionCheckerMockCheckParentPermission {
+	if mmCheckParentPermission.mock.funcCheckParentPermission != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by Set")
+	}
+
+	if mmCheckParentPermission.defaultExpectation == nil {
+		mmCheckParentPermission.defaultExpectation = &PermissionCheckerMockCheckParentPermissionExpectation{}
+	}
+
+	if mmCheckParentPermission.defaultExpectation.params != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by Expect")
+	}
+
+	if mmCheckParentPermission.defaultExpectation.paramPtrs == nil {
+		mmCheckParentPermission.defaultExpectation.paramPtrs = &PermissionCheckerMockCheckParentPermissionParamPtrs{}
+	}
+	mmCheckParentPermission.defaultExpectation.paramPtrs.parentIDs = &parentIDs
+	mmCheckParentPermission.defaultExpectation.expectationOrigins.originParentIDs = minimock.CallerInfo(1)
+
+	return mmCheckParentPermission
+}
+
+// Inspect accepts an inspector function that has same arguments as the PermissionChecker.CheckParentPermission
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) Inspect(f func(ctx context.Context, role auth.Role, parentIDs ...*uuid.UUID)) *mPermissionCheckerMockCheckParentPermission {
+	if mmCheckParentPermission.mock.inspectFuncCheckParentPermission != nil {
+		mmCheckParentPermission.mock.t.Fatalf("Inspect function is already set for PermissionCheckerMock.CheckParentPermission")
+	}
+
+	mmCheckParentPermission.mock.inspectFuncCheckParentPermission = f
+
+	return mmCheckParentPermission
+}
+
+// Return sets up results that will be returned by PermissionChecker.CheckParentPermission
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) Return(err error) *PermissionCheckerMock {
+	if mmCheckParentPermission.mock.funcCheckParentPermission != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by Set")
+	}
+
+	if mmCheckParentPermission.defaultExpectation == nil {
+		mmCheckParentPermission.defaultExpectation = &PermissionCheckerMockCheckParentPermissionExpectation{mock: mmCheckParentPermission.mock}
+	}
+	mmCheckParentPermission.defaultExpectation.results = &PermissionCheckerMockCheckParentPermissionResults{err}
+	mmCheckParentPermission.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmCheckParentPermission.mock
+}
+
+// Set uses given function f to mock the PermissionChecker.CheckParentPermission method
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) Set(f func(ctx context.Context, role auth.Role, parentIDs ...*uuid.UUID) (err error)) *PermissionCheckerMock {
+	if mmCheckParentPermission.defaultExpectation != nil {
+		mmCheckParentPermission.mock.t.Fatalf("Default expectation is already set for the PermissionChecker.CheckParentPermission method")
+	}
+
+	if len(mmCheckParentPermission.expectations) > 0 {
+		mmCheckParentPermission.mock.t.Fatalf("Some expectations are already set for the PermissionChecker.CheckParentPermission method")
+	}
+
+	mmCheckParentPermission.mock.funcCheckParentPermission = f
+	mmCheckParentPermission.mock.funcCheckParentPermissionOrigin = minimock.CallerInfo(1)
+	return mmCheckParentPermission.mock
+}
+
+// When sets expectation for the PermissionChecker.CheckParentPermission which will trigger the result defined by the following
+// Then helper
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) When(ctx context.Context, role auth.Role, parentIDs ...*uuid.UUID) *PermissionCheckerMockCheckParentPermissionExpectation {
+	if mmCheckParentPermission.mock.funcCheckParentPermission != nil {
+		mmCheckParentPermission.mock.t.Fatalf("PermissionCheckerMock.CheckParentPermission mock is already set by Set")
+	}
+
+	expectation := &PermissionCheckerMockCheckParentPermissionExpectation{
+		mock:               mmCheckParentPermission.mock,
+		params:             &PermissionCheckerMockCheckParentPermissionParams{ctx, role, parentIDs},
+		expectationOrigins: PermissionCheckerMockCheckParentPermissionExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmCheckParentPermission.expectations = append(mmCheckParentPermission.expectations, expectation)
+	return expectation
+}
+
+// Then sets up PermissionChecker.CheckParentPermission return parameters for the expectation previously defined by the When method
+func (e *PermissionCheckerMockCheckParentPermissionExpectation) Then(err error) *PermissionCheckerMock {
+	e.results = &PermissionCheckerMockCheckParentPermissionResults{err}
+	return e.mock
+}
+
+// Times sets number of times PermissionChecker.CheckParentPermission should be invoked
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) Times(n uint64) *mPermissionCheckerMockCheckParentPermission {
+	if n == 0 {
+		mmCheckParentPermission.mock.t.Fatalf("Times of PermissionCheckerMock.CheckParentPermission mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmCheckParentPermission.expectedInvocations, n)
+	mmCheckParentPermission.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmCheckParentPermission
+}
+
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) invocationsDone() bool {
+	if len(mmCheckParentPermission.expectations) == 0 && mmCheckParentPermission.defaultExpectation == nil && mmCheckParentPermission.mock.funcCheckParentPermission == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmCheckParentPermission.mock.afterCheckParentPermissionCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmCheckParentPermission.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// CheckParentPermission implements mm_usecase.PermissionChecker
+func (mmCheckParentPermission *PermissionCheckerMock) CheckParentPermission(ctx context.Context, role auth.Role, parentIDs ...*uuid.UUID) (err error) {
+	mm_atomic.AddUint64(&mmCheckParentPermission.beforeCheckParentPermissionCounter, 1)
+	defer mm_atomic.AddUint64(&mmCheckParentPermission.afterCheckParentPermissionCounter, 1)
+
+	mmCheckParentPermission.t.Helper()
+
+	if mmCheckParentPermission.inspectFuncCheckParentPermission != nil {
+		mmCheckParentPermission.inspectFuncCheckParentPermission(ctx, role, parentIDs...)
+	}
+
+	mm_params := PermissionCheckerMockCheckParentPermissionParams{ctx, role, parentIDs}
+
+	// Record call args
+	mmCheckParentPermission.CheckParentPermissionMock.mutex.Lock()
+	mmCheckParentPermission.CheckParentPermissionMock.callArgs = append(mmCheckParentPermission.CheckParentPermissionMock.callArgs, &mm_params)
+	mmCheckParentPermission.CheckParentPermissionMock.mutex.Unlock()
+
+	for _, e := range mmCheckParentPermission.CheckParentPermissionMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmCheckParentPermission.CheckParentPermissionMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmCheckParentPermission.CheckParentPermissionMock.defaultExpectation.Counter, 1)
+		mm_want := mmCheckParentPermission.CheckParentPermissionMock.defaultExpectation.params
+		mm_want_ptrs := mmCheckParentPermission.CheckParentPermissionMock.defaultExpectation.paramPtrs
+
+		mm_got := PermissionCheckerMockCheckParentPermissionParams{ctx, role, parentIDs}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmCheckParentPermission.t.Errorf("PermissionCheckerMock.CheckParentPermission got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmCheckParentPermission.CheckParentPermissionMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.role != nil && !minimock.Equal(*mm_want_ptrs.role, mm_got.role) {
+				mmCheckParentPermission.t.Errorf("PermissionCheckerMock.CheckParentPermission got unexpected parameter role, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmCheckParentPermission.CheckParentPermissionMock.defaultExpectation.expectationOrigins.originRole, *mm_want_ptrs.role, mm_got.role, minimock.Diff(*mm_want_ptrs.role, mm_got.role))
+			}
+
+			if mm_want_ptrs.parentIDs != nil && !minimock.Equal(*mm_want_ptrs.parentIDs, mm_got.parentIDs) {
+				mmCheckParentPermission.t.Errorf("PermissionCheckerMock.CheckParentPermission got unexpected parameter parentIDs, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmCheckParentPermission.CheckParentPermissionMock.defaultExpectation.expectationOrigins.originParentIDs, *mm_want_ptrs.parentIDs, mm_got.parentIDs, minimock.Diff(*mm_want_ptrs.parentIDs, mm_got.parentIDs))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmCheckParentPermission.t.Errorf("PermissionCheckerMock.CheckParentPermission got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmCheckParentPermission.CheckParentPermissionMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmCheckParentPermission.CheckParentPermissionMock.defaultExpectation.results
+		if mm_results == nil {
+			mmCheckParentPermission.t.Fatal("No results are set for the PermissionCheckerMock.CheckParentPermission")
+		}
+		return (*mm_results).err
+	}
+	if mmCheckParentPermission.funcCheckParentPermission != nil {
+		return mmCheckParentPermission.funcCheckParentPermission(ctx, role, parentIDs...)
+	}
+	mmCheckParentPermission.t.Fatalf("Unexpected call to PermissionCheckerMock.CheckParentPermission. %v %v %v", ctx, role, parentIDs)
+	return
+}
+
+// CheckParentPermissionAfterCounter returns a count of finished PermissionCheckerMock.CheckParentPermission invocations
+func (mmCheckParentPermission *PermissionCheckerMock) CheckParentPermissionAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmCheckParentPermission.afterCheckParentPermissionCounter)
+}
+
+// CheckParentPermissionBeforeCounter returns a count of PermissionCheckerMock.CheckParentPermission invocations
+func (mmCheckParentPermission *PermissionCheckerMock) CheckParentPermissionBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmCheckParentPermission.beforeCheckParentPermissionCounter)
+}
+
+// Calls returns a list of arguments used in each call to PermissionCheckerMock.CheckParentPermission.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmCheckParentPermission *mPermissionCheckerMockCheckParentPermission) Calls() []*PermissionCheckerMockCheckParentPermissionParams {
+	mmCheckParentPermission.mutex.RLock()
+
+	argCopy := make([]*PermissionCheckerMockCheckParentPermissionParams, len(mmCheckParentPermission.callArgs))
+	copy(argCopy, mmCheckParentPermission.callArgs)
+
+	mmCheckParentPermission.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockCheckParentPermissionDone returns true if the count of the CheckParentPermission invocations corresponds
+// the number of defined expectations
+func (m *PermissionCheckerMock) MinimockCheckParentPermissionDone() bool {
+	if m.CheckParentPermissionMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.CheckParentPermissionMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.CheckParentPermissionMock.invocationsDone()
+}
+
+// MinimockCheckParentPermissionInspect logs each unmet expectation
+func (m *PermissionCheckerMock) MinimockCheckParentPermissionInspect() {
+	for _, e := range m.CheckParentPermissionMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to PermissionCheckerMock.CheckParentPermission at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterCheckParentPermissionCounter := mm_atomic.LoadUint64(&m.afterCheckParentPermissionCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.CheckParentPermissionMock.defaultExpectation != nil && afterCheckParentPermissionCounter < 1 {
+		if m.CheckParentPermissionMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to PermissionCheckerMock.CheckParentPermission at\n%s", m.CheckParentPermissionMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to PermissionCheckerMock.CheckParentPermission at\n%s with params: %#v", m.CheckParentPermissionMock.defaultExpectation.expectationOrigins.origin, *m.CheckParentPermissionMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcCheckParentPermission != nil && afterCheckParentPermissionCounter < 1 {
+		m.t.Errorf("Expected call to PermissionCheckerMock.CheckParentPermission at\n%s", m.funcCheckParentPermissionOrigin)
+	}
+
+	if !m.CheckParentPermissionMock.invocationsDone() && afterCheckParentPermissionCounter > 0 {
+		m.t.Errorf("Expected %d calls to PermissionCheckerMock.CheckParentPermission at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.CheckParentPermissionMock.expectedInvocations), m.CheckParentPermissionMock.expectedInvocationsOrigin, afterCheckParentPermissionCounter)
+	}
+}
+
 type mPermissionCheckerMockGetDirectPermissions struct {
 	optional           bool
 	mock               *PermissionCheckerMock
@@ -782,358 +1154,15 @@ func (m *PermissionCheckerMock) MinimockGetDirectPermissionsInspect() {
 	}
 }
 
-type mPermissionCheckerMockGetEffectivePermissions struct {
-	optional           bool
-	mock               *PermissionCheckerMock
-	defaultExpectation *PermissionCheckerMockGetEffectivePermissionsExpectation
-	expectations       []*PermissionCheckerMockGetEffectivePermissionsExpectation
-
-	callArgs []*PermissionCheckerMockGetEffectivePermissionsParams
-	mutex    sync.RWMutex
-
-	expectedInvocations       uint64
-	expectedInvocationsOrigin string
-}
-
-// PermissionCheckerMockGetEffectivePermissionsExpectation specifies expectation struct of the PermissionChecker.GetEffectivePermissions
-type PermissionCheckerMockGetEffectivePermissionsExpectation struct {
-	mock               *PermissionCheckerMock
-	params             *PermissionCheckerMockGetEffectivePermissionsParams
-	paramPtrs          *PermissionCheckerMockGetEffectivePermissionsParamPtrs
-	expectationOrigins PermissionCheckerMockGetEffectivePermissionsExpectationOrigins
-	results            *PermissionCheckerMockGetEffectivePermissionsResults
-	returnOrigin       string
-	Counter            uint64
-}
-
-// PermissionCheckerMockGetEffectivePermissionsParams contains parameters of the PermissionChecker.GetEffectivePermissions
-type PermissionCheckerMockGetEffectivePermissionsParams struct {
-	ctx  context.Context
-	role auth.Role
-}
-
-// PermissionCheckerMockGetEffectivePermissionsParamPtrs contains pointers to parameters of the PermissionChecker.GetEffectivePermissions
-type PermissionCheckerMockGetEffectivePermissionsParamPtrs struct {
-	ctx  *context.Context
-	role *auth.Role
-}
-
-// PermissionCheckerMockGetEffectivePermissionsResults contains results of the PermissionChecker.GetEffectivePermissions
-type PermissionCheckerMockGetEffectivePermissionsResults struct {
-	e1  mm_usecase.EffectivePermissions
-	err error
-}
-
-// PermissionCheckerMockGetEffectivePermissionsOrigins contains origins of expectations of the PermissionChecker.GetEffectivePermissions
-type PermissionCheckerMockGetEffectivePermissionsExpectationOrigins struct {
-	origin     string
-	originCtx  string
-	originRole string
-}
-
-// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
-// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
-// Optional() makes method check to work in '0 or more' mode.
-// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
-// catch the problems when the expected method call is totally skipped during test run.
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) Optional() *mPermissionCheckerMockGetEffectivePermissions {
-	mmGetEffectivePermissions.optional = true
-	return mmGetEffectivePermissions
-}
-
-// Expect sets up expected params for PermissionChecker.GetEffectivePermissions
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) Expect(ctx context.Context, role auth.Role) *mPermissionCheckerMockGetEffectivePermissions {
-	if mmGetEffectivePermissions.mock.funcGetEffectivePermissions != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("PermissionCheckerMock.GetEffectivePermissions mock is already set by Set")
-	}
-
-	if mmGetEffectivePermissions.defaultExpectation == nil {
-		mmGetEffectivePermissions.defaultExpectation = &PermissionCheckerMockGetEffectivePermissionsExpectation{}
-	}
-
-	if mmGetEffectivePermissions.defaultExpectation.paramPtrs != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("PermissionCheckerMock.GetEffectivePermissions mock is already set by ExpectParams functions")
-	}
-
-	mmGetEffectivePermissions.defaultExpectation.params = &PermissionCheckerMockGetEffectivePermissionsParams{ctx, role}
-	mmGetEffectivePermissions.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
-	for _, e := range mmGetEffectivePermissions.expectations {
-		if minimock.Equal(e.params, mmGetEffectivePermissions.defaultExpectation.params) {
-			mmGetEffectivePermissions.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmGetEffectivePermissions.defaultExpectation.params)
-		}
-	}
-
-	return mmGetEffectivePermissions
-}
-
-// ExpectCtxParam1 sets up expected param ctx for PermissionChecker.GetEffectivePermissions
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) ExpectCtxParam1(ctx context.Context) *mPermissionCheckerMockGetEffectivePermissions {
-	if mmGetEffectivePermissions.mock.funcGetEffectivePermissions != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("PermissionCheckerMock.GetEffectivePermissions mock is already set by Set")
-	}
-
-	if mmGetEffectivePermissions.defaultExpectation == nil {
-		mmGetEffectivePermissions.defaultExpectation = &PermissionCheckerMockGetEffectivePermissionsExpectation{}
-	}
-
-	if mmGetEffectivePermissions.defaultExpectation.params != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("PermissionCheckerMock.GetEffectivePermissions mock is already set by Expect")
-	}
-
-	if mmGetEffectivePermissions.defaultExpectation.paramPtrs == nil {
-		mmGetEffectivePermissions.defaultExpectation.paramPtrs = &PermissionCheckerMockGetEffectivePermissionsParamPtrs{}
-	}
-	mmGetEffectivePermissions.defaultExpectation.paramPtrs.ctx = &ctx
-	mmGetEffectivePermissions.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
-
-	return mmGetEffectivePermissions
-}
-
-// ExpectRoleParam2 sets up expected param role for PermissionChecker.GetEffectivePermissions
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) ExpectRoleParam2(role auth.Role) *mPermissionCheckerMockGetEffectivePermissions {
-	if mmGetEffectivePermissions.mock.funcGetEffectivePermissions != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("PermissionCheckerMock.GetEffectivePermissions mock is already set by Set")
-	}
-
-	if mmGetEffectivePermissions.defaultExpectation == nil {
-		mmGetEffectivePermissions.defaultExpectation = &PermissionCheckerMockGetEffectivePermissionsExpectation{}
-	}
-
-	if mmGetEffectivePermissions.defaultExpectation.params != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("PermissionCheckerMock.GetEffectivePermissions mock is already set by Expect")
-	}
-
-	if mmGetEffectivePermissions.defaultExpectation.paramPtrs == nil {
-		mmGetEffectivePermissions.defaultExpectation.paramPtrs = &PermissionCheckerMockGetEffectivePermissionsParamPtrs{}
-	}
-	mmGetEffectivePermissions.defaultExpectation.paramPtrs.role = &role
-	mmGetEffectivePermissions.defaultExpectation.expectationOrigins.originRole = minimock.CallerInfo(1)
-
-	return mmGetEffectivePermissions
-}
-
-// Inspect accepts an inspector function that has same arguments as the PermissionChecker.GetEffectivePermissions
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) Inspect(f func(ctx context.Context, role auth.Role)) *mPermissionCheckerMockGetEffectivePermissions {
-	if mmGetEffectivePermissions.mock.inspectFuncGetEffectivePermissions != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("Inspect function is already set for PermissionCheckerMock.GetEffectivePermissions")
-	}
-
-	mmGetEffectivePermissions.mock.inspectFuncGetEffectivePermissions = f
-
-	return mmGetEffectivePermissions
-}
-
-// Return sets up results that will be returned by PermissionChecker.GetEffectivePermissions
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) Return(e1 mm_usecase.EffectivePermissions, err error) *PermissionCheckerMock {
-	if mmGetEffectivePermissions.mock.funcGetEffectivePermissions != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("PermissionCheckerMock.GetEffectivePermissions mock is already set by Set")
-	}
-
-	if mmGetEffectivePermissions.defaultExpectation == nil {
-		mmGetEffectivePermissions.defaultExpectation = &PermissionCheckerMockGetEffectivePermissionsExpectation{mock: mmGetEffectivePermissions.mock}
-	}
-	mmGetEffectivePermissions.defaultExpectation.results = &PermissionCheckerMockGetEffectivePermissionsResults{e1, err}
-	mmGetEffectivePermissions.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
-	return mmGetEffectivePermissions.mock
-}
-
-// Set uses given function f to mock the PermissionChecker.GetEffectivePermissions method
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) Set(f func(ctx context.Context, role auth.Role) (e1 mm_usecase.EffectivePermissions, err error)) *PermissionCheckerMock {
-	if mmGetEffectivePermissions.defaultExpectation != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("Default expectation is already set for the PermissionChecker.GetEffectivePermissions method")
-	}
-
-	if len(mmGetEffectivePermissions.expectations) > 0 {
-		mmGetEffectivePermissions.mock.t.Fatalf("Some expectations are already set for the PermissionChecker.GetEffectivePermissions method")
-	}
-
-	mmGetEffectivePermissions.mock.funcGetEffectivePermissions = f
-	mmGetEffectivePermissions.mock.funcGetEffectivePermissionsOrigin = minimock.CallerInfo(1)
-	return mmGetEffectivePermissions.mock
-}
-
-// When sets expectation for the PermissionChecker.GetEffectivePermissions which will trigger the result defined by the following
-// Then helper
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) When(ctx context.Context, role auth.Role) *PermissionCheckerMockGetEffectivePermissionsExpectation {
-	if mmGetEffectivePermissions.mock.funcGetEffectivePermissions != nil {
-		mmGetEffectivePermissions.mock.t.Fatalf("PermissionCheckerMock.GetEffectivePermissions mock is already set by Set")
-	}
-
-	expectation := &PermissionCheckerMockGetEffectivePermissionsExpectation{
-		mock:               mmGetEffectivePermissions.mock,
-		params:             &PermissionCheckerMockGetEffectivePermissionsParams{ctx, role},
-		expectationOrigins: PermissionCheckerMockGetEffectivePermissionsExpectationOrigins{origin: minimock.CallerInfo(1)},
-	}
-	mmGetEffectivePermissions.expectations = append(mmGetEffectivePermissions.expectations, expectation)
-	return expectation
-}
-
-// Then sets up PermissionChecker.GetEffectivePermissions return parameters for the expectation previously defined by the When method
-func (e *PermissionCheckerMockGetEffectivePermissionsExpectation) Then(e1 mm_usecase.EffectivePermissions, err error) *PermissionCheckerMock {
-	e.results = &PermissionCheckerMockGetEffectivePermissionsResults{e1, err}
-	return e.mock
-}
-
-// Times sets number of times PermissionChecker.GetEffectivePermissions should be invoked
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) Times(n uint64) *mPermissionCheckerMockGetEffectivePermissions {
-	if n == 0 {
-		mmGetEffectivePermissions.mock.t.Fatalf("Times of PermissionCheckerMock.GetEffectivePermissions mock can not be zero")
-	}
-	mm_atomic.StoreUint64(&mmGetEffectivePermissions.expectedInvocations, n)
-	mmGetEffectivePermissions.expectedInvocationsOrigin = minimock.CallerInfo(1)
-	return mmGetEffectivePermissions
-}
-
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) invocationsDone() bool {
-	if len(mmGetEffectivePermissions.expectations) == 0 && mmGetEffectivePermissions.defaultExpectation == nil && mmGetEffectivePermissions.mock.funcGetEffectivePermissions == nil {
-		return true
-	}
-
-	totalInvocations := mm_atomic.LoadUint64(&mmGetEffectivePermissions.mock.afterGetEffectivePermissionsCounter)
-	expectedInvocations := mm_atomic.LoadUint64(&mmGetEffectivePermissions.expectedInvocations)
-
-	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
-}
-
-// GetEffectivePermissions implements mm_usecase.PermissionChecker
-func (mmGetEffectivePermissions *PermissionCheckerMock) GetEffectivePermissions(ctx context.Context, role auth.Role) (e1 mm_usecase.EffectivePermissions, err error) {
-	mm_atomic.AddUint64(&mmGetEffectivePermissions.beforeGetEffectivePermissionsCounter, 1)
-	defer mm_atomic.AddUint64(&mmGetEffectivePermissions.afterGetEffectivePermissionsCounter, 1)
-
-	mmGetEffectivePermissions.t.Helper()
-
-	if mmGetEffectivePermissions.inspectFuncGetEffectivePermissions != nil {
-		mmGetEffectivePermissions.inspectFuncGetEffectivePermissions(ctx, role)
-	}
-
-	mm_params := PermissionCheckerMockGetEffectivePermissionsParams{ctx, role}
-
-	// Record call args
-	mmGetEffectivePermissions.GetEffectivePermissionsMock.mutex.Lock()
-	mmGetEffectivePermissions.GetEffectivePermissionsMock.callArgs = append(mmGetEffectivePermissions.GetEffectivePermissionsMock.callArgs, &mm_params)
-	mmGetEffectivePermissions.GetEffectivePermissionsMock.mutex.Unlock()
-
-	for _, e := range mmGetEffectivePermissions.GetEffectivePermissionsMock.expectations {
-		if minimock.Equal(*e.params, mm_params) {
-			mm_atomic.AddUint64(&e.Counter, 1)
-			return e.results.e1, e.results.err
-		}
-	}
-
-	if mmGetEffectivePermissions.GetEffectivePermissionsMock.defaultExpectation != nil {
-		mm_atomic.AddUint64(&mmGetEffectivePermissions.GetEffectivePermissionsMock.defaultExpectation.Counter, 1)
-		mm_want := mmGetEffectivePermissions.GetEffectivePermissionsMock.defaultExpectation.params
-		mm_want_ptrs := mmGetEffectivePermissions.GetEffectivePermissionsMock.defaultExpectation.paramPtrs
-
-		mm_got := PermissionCheckerMockGetEffectivePermissionsParams{ctx, role}
-
-		if mm_want_ptrs != nil {
-
-			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
-				mmGetEffectivePermissions.t.Errorf("PermissionCheckerMock.GetEffectivePermissions got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmGetEffectivePermissions.GetEffectivePermissionsMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
-			}
-
-			if mm_want_ptrs.role != nil && !minimock.Equal(*mm_want_ptrs.role, mm_got.role) {
-				mmGetEffectivePermissions.t.Errorf("PermissionCheckerMock.GetEffectivePermissions got unexpected parameter role, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmGetEffectivePermissions.GetEffectivePermissionsMock.defaultExpectation.expectationOrigins.originRole, *mm_want_ptrs.role, mm_got.role, minimock.Diff(*mm_want_ptrs.role, mm_got.role))
-			}
-
-		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
-			mmGetEffectivePermissions.t.Errorf("PermissionCheckerMock.GetEffectivePermissions got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-				mmGetEffectivePermissions.GetEffectivePermissionsMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
-		}
-
-		mm_results := mmGetEffectivePermissions.GetEffectivePermissionsMock.defaultExpectation.results
-		if mm_results == nil {
-			mmGetEffectivePermissions.t.Fatal("No results are set for the PermissionCheckerMock.GetEffectivePermissions")
-		}
-		return (*mm_results).e1, (*mm_results).err
-	}
-	if mmGetEffectivePermissions.funcGetEffectivePermissions != nil {
-		return mmGetEffectivePermissions.funcGetEffectivePermissions(ctx, role)
-	}
-	mmGetEffectivePermissions.t.Fatalf("Unexpected call to PermissionCheckerMock.GetEffectivePermissions. %v %v", ctx, role)
-	return
-}
-
-// GetEffectivePermissionsAfterCounter returns a count of finished PermissionCheckerMock.GetEffectivePermissions invocations
-func (mmGetEffectivePermissions *PermissionCheckerMock) GetEffectivePermissionsAfterCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmGetEffectivePermissions.afterGetEffectivePermissionsCounter)
-}
-
-// GetEffectivePermissionsBeforeCounter returns a count of PermissionCheckerMock.GetEffectivePermissions invocations
-func (mmGetEffectivePermissions *PermissionCheckerMock) GetEffectivePermissionsBeforeCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmGetEffectivePermissions.beforeGetEffectivePermissionsCounter)
-}
-
-// Calls returns a list of arguments used in each call to PermissionCheckerMock.GetEffectivePermissions.
-// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
-func (mmGetEffectivePermissions *mPermissionCheckerMockGetEffectivePermissions) Calls() []*PermissionCheckerMockGetEffectivePermissionsParams {
-	mmGetEffectivePermissions.mutex.RLock()
-
-	argCopy := make([]*PermissionCheckerMockGetEffectivePermissionsParams, len(mmGetEffectivePermissions.callArgs))
-	copy(argCopy, mmGetEffectivePermissions.callArgs)
-
-	mmGetEffectivePermissions.mutex.RUnlock()
-
-	return argCopy
-}
-
-// MinimockGetEffectivePermissionsDone returns true if the count of the GetEffectivePermissions invocations corresponds
-// the number of defined expectations
-func (m *PermissionCheckerMock) MinimockGetEffectivePermissionsDone() bool {
-	if m.GetEffectivePermissionsMock.optional {
-		// Optional methods provide '0 or more' call count restriction.
-		return true
-	}
-
-	for _, e := range m.GetEffectivePermissionsMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			return false
-		}
-	}
-
-	return m.GetEffectivePermissionsMock.invocationsDone()
-}
-
-// MinimockGetEffectivePermissionsInspect logs each unmet expectation
-func (m *PermissionCheckerMock) MinimockGetEffectivePermissionsInspect() {
-	for _, e := range m.GetEffectivePermissionsMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			m.t.Errorf("Expected call to PermissionCheckerMock.GetEffectivePermissions at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
-		}
-	}
-
-	afterGetEffectivePermissionsCounter := mm_atomic.LoadUint64(&m.afterGetEffectivePermissionsCounter)
-	// if default expectation was set then invocations count should be greater than zero
-	if m.GetEffectivePermissionsMock.defaultExpectation != nil && afterGetEffectivePermissionsCounter < 1 {
-		if m.GetEffectivePermissionsMock.defaultExpectation.params == nil {
-			m.t.Errorf("Expected call to PermissionCheckerMock.GetEffectivePermissions at\n%s", m.GetEffectivePermissionsMock.defaultExpectation.returnOrigin)
-		} else {
-			m.t.Errorf("Expected call to PermissionCheckerMock.GetEffectivePermissions at\n%s with params: %#v", m.GetEffectivePermissionsMock.defaultExpectation.expectationOrigins.origin, *m.GetEffectivePermissionsMock.defaultExpectation.params)
-		}
-	}
-	// if func was set then invocations count should be greater than zero
-	if m.funcGetEffectivePermissions != nil && afterGetEffectivePermissionsCounter < 1 {
-		m.t.Errorf("Expected call to PermissionCheckerMock.GetEffectivePermissions at\n%s", m.funcGetEffectivePermissionsOrigin)
-	}
-
-	if !m.GetEffectivePermissionsMock.invocationsDone() && afterGetEffectivePermissionsCounter > 0 {
-		m.t.Errorf("Expected %d calls to PermissionCheckerMock.GetEffectivePermissions at\n%s but found %d calls",
-			mm_atomic.LoadUint64(&m.GetEffectivePermissionsMock.expectedInvocations), m.GetEffectivePermissionsMock.expectedInvocationsOrigin, afterGetEffectivePermissionsCounter)
-	}
-}
-
 // MinimockFinish checks that all mocked methods have been called the expected number of times
 func (m *PermissionCheckerMock) MinimockFinish() {
 	m.finishOnce.Do(func() {
 		if !m.minimockDone() {
 			m.MinimockCheckEntityPermissionInspect()
 
-			m.MinimockGetDirectPermissionsInspect()
+			m.MinimockCheckParentPermissionInspect()
 
-			m.MinimockGetEffectivePermissionsInspect()
+			m.MinimockGetDirectPermissionsInspect()
 		}
 	})
 }
@@ -1158,6 +1187,6 @@ func (m *PermissionCheckerMock) minimockDone() bool {
 	done := true
 	return done &&
 		m.MinimockCheckEntityPermissionDone() &&
-		m.MinimockGetDirectPermissionsDone() &&
-		m.MinimockGetEffectivePermissionsDone()
+		m.MinimockCheckParentPermissionDone() &&
+		m.MinimockGetDirectPermissionsDone()
 }

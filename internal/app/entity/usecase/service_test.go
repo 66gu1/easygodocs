@@ -325,10 +325,6 @@ func TestService_Create(t *testing.T) {
 			IsDraft:  cmd.IsDraft,
 			UserID:   userID,
 		}
-		permissions = usecase.EffectivePermissions{
-			IsAdmin: false,
-			IDs:     []uuid.UUID{parentID},
-		}
 		expErr = fmt.Errorf("exp")
 	)
 	ctx = contextx.SetUserID(ctx, userID)
@@ -342,7 +338,7 @@ func TestService_Create(t *testing.T) {
 			name: "ok",
 			ctx:  ctx,
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(permissions, nil)
+				mock.perm.CheckParentPermissionMock.Expect(ctx, auth.RoleWrite, &parentID).Return(nil)
 				mock.core.CreateMock.Expect(ctx, req).Return(uuid.New(), nil)
 			},
 		},
@@ -350,7 +346,7 @@ func TestService_Create(t *testing.T) {
 			name: "core.Create error",
 			ctx:  ctx,
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(permissions, nil)
+				mock.perm.CheckParentPermissionMock.Expect(ctx, auth.RoleWrite, &parentID).Return(nil)
 				mock.core.CreateMock.Expect(ctx, req).Return(uuid.Nil, expErr)
 			},
 			err: expErr,
@@ -359,7 +355,7 @@ func TestService_Create(t *testing.T) {
 			name: "no user id in context",
 			ctx:  t.Context(),
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(t.Context(), auth.RoleWrite).Return(permissions, nil)
+				mock.perm.CheckParentPermissionMock.Expect(t.Context(), auth.RoleWrite, &parentID).Return(nil)
 			},
 			err: apperr.ErrUnauthorized(),
 		},
@@ -367,20 +363,9 @@ func TestService_Create(t *testing.T) {
 			name: "no write permission",
 			ctx:  ctx,
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(usecase.EffectivePermissions{
-					IsAdmin: false,
-					IDs:     []uuid.UUID{},
-				}, nil)
+				mock.perm.CheckParentPermissionMock.Expect(ctx, auth.RoleWrite, &parentID).Return(apperr.ErrForbidden())
 			},
 			err: apperr.ErrForbidden(),
-		},
-		{
-			name: "perm.GetEffectivePermissions error",
-			ctx:  ctx,
-			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(usecase.EffectivePermissions{}, expErr)
-			},
-			err: expErr,
 		},
 	}
 	for _, tt := range tests {
@@ -434,11 +419,6 @@ func TestService_Update(t *testing.T) {
 
 			ExpectedParentID: listItem.ParentID,
 		}
-		permissions = usecase.EffectivePermissions{
-			IsAdmin: false,
-			IDs:     []uuid.UUID{parentID, id, oldParentID},
-		}
-
 		expErr = fmt.Errorf("exp")
 	)
 	ctx = contextx.SetUserID(ctx, userID)
@@ -452,8 +432,9 @@ func TestService_Update(t *testing.T) {
 			name: "ok",
 			ctx:  ctx,
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(permissions, nil)
+				mock.perm.CheckEntityPermissionMock.Expect(ctx, id, auth.RoleWrite).Return(nil)
 				mock.core.GetListItemMock.Expect(ctx, req.ID).Return(listItem, nil)
+				mock.perm.CheckParentPermissionMock.Expect(ctx, auth.RoleWrite, &parentID, &oldParentID).Return(nil)
 				mock.core.UpdateMock.Expect(ctx, req).Return(nil)
 			},
 		},
@@ -461,8 +442,9 @@ func TestService_Update(t *testing.T) {
 			name: "core.Update error",
 			ctx:  ctx,
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(permissions, nil)
+				mock.perm.CheckEntityPermissionMock.Expect(ctx, id, auth.RoleWrite).Return(nil)
 				mock.core.GetListItemMock.Expect(ctx, req.ID).Return(listItem, nil)
+				mock.perm.CheckParentPermissionMock.Expect(ctx, auth.RoleWrite, &parentID, &oldParentID).Return(nil)
 				mock.core.UpdateMock.Expect(ctx, req).Return(expErr)
 			},
 			err: expErr,
@@ -471,8 +453,9 @@ func TestService_Update(t *testing.T) {
 			name: "no user id in context",
 			ctx:  t.Context(),
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(t.Context(), auth.RoleWrite).Return(permissions, nil)
+				mock.perm.CheckEntityPermissionMock.Expect(t.Context(), id, auth.RoleWrite).Return(nil)
 				mock.core.GetListItemMock.Expect(t.Context(), req.ID).Return(listItem, nil)
+				mock.perm.CheckParentPermissionMock.Expect(t.Context(), auth.RoleWrite, &parentID, &oldParentID).Return(nil)
 			},
 			err: apperr.ErrUnauthorized(),
 		},
@@ -480,11 +463,9 @@ func TestService_Update(t *testing.T) {
 			name: "no parent permission",
 			ctx:  ctx,
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(usecase.EffectivePermissions{
-					IsAdmin: false,
-					IDs:     []uuid.UUID{id, oldParentID},
-				}, nil)
+				mock.perm.CheckEntityPermissionMock.Expect(ctx, id, auth.RoleWrite).Return(nil)
 				mock.core.GetListItemMock.Expect(ctx, req.ID).Return(listItem, nil)
+				mock.perm.CheckParentPermissionMock.Expect(ctx, auth.RoleWrite, &parentID, &oldParentID).Return(apperr.ErrForbidden())
 			},
 			err: apperr.ErrForbidden(),
 		},
@@ -492,10 +473,7 @@ func TestService_Update(t *testing.T) {
 			name: "no entity permission",
 			ctx:  ctx,
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(usecase.EffectivePermissions{
-					IsAdmin: false,
-					IDs:     []uuid.UUID{parentID, oldParentID},
-				}, nil)
+				mock.perm.CheckEntityPermissionMock.Expect(ctx, id, auth.RoleWrite).Return(apperr.ErrForbidden())
 			},
 			err: apperr.ErrForbidden(),
 		},
@@ -503,18 +481,22 @@ func TestService_Update(t *testing.T) {
 			name: "core.GetListItem error",
 			ctx:  ctx,
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(permissions, nil)
+				mock.perm.CheckEntityPermissionMock.Expect(ctx, id, auth.RoleWrite).Return(nil)
 				mock.core.GetListItemMock.Expect(ctx, req.ID).Return(entity.ListItem{}, expErr)
 			},
 			err: expErr,
 		},
 		{
-			name: "perm.GetEffectivePermissions error",
+			name: "ok/parent not changed",
 			ctx:  ctx,
 			setup: func(mock serviceMocks) {
-				mock.perm.GetEffectivePermissionsMock.Expect(ctx, auth.RoleWrite).Return(usecase.EffectivePermissions{}, expErr)
+				mock.perm.CheckEntityPermissionMock.Expect(ctx, id, auth.RoleWrite).Return(nil)
+				mock.core.GetListItemMock.Expect(ctx, req.ID).Return(entity.ListItem{ID: id, Type: listItem.Type, ParentID: &parentID}, nil)
+				mock.core.UpdateMock.Expect(ctx, entity.UpdateEntityReq{
+					ID: cmd.ID, Name: cmd.Name, Content: cmd.Content, ParentID: &parentID, UserID: userID,
+					EntityType: listItem.Type, ExpectedParentID: &parentID,
+				}).Return(nil)
 			},
-			err: expErr,
 		},
 	}
 	for _, tt := range tests {
@@ -766,207 +748,134 @@ func TestPermissionChecker_GetDirectPermissions(t *testing.T) {
 	}
 }
 
-func TestPermissionChecker_GetEffectivePermissions(t *testing.T) {
+func TestPermissionChecker_Check(t *testing.T) {
 	t.Parallel()
 	var (
-		ctx              = t.Context()
-		role             = auth.RoleWrite
-		ids              = []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
-		adminPermissions = usecase.EffectivePermissions{IsAdmin: true}
-		expErr           = fmt.Errorf("exp")
+		userCtx  = t.Context()
+		id       = uuid.New()
+		parentID = uuid.New()
+		direct   = []uuid.UUID{uuid.New()}
+		expErr   = fmt.Errorf("exp")
 	)
+
 	tests := []struct {
 		name  string
-		setup func(mock permMocks)
-		want  usecase.EffectivePermissions
-		err   error
-	}{
-		{
-			name: "ok/admin",
-			setup: func(mock permMocks) {
-				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(ids, true, nil)
-			},
-			want: adminPermissions,
-		},
-		{
-			name: "ok/not admin",
-			setup: func(mock permMocks) {
-				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(ids, false, nil)
-				mock.core.GetPermittedIDsMock.Expect(ctx, ids, entity.HierarchyTypeChildrenOnly).Return(ids, nil)
-			},
-			want: usecase.EffectivePermissions{IsAdmin: false, IDs: ids},
-		},
-		{
-			name: "auth.GetCurrentUserDirectPermissions error",
-			setup: func(mock permMocks) {
-				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(nil, false, expErr)
-			},
-			err: expErr,
-		},
-		{
-			name: "core.GetPermittedHierarchy error",
-			setup: func(mock permMocks) {
-				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(ids, false, nil)
-				mock.core.GetPermittedIDsMock.Expect(ctx, ids, entity.HierarchyTypeChildrenOnly).Return(nil, expErr)
-			},
-			err: expErr,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			m := newPermMocks(t)
-			if tt.setup != nil {
-				tt.setup(m)
-			}
-
-			p := usecase.NewPermissionChecker(m.core, m.auth)
-			got, err := p.GetEffectivePermissions(ctx, role)
-			if tt.err != nil {
-				require.ErrorIs(t, err, tt.err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.want, got)
-			}
-		})
-	}
-}
-
-func TestPermissionChecker_CheckEntityPermission(t *testing.T) {
-	t.Parallel()
-	var (
-		ctx    = t.Context()
-		id     = uuid.New()
-		role   = auth.RoleWrite
-		expErr = fmt.Errorf("exp")
-	)
-	tests := []struct {
-		name  string
+		role  auth.Role
+		call  func(p *usecase.DefaultPermissionChecker) error
 		setup func(mock permMocks)
 		err   error
 	}{
 		{
-			name: "ok",
+			name: "entity/admin",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckEntityPermission(userCtx, id, auth.RoleWrite)
+			},
 			setup: func(mock permMocks) {
-				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(nil, true, nil)
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleWrite).Return(nil, true, nil)
 			},
 		},
 		{
-			name: "no permission",
+			name: "entity/permitted",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckEntityPermission(userCtx, id, auth.RoleWrite)
+			},
 			setup: func(mock permMocks) {
-				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(nil, false, nil)
-				mock.core.GetPermittedIDsMock.Expect(ctx, nil, entity.HierarchyTypeChildrenOnly).Return(nil, nil)
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleWrite).Return(direct, false, nil)
+				mock.core.IsPermittedMock.Expect(userCtx, id, direct, false).Return(true, nil)
+			},
+		},
+		{
+			name: "entity/read opens ancestors",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckEntityPermission(userCtx, id, auth.RoleRead)
+			},
+			setup: func(mock permMocks) {
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleRead).Return(direct, false, nil)
+				mock.core.IsPermittedMock.Expect(userCtx, id, direct, true).Return(true, nil)
+			},
+		},
+		{
+			name: "entity/not permitted",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckEntityPermission(userCtx, id, auth.RoleWrite)
+			},
+			setup: func(mock permMocks) {
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleWrite).Return(direct, false, nil)
+				mock.core.IsPermittedMock.Expect(userCtx, id, direct, false).Return(false, nil)
 			},
 			err: apperr.ErrForbidden(),
 		},
 		{
-			name: "auth.GetCurrentUserDirectPermissions error",
+			name: "entity/core error",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckEntityPermission(userCtx, id, auth.RoleWrite)
+			},
 			setup: func(mock permMocks) {
-				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(ctx, role).Return(nil, false, expErr)
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleWrite).Return(direct, false, nil)
+				mock.core.IsPermittedMock.Expect(userCtx, id, direct, false).Return(false, expErr)
 			},
 			err: expErr,
+		},
+		{
+			name: "entity/auth error",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckEntityPermission(userCtx, id, auth.RoleWrite)
+			},
+			setup: func(mock permMocks) {
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleWrite).Return(nil, false, expErr)
+			},
+			err: expErr,
+		},
+		{
+			name: "parent/admin can use root",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckParentPermission(userCtx, auth.RoleWrite, nil, &parentID)
+			},
+			setup: func(mock permMocks) {
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleWrite).Return(nil, true, nil)
+			},
+		},
+		{
+			name: "parent/all permitted",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckParentPermission(userCtx, auth.RoleWrite, &parentID, &id)
+			},
+			setup: func(mock permMocks) {
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleWrite).Return(direct, false, nil)
+				mock.core.IsPermittedMock.When(userCtx, parentID, direct, false).Then(true, nil)
+				mock.core.IsPermittedMock.When(userCtx, id, direct, false).Then(true, nil)
+			},
+		},
+		{
+			name: "parent/one not permitted",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckParentPermission(userCtx, auth.RoleWrite, &parentID, &id)
+			},
+			setup: func(mock permMocks) {
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleWrite).Return(direct, false, nil)
+				mock.core.IsPermittedMock.When(userCtx, parentID, direct, false).Then(true, nil)
+				mock.core.IsPermittedMock.When(userCtx, id, direct, false).Then(false, nil)
+			},
+			err: apperr.ErrForbidden(),
+		},
+		{
+			name: "parent/root requires admin",
+			call: func(p *usecase.DefaultPermissionChecker) error {
+				return p.CheckParentPermission(userCtx, auth.RoleWrite, nil)
+			},
+			setup: func(mock permMocks) {
+				mock.auth.GetCurrentUserDirectPermissionsMock.Expect(userCtx, auth.RoleWrite).Return(direct, false, nil)
+			},
+			err: apperr.ErrForbidden(),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			m := newPermMocks(t)
-			if tt.setup != nil {
-				tt.setup(m)
-			}
+			tt.setup(m)
 
-			p := usecase.NewPermissionChecker(m.core, m.auth)
-			err := p.CheckEntityPermission(ctx, id, role)
-			if tt.err != nil {
-				require.ErrorIs(t, err, tt.err)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestEffectivePermissions_CheckID(t *testing.T) {
-	t.Parallel()
-	id := uuid.New()
-	tests := []struct {
-		name string
-		perm usecase.EffectivePermissions
-		err  error
-	}{
-		{
-			name: "is admin",
-			perm: usecase.EffectivePermissions{IsAdmin: true},
-		},
-		{
-			name: "has id",
-			perm: usecase.EffectivePermissions{IDs: []uuid.UUID{id, uuid.New()}},
-		},
-		{
-			name: "no id",
-			perm: usecase.EffectivePermissions{IDs: []uuid.UUID{uuid.New(), uuid.New()}},
-			err:  apperr.ErrForbidden(),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			err := tt.perm.CheckID(id)
-			if tt.err != nil {
-				require.ErrorIs(t, err, tt.err)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestEffectivePermissions_CheckParentIDs(t *testing.T) {
-	t.Parallel()
-	var (
-		id1        = uuid.New()
-		id2        = uuid.New()
-		reqWithNil = []*uuid.UUID{nil, nil}
-		reqWithIDs = []*uuid.UUID{&id1, &id2}
-	)
-	tests := []struct {
-		name string
-		req  []*uuid.UUID
-		perm usecase.EffectivePermissions
-		err  error
-	}{
-		{
-			name: "is admin with parents",
-			req:  reqWithIDs,
-			perm: usecase.EffectivePermissions{IsAdmin: true},
-		},
-		{
-			name: "is admin with nil parents",
-			req:  reqWithNil,
-			perm: usecase.EffectivePermissions{IsAdmin: true},
-		},
-		{
-			name: "has all ids",
-			req:  reqWithIDs,
-			perm: usecase.EffectivePermissions{IDs: []uuid.UUID{id1, id2, uuid.New()}},
-		},
-		{
-			name: "no ids",
-			req:  reqWithIDs,
-			perm: usecase.EffectivePermissions{IDs: []uuid.UUID{uuid.New(), uuid.New()}},
-			err:  apperr.ErrForbidden(),
-		},
-		{
-			name: "no parents",
-			req:  reqWithNil,
-			perm: usecase.EffectivePermissions{IDs: []uuid.UUID{uuid.New(), uuid.New()}},
-			err:  apperr.ErrForbidden(),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			err := tt.perm.CheckParentIDs(tt.req)
+			err := tt.call(usecase.NewPermissionChecker(m.core, m.auth))
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
 			} else {

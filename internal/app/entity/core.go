@@ -3,6 +3,7 @@ package entity
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -135,25 +136,40 @@ func (c *Core) GetTree(ctx context.Context, permissions []uuid.UUID, isAdmin boo
 	return BuildTree(ctx, permitted), nil
 }
 
-func (c *Core) GetPermittedIDs(ctx context.Context, directPermissions []uuid.UUID, hType HierarchyType) ([]uuid.UUID, error) {
+// IsPermitted reports whether a user with permissions on directPermissions has access to the entity.
+// A permission applies to the whole subtree of the entity it was granted on; withAncestors also opens
+// the ancestors of the permitted entities (read access shows the path to them in the tree).
+// Only the ancestors of the checked entity are loaded, not the permitted subtrees,
+// so the cost depends on the tree depth, not on its size.
+func (c *Core) IsPermitted(ctx context.Context, id uuid.UUID, directPermissions []uuid.UUID, withAncestors bool) (bool, error) {
 	if len(directPermissions) == 0 {
-		return nil, nil
+		return false, nil
 	}
 	userID, err := contextx.GetUserID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("entity.core.GetPermittedIDs: %w", err)
+		return false, fmt.Errorf("entity.core.IsPermitted: %w", err)
 	}
-	permitted, err := c.repo.GetHierarchy(ctx, directPermissions, c.cfg.MaxHierarchyDepth, &userID, hType)
+
+	// the entity itself and its ancestors visible to the user
+	path, err := c.repo.GetHierarchy(ctx, []uuid.UUID{id}, c.cfg.MaxHierarchyDepth, &userID, HierarchyTypeParentsOnly)
 	if err != nil {
-		return nil, fmt.Errorf("entity.core.GetPermittedIDs: %w", err)
+		return false, fmt.Errorf("entity.core.IsPermitted: %w", err)
+	}
+	if len(path) == 0 {
+		return false, nil
+	}
+	if slices.ContainsFunc(path, func(item ListItem) bool { return slices.Contains(directPermissions, item.ID) }) {
+		return true, nil
+	}
+	if !withAncestors {
+		return false, nil
 	}
 
-	ids := make([]uuid.UUID, len(permitted))
-	for i, item := range permitted {
-		ids[i] = item.ID
+	ancestors, err := c.repo.GetHierarchy(ctx, directPermissions, c.cfg.MaxHierarchyDepth, &userID, HierarchyTypeParentsOnly)
+	if err != nil {
+		return false, fmt.Errorf("entity.core.IsPermitted: %w", err)
 	}
-
-	return ids, nil
+	return slices.ContainsFunc(ancestors, func(item ListItem) bool { return item.ID == id }), nil
 }
 
 func (c *Core) GetVersion(ctx context.Context, id uuid.UUID, version int) (Entity, error) {

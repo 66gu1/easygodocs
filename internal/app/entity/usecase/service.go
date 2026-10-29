@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	"github.com/66gu1/easygodocs/internal/app/entity"
@@ -14,7 +13,7 @@ import (
 
 type Core interface {
 	GetTree(ctx context.Context, permissions []uuid.UUID, isAdmin bool) (entity.Tree, error)
-	GetPermittedIDs(ctx context.Context, directPermissions []uuid.UUID, hType entity.HierarchyType) ([]uuid.UUID, error)
+	IsPermitted(ctx context.Context, id uuid.UUID, directPermissions []uuid.UUID, withAncestors bool) (bool, error)
 	Get(ctx context.Context, id uuid.UUID) (entity.Entity, error)
 	GetVersion(ctx context.Context, id uuid.UUID, version int) (entity.Entity, error)
 	GetVersionsList(ctx context.Context, id uuid.UUID) ([]entity.Entity, error)
@@ -34,7 +33,7 @@ type AuthCore interface {
 
 type PermissionChecker interface {
 	CheckEntityPermission(ctx context.Context, id uuid.UUID, role auth.Role) error
-	GetEffectivePermissions(ctx context.Context, role auth.Role) (EffectivePermissions, error)
+	CheckParentPermission(ctx context.Context, role auth.Role, parentIDs ...*uuid.UUID) error
 	GetDirectPermissions(ctx context.Context, role auth.Role) ([]uuid.UUID, bool, error)
 }
 
@@ -124,11 +123,7 @@ func (s *Service) GetVersionsList(ctx context.Context, id uuid.UUID) ([]entity.E
 }
 
 func (s *Service) Create(ctx context.Context, cmd CreateEntityCmd) (uuid.UUID, error) {
-	permissions, err := s.perm.GetEffectivePermissions(ctx, auth.RoleWrite)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("entity.service.Create: %w", err)
-	}
-	if err = permissions.CheckParentIDs([]*uuid.UUID{cmd.ParentID}); err != nil {
+	if err := s.perm.CheckParentPermission(ctx, auth.RoleWrite, cmd.ParentID); err != nil {
 		return uuid.Nil, fmt.Errorf("entity.service.Create: %w", err)
 	}
 
@@ -153,11 +148,7 @@ func (s *Service) Create(ctx context.Context, cmd CreateEntityCmd) (uuid.UUID, e
 }
 
 func (s *Service) Update(ctx context.Context, cmd UpdateEntityCmd) error {
-	permissions, err := s.perm.GetEffectivePermissions(ctx, auth.RoleWrite)
-	if err != nil {
-		return fmt.Errorf("entity.service.Update: %w", err)
-	}
-	if err = permissions.CheckID(cmd.ID); err != nil {
+	if err := s.perm.CheckEntityPermission(ctx, cmd.ID, auth.RoleWrite); err != nil {
 		return fmt.Errorf("entity.service.Update: %w", err)
 	}
 
@@ -167,7 +158,7 @@ func (s *Service) Update(ctx context.Context, cmd UpdateEntityCmd) error {
 	}
 	parentChanged := !equalUUIDPtr(oldEntity.ParentID, cmd.ParentID)
 	if parentChanged {
-		if err = permissions.CheckParentIDs([]*uuid.UUID{cmd.ParentID, oldEntity.ParentID}); err != nil {
+		if err = s.perm.CheckParentPermission(ctx, auth.RoleWrite, cmd.ParentID, oldEntity.ParentID); err != nil {
 			return fmt.Errorf("entity.service.Update: %w", err)
 		}
 	}
@@ -293,40 +284,43 @@ func NewPermissionChecker(core Core, authCore AuthCore) *DefaultPermissionChecke
 }
 
 func (p *DefaultPermissionChecker) CheckEntityPermission(ctx context.Context, id uuid.UUID, role auth.Role) error {
-	permissions, err := p.GetEffectivePermissions(ctx, role)
-	if err != nil {
+	if err := p.check(ctx, role, &id); err != nil {
 		return fmt.Errorf("permissionChecker.CheckEntityPermission: %w", err)
 	}
-
-	err = permissions.CheckID(id)
-	if err != nil {
-		return fmt.Errorf("permissionChecker.CheckEntityPermission: %w", err)
-	}
-
 	return nil
 }
 
-// GetEffectivePermissions returns all permissions including inherited ones
-// doesn't return ids if isAdmin is true
-func (p *DefaultPermissionChecker) GetEffectivePermissions(ctx context.Context, role auth.Role) (EffectivePermissions, error) {
-	ids, isAdmin, err := p.authCore.GetCurrentUserDirectPermissions(ctx, role)
+// CheckParentPermission checks the permission for every parent; a nil parent is the root,
+// placing entities there requires the admin role.
+func (p *DefaultPermissionChecker) CheckParentPermission(ctx context.Context, role auth.Role, parentIDs ...*uuid.UUID) error {
+	if err := p.check(ctx, role, parentIDs...); err != nil {
+		return fmt.Errorf("permissionChecker.CheckParentPermission: %w", err)
+	}
+	return nil
+}
+
+func (p *DefaultPermissionChecker) check(ctx context.Context, role auth.Role, ids ...*uuid.UUID) error {
+	direct, isAdmin, err := p.authCore.GetCurrentUserDirectPermissions(ctx, role)
 	if err != nil {
-		return EffectivePermissions{}, fmt.Errorf("permissionChecker.GetEffectivePermissions: %w", err)
+		return fmt.Errorf("get direct permissions: %w", err)
 	}
 	if isAdmin {
-		return EffectivePermissions{IsAdmin: true}, nil
+		return nil
 	}
 
-	hType := entity.HierarchyTypeChildrenOnly
-	if role.IsOnlyForRead() {
-		hType = entity.HierarchyTypeChildrenAndParents
+	for _, id := range ids {
+		if id == nil {
+			return apperr.ErrForbidden()
+		}
+		permitted, err := p.core.IsPermitted(ctx, *id, direct, role.IsOnlyForRead())
+		if err != nil {
+			return fmt.Errorf("check entity %s: %w", *id, err)
+		}
+		if !permitted {
+			return apperr.ErrForbidden()
+		}
 	}
-	effectiveIDs, err := p.core.GetPermittedIDs(ctx, ids, hType)
-	if err != nil {
-		return EffectivePermissions{}, fmt.Errorf("permissionChecker.GetEffectivePermissions: %w", err)
-	}
-
-	return EffectivePermissions{IDs: effectiveIDs}, nil
+	return nil
 }
 
 func (p *DefaultPermissionChecker) GetDirectPermissions(ctx context.Context, role auth.Role) ([]uuid.UUID, bool, error) {
@@ -335,37 +329,6 @@ func (p *DefaultPermissionChecker) GetDirectPermissions(ctx context.Context, rol
 		return nil, false, fmt.Errorf("permissionChecker.GetDirectPermissions: %w", err)
 	}
 	return ids, isAdmin, nil
-}
-
-type EffectivePermissions struct {
-	IsAdmin bool
-	IDs     []uuid.UUID
-}
-
-func (ep *EffectivePermissions) CheckID(id uuid.UUID) error {
-	if ep.IsAdmin {
-		return nil
-	}
-	if slices.Contains(ep.IDs, id) {
-		return nil
-	}
-
-	return fmt.Errorf("EffectivePermissions.checkID: %w", apperr.ErrForbidden())
-}
-
-func (ep *EffectivePermissions) CheckParentIDs(parentIDs []*uuid.UUID) error {
-	for _, id := range parentIDs {
-		if id == nil {
-			if !ep.IsAdmin {
-				return fmt.Errorf("EffectivePermissions.checkParentIDs: %w", apperr.ErrForbidden())
-			}
-			return nil
-		}
-		if err := ep.CheckID(*id); err != nil {
-			return fmt.Errorf("EffectivePermissions.checkParentIDs: %w", err)
-		}
-	}
-	return nil
 }
 
 func equalUUIDPtr(a, b *uuid.UUID) bool {

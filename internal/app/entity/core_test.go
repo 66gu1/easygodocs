@@ -381,50 +381,98 @@ func TestCore_GetTree(t *testing.T) {
 	}
 }
 
-func TestCore_GetPermittedIDs(t *testing.T) {
+func TestCore_IsPermitted(t *testing.T) {
 	t.Parallel()
 
 	var (
-		ctx         = context.Background()
-		permissions = []uuid.UUID{uuid.New(), uuid.New()}
-		want        = append(permissions, uuid.New())
-		items       = []entity.ListItem{{ID: want[0]}, {ID: want[1]}, {ID: want[2]}}
-		userID      = uuid.New()
-		hType       = entity.HierarchyTypeChildrenOnly
-		cfg         = entity.Config{MaxHierarchyDepth: 7}
-
-		expErr = fmt.Errorf("test error")
+		// root -> parent -> id
+		root     = uuid.New()
+		parent   = uuid.New()
+		id       = uuid.New()
+		other    = uuid.New()
+		path     = []entity.ListItem{{ID: id}, {ID: parent}, {ID: root}}
+		userID   = uuid.New()
+		ctx      = contextx.SetUserID(context.Background(), userID)
+		cfg      = entity.Config{MaxHierarchyDepth: 7}
+		expErr   = fmt.Errorf("test error")
+		parents  = entity.HierarchyTypeParentsOnly
+		pathCall = func(repo *mocks.RepositoryMock, items []entity.ListItem, err error) {
+			repo.GetHierarchyMock.When(ctx, []uuid.UUID{id}, cfg.MaxHierarchyDepth, &userID, parents).Then(items, err)
+		}
 	)
-	ctx = contextx.SetUserID(ctx, userID)
+
 	tests := []struct {
-		name  string
-		perms []uuid.UUID
-		setup func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock)
-		want  []uuid.UUID
-		err   error
+		name          string
+		direct        []uuid.UUID
+		withAncestors bool
+		setup         func(repo *mocks.RepositoryMock)
+		want          bool
+		err           error
 	}{
 		{
-			name:  "success",
-			perms: permissions,
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock) {
-				repo.GetHierarchyMock.Expect(ctx, permissions, cfg.MaxHierarchyDepth, &userID, hType).Return(items, nil)
-			},
-			want: want,
-			err:  nil,
+			name:   "permission on the entity",
+			direct: []uuid.UUID{id},
+			setup:  func(repo *mocks.RepositoryMock) { pathCall(repo, path, nil) },
+			want:   true,
 		},
 		{
-			name:  "success/no_permissions",
-			perms: nil,
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock) {
-			},
-			want: nil,
-			err:  nil,
+			name:   "permission inherited from an ancestor",
+			direct: []uuid.UUID{other, root},
+			setup:  func(repo *mocks.RepositoryMock) { pathCall(repo, path, nil) },
+			want:   true,
 		},
 		{
-			name:  "repo_error",
-			perms: permissions,
-			setup: func(repo *mocks.RepositoryMock, idGen *mocks.IDGeneratorMock, timeGen *mocks.TimeGeneratorMock) {
-				repo.GetHierarchyMock.Expect(ctx, permissions, cfg.MaxHierarchyDepth, &userID, hType).Return(nil, expErr)
+			name:   "no permission on the path",
+			direct: []uuid.UUID{other},
+			setup:  func(repo *mocks.RepositoryMock) { pathCall(repo, path, nil) },
+			want:   false,
+		},
+		{
+			name:   "entity is not visible",
+			direct: []uuid.UUID{id},
+			setup:  func(repo *mocks.RepositoryMock) { pathCall(repo, nil, nil) },
+			want:   false,
+		},
+		{
+			name:          "with ancestors: entity is an ancestor of a permitted one",
+			direct:        []uuid.UUID{other},
+			withAncestors: true,
+			setup: func(repo *mocks.RepositoryMock) {
+				pathCall(repo, path, nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{other}, cfg.MaxHierarchyDepth, &userID, parents).
+					Then([]entity.ListItem{{ID: other}, {ID: id}, {ID: parent}}, nil)
+			},
+			want: true,
+		},
+		{
+			name:          "with ancestors: entity is not an ancestor of a permitted one",
+			direct:        []uuid.UUID{other},
+			withAncestors: true,
+			setup: func(repo *mocks.RepositoryMock) {
+				pathCall(repo, path, nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{other}, cfg.MaxHierarchyDepth, &userID, parents).
+					Then([]entity.ListItem{{ID: other}}, nil)
+			},
+			want: false,
+		},
+		{
+			name:   "no direct permissions",
+			direct: nil,
+			want:   false,
+		},
+		{
+			name:   "repo error/path",
+			direct: []uuid.UUID{id},
+			setup:  func(repo *mocks.RepositoryMock) { pathCall(repo, nil, expErr) },
+			err:    expErr,
+		},
+		{
+			name:          "repo error/ancestors",
+			direct:        []uuid.UUID{other},
+			withAncestors: true,
+			setup: func(repo *mocks.RepositoryMock) {
+				pathCall(repo, path, nil)
+				repo.GetHierarchyMock.When(ctx, []uuid.UUID{other}, cfg.MaxHierarchyDepth, &userID, parents).Then(nil, expErr)
 			},
 			err: expErr,
 		},
@@ -433,16 +481,13 @@ func TestCore_GetPermittedIDs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			repo := mocks.NewRepositoryMock(t)
-			idGen := mocks.NewIDGeneratorMock(t)
-			timeGen := mocks.NewTimeGeneratorMock(t)
-			validator := mocks.NewValidatorMock(t)
 			if tt.setup != nil {
-				tt.setup(repo, idGen, timeGen)
+				tt.setup(repo)
 			}
-			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: idGen, Time: timeGen}, validator, cfg)
+			c, err := entity.NewCore(repo, noTx{}, entity.Generators{ID: mocks.NewIDGeneratorMock(t), Time: mocks.NewTimeGeneratorMock(t)}, mocks.NewValidatorMock(t), cfg)
 			require.NoError(t, err)
 
-			got, err := c.GetPermittedIDs(ctx, tt.perms, hType)
+			got, err := c.IsPermitted(ctx, id, tt.direct, tt.withAncestors)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
 				return
@@ -451,6 +496,15 @@ func TestCore_GetPermittedIDs(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+
+	t.Run("no user in context", func(t *testing.T) {
+		t.Parallel()
+		c, err := entity.NewCore(mocks.NewRepositoryMock(t), noTx{}, entity.Generators{ID: mocks.NewIDGeneratorMock(t), Time: mocks.NewTimeGeneratorMock(t)}, mocks.NewValidatorMock(t), cfg)
+		require.NoError(t, err)
+
+		_, err = c.IsPermitted(context.Background(), id, []uuid.UUID{id}, false)
+		require.ErrorIs(t, err, apperr.ErrUnauthorized())
+	})
 }
 
 func TestCore_GetVersion(t *testing.T) {

@@ -21,15 +21,7 @@ import (
 
 const maxDepth = 15
 
-type entityCore interface {
-	Create(ctx context.Context, req entity.CreateEntityReq) (uuid.UUID, error)
-	Update(ctx context.Context, req entity.UpdateEntityReq) error
-	Delete(ctx context.Context, id uuid.UUID) error
-	SaveDraft(ctx context.Context, req entity.SaveDraftReq) error
-	PublishDraft(ctx context.Context, entityID, userID uuid.UUID) error
-}
-
-func newEntityCore(t *testing.T, repo *Repository, gdb *gorm.DB) entityCore {
+func newEntityCore(t *testing.T, repo *Repository, gdb *gorm.DB) *entity.Core {
 	t.Helper()
 	txManager, err := db.NewTxManager(gdb)
 	require.NoError(t, err)
@@ -46,7 +38,7 @@ func newEntityCore(t *testing.T, repo *Repository, gdb *gorm.DB) entityCore {
 	return core
 }
 
-func createDepartment(t *testing.T, core entityCore, userID uuid.UUID, parentID *uuid.UUID) uuid.UUID {
+func createDepartment(t *testing.T, core *entity.Core, userID uuid.UUID, parentID *uuid.UUID) uuid.UUID {
 	t.Helper()
 	id, err := core.Create(t.Context(), entity.CreateEntityReq{
 		Type:     entity.TypeDepartment,

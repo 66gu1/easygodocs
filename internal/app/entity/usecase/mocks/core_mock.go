@@ -62,13 +62,6 @@ type CoreMock struct {
 	beforeGetListItemCounter uint64
 	GetListItemMock          mCoreMockGetListItem
 
-	funcGetPermittedIDs          func(ctx context.Context, directPermissions []uuid.UUID, hType entity.HierarchyType) (ua1 []uuid.UUID, err error)
-	funcGetPermittedIDsOrigin    string
-	inspectFuncGetPermittedIDs   func(ctx context.Context, directPermissions []uuid.UUID, hType entity.HierarchyType)
-	afterGetPermittedIDsCounter  uint64
-	beforeGetPermittedIDsCounter uint64
-	GetPermittedIDsMock          mCoreMockGetPermittedIDs
-
 	funcGetTree          func(ctx context.Context, permissions []uuid.UUID, isAdmin bool) (t1 entity.Tree, err error)
 	funcGetTreeOrigin    string
 	inspectFuncGetTree   func(ctx context.Context, permissions []uuid.UUID, isAdmin bool)
@@ -89,6 +82,13 @@ type CoreMock struct {
 	afterGetVersionsListCounter  uint64
 	beforeGetVersionsListCounter uint64
 	GetVersionsListMock          mCoreMockGetVersionsList
+
+	funcIsPermitted          func(ctx context.Context, id uuid.UUID, directPermissions []uuid.UUID, withAncestors bool) (b1 bool, err error)
+	funcIsPermittedOrigin    string
+	inspectFuncIsPermitted   func(ctx context.Context, id uuid.UUID, directPermissions []uuid.UUID, withAncestors bool)
+	afterIsPermittedCounter  uint64
+	beforeIsPermittedCounter uint64
+	IsPermittedMock          mCoreMockIsPermitted
 
 	funcPublishDraft          func(ctx context.Context, entityID uuid.UUID, userID uuid.UUID) (err error)
 	funcPublishDraftOrigin    string
@@ -138,9 +138,6 @@ func NewCoreMock(t minimock.Tester) *CoreMock {
 	m.GetListItemMock = mCoreMockGetListItem{mock: m}
 	m.GetListItemMock.callArgs = []*CoreMockGetListItemParams{}
 
-	m.GetPermittedIDsMock = mCoreMockGetPermittedIDs{mock: m}
-	m.GetPermittedIDsMock.callArgs = []*CoreMockGetPermittedIDsParams{}
-
 	m.GetTreeMock = mCoreMockGetTree{mock: m}
 	m.GetTreeMock.callArgs = []*CoreMockGetTreeParams{}
 
@@ -149,6 +146,9 @@ func NewCoreMock(t minimock.Tester) *CoreMock {
 
 	m.GetVersionsListMock = mCoreMockGetVersionsList{mock: m}
 	m.GetVersionsListMock.callArgs = []*CoreMockGetVersionsListParams{}
+
+	m.IsPermittedMock = mCoreMockIsPermitted{mock: m}
+	m.IsPermittedMock.callArgs = []*CoreMockIsPermittedParams{}
 
 	m.PublishDraftMock = mCoreMockPublishDraft{mock: m}
 	m.PublishDraftMock.callArgs = []*CoreMockPublishDraftParams{}
@@ -2282,380 +2282,6 @@ func (m *CoreMock) MinimockGetListItemInspect() {
 	}
 }
 
-type mCoreMockGetPermittedIDs struct {
-	optional           bool
-	mock               *CoreMock
-	defaultExpectation *CoreMockGetPermittedIDsExpectation
-	expectations       []*CoreMockGetPermittedIDsExpectation
-
-	callArgs []*CoreMockGetPermittedIDsParams
-	mutex    sync.RWMutex
-
-	expectedInvocations       uint64
-	expectedInvocationsOrigin string
-}
-
-// CoreMockGetPermittedIDsExpectation specifies expectation struct of the Core.GetPermittedIDs
-type CoreMockGetPermittedIDsExpectation struct {
-	mock               *CoreMock
-	params             *CoreMockGetPermittedIDsParams
-	paramPtrs          *CoreMockGetPermittedIDsParamPtrs
-	expectationOrigins CoreMockGetPermittedIDsExpectationOrigins
-	results            *CoreMockGetPermittedIDsResults
-	returnOrigin       string
-	Counter            uint64
-}
-
-// CoreMockGetPermittedIDsParams contains parameters of the Core.GetPermittedIDs
-type CoreMockGetPermittedIDsParams struct {
-	ctx               context.Context
-	directPermissions []uuid.UUID
-	hType             entity.HierarchyType
-}
-
-// CoreMockGetPermittedIDsParamPtrs contains pointers to parameters of the Core.GetPermittedIDs
-type CoreMockGetPermittedIDsParamPtrs struct {
-	ctx               *context.Context
-	directPermissions *[]uuid.UUID
-	hType             *entity.HierarchyType
-}
-
-// CoreMockGetPermittedIDsResults contains results of the Core.GetPermittedIDs
-type CoreMockGetPermittedIDsResults struct {
-	ua1 []uuid.UUID
-	err error
-}
-
-// CoreMockGetPermittedIDsOrigins contains origins of expectations of the Core.GetPermittedIDs
-type CoreMockGetPermittedIDsExpectationOrigins struct {
-	origin                  string
-	originCtx               string
-	originDirectPermissions string
-	originHType             string
-}
-
-// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
-// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
-// Optional() makes method check to work in '0 or more' mode.
-// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
-// catch the problems when the expected method call is totally skipped during test run.
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) Optional() *mCoreMockGetPermittedIDs {
-	mmGetPermittedIDs.optional = true
-	return mmGetPermittedIDs
-}
-
-// Expect sets up expected params for Core.GetPermittedIDs
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) Expect(ctx context.Context, directPermissions []uuid.UUID, hType entity.HierarchyType) *mCoreMockGetPermittedIDs {
-	if mmGetPermittedIDs.mock.funcGetPermittedIDs != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by Set")
-	}
-
-	if mmGetPermittedIDs.defaultExpectation == nil {
-		mmGetPermittedIDs.defaultExpectation = &CoreMockGetPermittedIDsExpectation{}
-	}
-
-	if mmGetPermittedIDs.defaultExpectation.paramPtrs != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by ExpectParams functions")
-	}
-
-	mmGetPermittedIDs.defaultExpectation.params = &CoreMockGetPermittedIDsParams{ctx, directPermissions, hType}
-	mmGetPermittedIDs.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
-	for _, e := range mmGetPermittedIDs.expectations {
-		if minimock.Equal(e.params, mmGetPermittedIDs.defaultExpectation.params) {
-			mmGetPermittedIDs.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmGetPermittedIDs.defaultExpectation.params)
-		}
-	}
-
-	return mmGetPermittedIDs
-}
-
-// ExpectCtxParam1 sets up expected param ctx for Core.GetPermittedIDs
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) ExpectCtxParam1(ctx context.Context) *mCoreMockGetPermittedIDs {
-	if mmGetPermittedIDs.mock.funcGetPermittedIDs != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by Set")
-	}
-
-	if mmGetPermittedIDs.defaultExpectation == nil {
-		mmGetPermittedIDs.defaultExpectation = &CoreMockGetPermittedIDsExpectation{}
-	}
-
-	if mmGetPermittedIDs.defaultExpectation.params != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by Expect")
-	}
-
-	if mmGetPermittedIDs.defaultExpectation.paramPtrs == nil {
-		mmGetPermittedIDs.defaultExpectation.paramPtrs = &CoreMockGetPermittedIDsParamPtrs{}
-	}
-	mmGetPermittedIDs.defaultExpectation.paramPtrs.ctx = &ctx
-	mmGetPermittedIDs.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
-
-	return mmGetPermittedIDs
-}
-
-// ExpectDirectPermissionsParam2 sets up expected param directPermissions for Core.GetPermittedIDs
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) ExpectDirectPermissionsParam2(directPermissions []uuid.UUID) *mCoreMockGetPermittedIDs {
-	if mmGetPermittedIDs.mock.funcGetPermittedIDs != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by Set")
-	}
-
-	if mmGetPermittedIDs.defaultExpectation == nil {
-		mmGetPermittedIDs.defaultExpectation = &CoreMockGetPermittedIDsExpectation{}
-	}
-
-	if mmGetPermittedIDs.defaultExpectation.params != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by Expect")
-	}
-
-	if mmGetPermittedIDs.defaultExpectation.paramPtrs == nil {
-		mmGetPermittedIDs.defaultExpectation.paramPtrs = &CoreMockGetPermittedIDsParamPtrs{}
-	}
-	mmGetPermittedIDs.defaultExpectation.paramPtrs.directPermissions = &directPermissions
-	mmGetPermittedIDs.defaultExpectation.expectationOrigins.originDirectPermissions = minimock.CallerInfo(1)
-
-	return mmGetPermittedIDs
-}
-
-// ExpectHTypeParam3 sets up expected param hType for Core.GetPermittedIDs
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) ExpectHTypeParam3(hType entity.HierarchyType) *mCoreMockGetPermittedIDs {
-	if mmGetPermittedIDs.mock.funcGetPermittedIDs != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by Set")
-	}
-
-	if mmGetPermittedIDs.defaultExpectation == nil {
-		mmGetPermittedIDs.defaultExpectation = &CoreMockGetPermittedIDsExpectation{}
-	}
-
-	if mmGetPermittedIDs.defaultExpectation.params != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by Expect")
-	}
-
-	if mmGetPermittedIDs.defaultExpectation.paramPtrs == nil {
-		mmGetPermittedIDs.defaultExpectation.paramPtrs = &CoreMockGetPermittedIDsParamPtrs{}
-	}
-	mmGetPermittedIDs.defaultExpectation.paramPtrs.hType = &hType
-	mmGetPermittedIDs.defaultExpectation.expectationOrigins.originHType = minimock.CallerInfo(1)
-
-	return mmGetPermittedIDs
-}
-
-// Inspect accepts an inspector function that has same arguments as the Core.GetPermittedIDs
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) Inspect(f func(ctx context.Context, directPermissions []uuid.UUID, hType entity.HierarchyType)) *mCoreMockGetPermittedIDs {
-	if mmGetPermittedIDs.mock.inspectFuncGetPermittedIDs != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("Inspect function is already set for CoreMock.GetPermittedIDs")
-	}
-
-	mmGetPermittedIDs.mock.inspectFuncGetPermittedIDs = f
-
-	return mmGetPermittedIDs
-}
-
-// Return sets up results that will be returned by Core.GetPermittedIDs
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) Return(ua1 []uuid.UUID, err error) *CoreMock {
-	if mmGetPermittedIDs.mock.funcGetPermittedIDs != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by Set")
-	}
-
-	if mmGetPermittedIDs.defaultExpectation == nil {
-		mmGetPermittedIDs.defaultExpectation = &CoreMockGetPermittedIDsExpectation{mock: mmGetPermittedIDs.mock}
-	}
-	mmGetPermittedIDs.defaultExpectation.results = &CoreMockGetPermittedIDsResults{ua1, err}
-	mmGetPermittedIDs.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
-	return mmGetPermittedIDs.mock
-}
-
-// Set uses given function f to mock the Core.GetPermittedIDs method
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) Set(f func(ctx context.Context, directPermissions []uuid.UUID, hType entity.HierarchyType) (ua1 []uuid.UUID, err error)) *CoreMock {
-	if mmGetPermittedIDs.defaultExpectation != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("Default expectation is already set for the Core.GetPermittedIDs method")
-	}
-
-	if len(mmGetPermittedIDs.expectations) > 0 {
-		mmGetPermittedIDs.mock.t.Fatalf("Some expectations are already set for the Core.GetPermittedIDs method")
-	}
-
-	mmGetPermittedIDs.mock.funcGetPermittedIDs = f
-	mmGetPermittedIDs.mock.funcGetPermittedIDsOrigin = minimock.CallerInfo(1)
-	return mmGetPermittedIDs.mock
-}
-
-// When sets expectation for the Core.GetPermittedIDs which will trigger the result defined by the following
-// Then helper
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) When(ctx context.Context, directPermissions []uuid.UUID, hType entity.HierarchyType) *CoreMockGetPermittedIDsExpectation {
-	if mmGetPermittedIDs.mock.funcGetPermittedIDs != nil {
-		mmGetPermittedIDs.mock.t.Fatalf("CoreMock.GetPermittedIDs mock is already set by Set")
-	}
-
-	expectation := &CoreMockGetPermittedIDsExpectation{
-		mock:               mmGetPermittedIDs.mock,
-		params:             &CoreMockGetPermittedIDsParams{ctx, directPermissions, hType},
-		expectationOrigins: CoreMockGetPermittedIDsExpectationOrigins{origin: minimock.CallerInfo(1)},
-	}
-	mmGetPermittedIDs.expectations = append(mmGetPermittedIDs.expectations, expectation)
-	return expectation
-}
-
-// Then sets up Core.GetPermittedIDs return parameters for the expectation previously defined by the When method
-func (e *CoreMockGetPermittedIDsExpectation) Then(ua1 []uuid.UUID, err error) *CoreMock {
-	e.results = &CoreMockGetPermittedIDsResults{ua1, err}
-	return e.mock
-}
-
-// Times sets number of times Core.GetPermittedIDs should be invoked
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) Times(n uint64) *mCoreMockGetPermittedIDs {
-	if n == 0 {
-		mmGetPermittedIDs.mock.t.Fatalf("Times of CoreMock.GetPermittedIDs mock can not be zero")
-	}
-	mm_atomic.StoreUint64(&mmGetPermittedIDs.expectedInvocations, n)
-	mmGetPermittedIDs.expectedInvocationsOrigin = minimock.CallerInfo(1)
-	return mmGetPermittedIDs
-}
-
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) invocationsDone() bool {
-	if len(mmGetPermittedIDs.expectations) == 0 && mmGetPermittedIDs.defaultExpectation == nil && mmGetPermittedIDs.mock.funcGetPermittedIDs == nil {
-		return true
-	}
-
-	totalInvocations := mm_atomic.LoadUint64(&mmGetPermittedIDs.mock.afterGetPermittedIDsCounter)
-	expectedInvocations := mm_atomic.LoadUint64(&mmGetPermittedIDs.expectedInvocations)
-
-	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
-}
-
-// GetPermittedIDs implements mm_usecase.Core
-func (mmGetPermittedIDs *CoreMock) GetPermittedIDs(ctx context.Context, directPermissions []uuid.UUID, hType entity.HierarchyType) (ua1 []uuid.UUID, err error) {
-	mm_atomic.AddUint64(&mmGetPermittedIDs.beforeGetPermittedIDsCounter, 1)
-	defer mm_atomic.AddUint64(&mmGetPermittedIDs.afterGetPermittedIDsCounter, 1)
-
-	mmGetPermittedIDs.t.Helper()
-
-	if mmGetPermittedIDs.inspectFuncGetPermittedIDs != nil {
-		mmGetPermittedIDs.inspectFuncGetPermittedIDs(ctx, directPermissions, hType)
-	}
-
-	mm_params := CoreMockGetPermittedIDsParams{ctx, directPermissions, hType}
-
-	// Record call args
-	mmGetPermittedIDs.GetPermittedIDsMock.mutex.Lock()
-	mmGetPermittedIDs.GetPermittedIDsMock.callArgs = append(mmGetPermittedIDs.GetPermittedIDsMock.callArgs, &mm_params)
-	mmGetPermittedIDs.GetPermittedIDsMock.mutex.Unlock()
-
-	for _, e := range mmGetPermittedIDs.GetPermittedIDsMock.expectations {
-		if minimock.Equal(*e.params, mm_params) {
-			mm_atomic.AddUint64(&e.Counter, 1)
-			return e.results.ua1, e.results.err
-		}
-	}
-
-	if mmGetPermittedIDs.GetPermittedIDsMock.defaultExpectation != nil {
-		mm_atomic.AddUint64(&mmGetPermittedIDs.GetPermittedIDsMock.defaultExpectation.Counter, 1)
-		mm_want := mmGetPermittedIDs.GetPermittedIDsMock.defaultExpectation.params
-		mm_want_ptrs := mmGetPermittedIDs.GetPermittedIDsMock.defaultExpectation.paramPtrs
-
-		mm_got := CoreMockGetPermittedIDsParams{ctx, directPermissions, hType}
-
-		if mm_want_ptrs != nil {
-
-			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
-				mmGetPermittedIDs.t.Errorf("CoreMock.GetPermittedIDs got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmGetPermittedIDs.GetPermittedIDsMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
-			}
-
-			if mm_want_ptrs.directPermissions != nil && !minimock.Equal(*mm_want_ptrs.directPermissions, mm_got.directPermissions) {
-				mmGetPermittedIDs.t.Errorf("CoreMock.GetPermittedIDs got unexpected parameter directPermissions, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmGetPermittedIDs.GetPermittedIDsMock.defaultExpectation.expectationOrigins.originDirectPermissions, *mm_want_ptrs.directPermissions, mm_got.directPermissions, minimock.Diff(*mm_want_ptrs.directPermissions, mm_got.directPermissions))
-			}
-
-			if mm_want_ptrs.hType != nil && !minimock.Equal(*mm_want_ptrs.hType, mm_got.hType) {
-				mmGetPermittedIDs.t.Errorf("CoreMock.GetPermittedIDs got unexpected parameter hType, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-					mmGetPermittedIDs.GetPermittedIDsMock.defaultExpectation.expectationOrigins.originHType, *mm_want_ptrs.hType, mm_got.hType, minimock.Diff(*mm_want_ptrs.hType, mm_got.hType))
-			}
-
-		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
-			mmGetPermittedIDs.t.Errorf("CoreMock.GetPermittedIDs got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
-				mmGetPermittedIDs.GetPermittedIDsMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
-		}
-
-		mm_results := mmGetPermittedIDs.GetPermittedIDsMock.defaultExpectation.results
-		if mm_results == nil {
-			mmGetPermittedIDs.t.Fatal("No results are set for the CoreMock.GetPermittedIDs")
-		}
-		return (*mm_results).ua1, (*mm_results).err
-	}
-	if mmGetPermittedIDs.funcGetPermittedIDs != nil {
-		return mmGetPermittedIDs.funcGetPermittedIDs(ctx, directPermissions, hType)
-	}
-	mmGetPermittedIDs.t.Fatalf("Unexpected call to CoreMock.GetPermittedIDs. %v %v %v", ctx, directPermissions, hType)
-	return
-}
-
-// GetPermittedIDsAfterCounter returns a count of finished CoreMock.GetPermittedIDs invocations
-func (mmGetPermittedIDs *CoreMock) GetPermittedIDsAfterCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmGetPermittedIDs.afterGetPermittedIDsCounter)
-}
-
-// GetPermittedIDsBeforeCounter returns a count of CoreMock.GetPermittedIDs invocations
-func (mmGetPermittedIDs *CoreMock) GetPermittedIDsBeforeCounter() uint64 {
-	return mm_atomic.LoadUint64(&mmGetPermittedIDs.beforeGetPermittedIDsCounter)
-}
-
-// Calls returns a list of arguments used in each call to CoreMock.GetPermittedIDs.
-// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
-func (mmGetPermittedIDs *mCoreMockGetPermittedIDs) Calls() []*CoreMockGetPermittedIDsParams {
-	mmGetPermittedIDs.mutex.RLock()
-
-	argCopy := make([]*CoreMockGetPermittedIDsParams, len(mmGetPermittedIDs.callArgs))
-	copy(argCopy, mmGetPermittedIDs.callArgs)
-
-	mmGetPermittedIDs.mutex.RUnlock()
-
-	return argCopy
-}
-
-// MinimockGetPermittedIDsDone returns true if the count of the GetPermittedIDs invocations corresponds
-// the number of defined expectations
-func (m *CoreMock) MinimockGetPermittedIDsDone() bool {
-	if m.GetPermittedIDsMock.optional {
-		// Optional methods provide '0 or more' call count restriction.
-		return true
-	}
-
-	for _, e := range m.GetPermittedIDsMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			return false
-		}
-	}
-
-	return m.GetPermittedIDsMock.invocationsDone()
-}
-
-// MinimockGetPermittedIDsInspect logs each unmet expectation
-func (m *CoreMock) MinimockGetPermittedIDsInspect() {
-	for _, e := range m.GetPermittedIDsMock.expectations {
-		if mm_atomic.LoadUint64(&e.Counter) < 1 {
-			m.t.Errorf("Expected call to CoreMock.GetPermittedIDs at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
-		}
-	}
-
-	afterGetPermittedIDsCounter := mm_atomic.LoadUint64(&m.afterGetPermittedIDsCounter)
-	// if default expectation was set then invocations count should be greater than zero
-	if m.GetPermittedIDsMock.defaultExpectation != nil && afterGetPermittedIDsCounter < 1 {
-		if m.GetPermittedIDsMock.defaultExpectation.params == nil {
-			m.t.Errorf("Expected call to CoreMock.GetPermittedIDs at\n%s", m.GetPermittedIDsMock.defaultExpectation.returnOrigin)
-		} else {
-			m.t.Errorf("Expected call to CoreMock.GetPermittedIDs at\n%s with params: %#v", m.GetPermittedIDsMock.defaultExpectation.expectationOrigins.origin, *m.GetPermittedIDsMock.defaultExpectation.params)
-		}
-	}
-	// if func was set then invocations count should be greater than zero
-	if m.funcGetPermittedIDs != nil && afterGetPermittedIDsCounter < 1 {
-		m.t.Errorf("Expected call to CoreMock.GetPermittedIDs at\n%s", m.funcGetPermittedIDsOrigin)
-	}
-
-	if !m.GetPermittedIDsMock.invocationsDone() && afterGetPermittedIDsCounter > 0 {
-		m.t.Errorf("Expected %d calls to CoreMock.GetPermittedIDs at\n%s but found %d calls",
-			mm_atomic.LoadUint64(&m.GetPermittedIDsMock.expectedInvocations), m.GetPermittedIDsMock.expectedInvocationsOrigin, afterGetPermittedIDsCounter)
-	}
-}
-
 type mCoreMockGetTree struct {
 	optional           bool
 	mock               *CoreMock
@@ -3747,6 +3373,411 @@ func (m *CoreMock) MinimockGetVersionsListInspect() {
 	}
 }
 
+type mCoreMockIsPermitted struct {
+	optional           bool
+	mock               *CoreMock
+	defaultExpectation *CoreMockIsPermittedExpectation
+	expectations       []*CoreMockIsPermittedExpectation
+
+	callArgs []*CoreMockIsPermittedParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// CoreMockIsPermittedExpectation specifies expectation struct of the Core.IsPermitted
+type CoreMockIsPermittedExpectation struct {
+	mock               *CoreMock
+	params             *CoreMockIsPermittedParams
+	paramPtrs          *CoreMockIsPermittedParamPtrs
+	expectationOrigins CoreMockIsPermittedExpectationOrigins
+	results            *CoreMockIsPermittedResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// CoreMockIsPermittedParams contains parameters of the Core.IsPermitted
+type CoreMockIsPermittedParams struct {
+	ctx               context.Context
+	id                uuid.UUID
+	directPermissions []uuid.UUID
+	withAncestors     bool
+}
+
+// CoreMockIsPermittedParamPtrs contains pointers to parameters of the Core.IsPermitted
+type CoreMockIsPermittedParamPtrs struct {
+	ctx               *context.Context
+	id                *uuid.UUID
+	directPermissions *[]uuid.UUID
+	withAncestors     *bool
+}
+
+// CoreMockIsPermittedResults contains results of the Core.IsPermitted
+type CoreMockIsPermittedResults struct {
+	b1  bool
+	err error
+}
+
+// CoreMockIsPermittedOrigins contains origins of expectations of the Core.IsPermitted
+type CoreMockIsPermittedExpectationOrigins struct {
+	origin                  string
+	originCtx               string
+	originId                string
+	originDirectPermissions string
+	originWithAncestors     string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmIsPermitted *mCoreMockIsPermitted) Optional() *mCoreMockIsPermitted {
+	mmIsPermitted.optional = true
+	return mmIsPermitted
+}
+
+// Expect sets up expected params for Core.IsPermitted
+func (mmIsPermitted *mCoreMockIsPermitted) Expect(ctx context.Context, id uuid.UUID, directPermissions []uuid.UUID, withAncestors bool) *mCoreMockIsPermitted {
+	if mmIsPermitted.mock.funcIsPermitted != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Set")
+	}
+
+	if mmIsPermitted.defaultExpectation == nil {
+		mmIsPermitted.defaultExpectation = &CoreMockIsPermittedExpectation{}
+	}
+
+	if mmIsPermitted.defaultExpectation.paramPtrs != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by ExpectParams functions")
+	}
+
+	mmIsPermitted.defaultExpectation.params = &CoreMockIsPermittedParams{ctx, id, directPermissions, withAncestors}
+	mmIsPermitted.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmIsPermitted.expectations {
+		if minimock.Equal(e.params, mmIsPermitted.defaultExpectation.params) {
+			mmIsPermitted.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmIsPermitted.defaultExpectation.params)
+		}
+	}
+
+	return mmIsPermitted
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Core.IsPermitted
+func (mmIsPermitted *mCoreMockIsPermitted) ExpectCtxParam1(ctx context.Context) *mCoreMockIsPermitted {
+	if mmIsPermitted.mock.funcIsPermitted != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Set")
+	}
+
+	if mmIsPermitted.defaultExpectation == nil {
+		mmIsPermitted.defaultExpectation = &CoreMockIsPermittedExpectation{}
+	}
+
+	if mmIsPermitted.defaultExpectation.params != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Expect")
+	}
+
+	if mmIsPermitted.defaultExpectation.paramPtrs == nil {
+		mmIsPermitted.defaultExpectation.paramPtrs = &CoreMockIsPermittedParamPtrs{}
+	}
+	mmIsPermitted.defaultExpectation.paramPtrs.ctx = &ctx
+	mmIsPermitted.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmIsPermitted
+}
+
+// ExpectIdParam2 sets up expected param id for Core.IsPermitted
+func (mmIsPermitted *mCoreMockIsPermitted) ExpectIdParam2(id uuid.UUID) *mCoreMockIsPermitted {
+	if mmIsPermitted.mock.funcIsPermitted != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Set")
+	}
+
+	if mmIsPermitted.defaultExpectation == nil {
+		mmIsPermitted.defaultExpectation = &CoreMockIsPermittedExpectation{}
+	}
+
+	if mmIsPermitted.defaultExpectation.params != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Expect")
+	}
+
+	if mmIsPermitted.defaultExpectation.paramPtrs == nil {
+		mmIsPermitted.defaultExpectation.paramPtrs = &CoreMockIsPermittedParamPtrs{}
+	}
+	mmIsPermitted.defaultExpectation.paramPtrs.id = &id
+	mmIsPermitted.defaultExpectation.expectationOrigins.originId = minimock.CallerInfo(1)
+
+	return mmIsPermitted
+}
+
+// ExpectDirectPermissionsParam3 sets up expected param directPermissions for Core.IsPermitted
+func (mmIsPermitted *mCoreMockIsPermitted) ExpectDirectPermissionsParam3(directPermissions []uuid.UUID) *mCoreMockIsPermitted {
+	if mmIsPermitted.mock.funcIsPermitted != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Set")
+	}
+
+	if mmIsPermitted.defaultExpectation == nil {
+		mmIsPermitted.defaultExpectation = &CoreMockIsPermittedExpectation{}
+	}
+
+	if mmIsPermitted.defaultExpectation.params != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Expect")
+	}
+
+	if mmIsPermitted.defaultExpectation.paramPtrs == nil {
+		mmIsPermitted.defaultExpectation.paramPtrs = &CoreMockIsPermittedParamPtrs{}
+	}
+	mmIsPermitted.defaultExpectation.paramPtrs.directPermissions = &directPermissions
+	mmIsPermitted.defaultExpectation.expectationOrigins.originDirectPermissions = minimock.CallerInfo(1)
+
+	return mmIsPermitted
+}
+
+// ExpectWithAncestorsParam4 sets up expected param withAncestors for Core.IsPermitted
+func (mmIsPermitted *mCoreMockIsPermitted) ExpectWithAncestorsParam4(withAncestors bool) *mCoreMockIsPermitted {
+	if mmIsPermitted.mock.funcIsPermitted != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Set")
+	}
+
+	if mmIsPermitted.defaultExpectation == nil {
+		mmIsPermitted.defaultExpectation = &CoreMockIsPermittedExpectation{}
+	}
+
+	if mmIsPermitted.defaultExpectation.params != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Expect")
+	}
+
+	if mmIsPermitted.defaultExpectation.paramPtrs == nil {
+		mmIsPermitted.defaultExpectation.paramPtrs = &CoreMockIsPermittedParamPtrs{}
+	}
+	mmIsPermitted.defaultExpectation.paramPtrs.withAncestors = &withAncestors
+	mmIsPermitted.defaultExpectation.expectationOrigins.originWithAncestors = minimock.CallerInfo(1)
+
+	return mmIsPermitted
+}
+
+// Inspect accepts an inspector function that has same arguments as the Core.IsPermitted
+func (mmIsPermitted *mCoreMockIsPermitted) Inspect(f func(ctx context.Context, id uuid.UUID, directPermissions []uuid.UUID, withAncestors bool)) *mCoreMockIsPermitted {
+	if mmIsPermitted.mock.inspectFuncIsPermitted != nil {
+		mmIsPermitted.mock.t.Fatalf("Inspect function is already set for CoreMock.IsPermitted")
+	}
+
+	mmIsPermitted.mock.inspectFuncIsPermitted = f
+
+	return mmIsPermitted
+}
+
+// Return sets up results that will be returned by Core.IsPermitted
+func (mmIsPermitted *mCoreMockIsPermitted) Return(b1 bool, err error) *CoreMock {
+	if mmIsPermitted.mock.funcIsPermitted != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Set")
+	}
+
+	if mmIsPermitted.defaultExpectation == nil {
+		mmIsPermitted.defaultExpectation = &CoreMockIsPermittedExpectation{mock: mmIsPermitted.mock}
+	}
+	mmIsPermitted.defaultExpectation.results = &CoreMockIsPermittedResults{b1, err}
+	mmIsPermitted.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmIsPermitted.mock
+}
+
+// Set uses given function f to mock the Core.IsPermitted method
+func (mmIsPermitted *mCoreMockIsPermitted) Set(f func(ctx context.Context, id uuid.UUID, directPermissions []uuid.UUID, withAncestors bool) (b1 bool, err error)) *CoreMock {
+	if mmIsPermitted.defaultExpectation != nil {
+		mmIsPermitted.mock.t.Fatalf("Default expectation is already set for the Core.IsPermitted method")
+	}
+
+	if len(mmIsPermitted.expectations) > 0 {
+		mmIsPermitted.mock.t.Fatalf("Some expectations are already set for the Core.IsPermitted method")
+	}
+
+	mmIsPermitted.mock.funcIsPermitted = f
+	mmIsPermitted.mock.funcIsPermittedOrigin = minimock.CallerInfo(1)
+	return mmIsPermitted.mock
+}
+
+// When sets expectation for the Core.IsPermitted which will trigger the result defined by the following
+// Then helper
+func (mmIsPermitted *mCoreMockIsPermitted) When(ctx context.Context, id uuid.UUID, directPermissions []uuid.UUID, withAncestors bool) *CoreMockIsPermittedExpectation {
+	if mmIsPermitted.mock.funcIsPermitted != nil {
+		mmIsPermitted.mock.t.Fatalf("CoreMock.IsPermitted mock is already set by Set")
+	}
+
+	expectation := &CoreMockIsPermittedExpectation{
+		mock:               mmIsPermitted.mock,
+		params:             &CoreMockIsPermittedParams{ctx, id, directPermissions, withAncestors},
+		expectationOrigins: CoreMockIsPermittedExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmIsPermitted.expectations = append(mmIsPermitted.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Core.IsPermitted return parameters for the expectation previously defined by the When method
+func (e *CoreMockIsPermittedExpectation) Then(b1 bool, err error) *CoreMock {
+	e.results = &CoreMockIsPermittedResults{b1, err}
+	return e.mock
+}
+
+// Times sets number of times Core.IsPermitted should be invoked
+func (mmIsPermitted *mCoreMockIsPermitted) Times(n uint64) *mCoreMockIsPermitted {
+	if n == 0 {
+		mmIsPermitted.mock.t.Fatalf("Times of CoreMock.IsPermitted mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmIsPermitted.expectedInvocations, n)
+	mmIsPermitted.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmIsPermitted
+}
+
+func (mmIsPermitted *mCoreMockIsPermitted) invocationsDone() bool {
+	if len(mmIsPermitted.expectations) == 0 && mmIsPermitted.defaultExpectation == nil && mmIsPermitted.mock.funcIsPermitted == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmIsPermitted.mock.afterIsPermittedCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmIsPermitted.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// IsPermitted implements mm_usecase.Core
+func (mmIsPermitted *CoreMock) IsPermitted(ctx context.Context, id uuid.UUID, directPermissions []uuid.UUID, withAncestors bool) (b1 bool, err error) {
+	mm_atomic.AddUint64(&mmIsPermitted.beforeIsPermittedCounter, 1)
+	defer mm_atomic.AddUint64(&mmIsPermitted.afterIsPermittedCounter, 1)
+
+	mmIsPermitted.t.Helper()
+
+	if mmIsPermitted.inspectFuncIsPermitted != nil {
+		mmIsPermitted.inspectFuncIsPermitted(ctx, id, directPermissions, withAncestors)
+	}
+
+	mm_params := CoreMockIsPermittedParams{ctx, id, directPermissions, withAncestors}
+
+	// Record call args
+	mmIsPermitted.IsPermittedMock.mutex.Lock()
+	mmIsPermitted.IsPermittedMock.callArgs = append(mmIsPermitted.IsPermittedMock.callArgs, &mm_params)
+	mmIsPermitted.IsPermittedMock.mutex.Unlock()
+
+	for _, e := range mmIsPermitted.IsPermittedMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.b1, e.results.err
+		}
+	}
+
+	if mmIsPermitted.IsPermittedMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmIsPermitted.IsPermittedMock.defaultExpectation.Counter, 1)
+		mm_want := mmIsPermitted.IsPermittedMock.defaultExpectation.params
+		mm_want_ptrs := mmIsPermitted.IsPermittedMock.defaultExpectation.paramPtrs
+
+		mm_got := CoreMockIsPermittedParams{ctx, id, directPermissions, withAncestors}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmIsPermitted.t.Errorf("CoreMock.IsPermitted got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmIsPermitted.IsPermittedMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.id != nil && !minimock.Equal(*mm_want_ptrs.id, mm_got.id) {
+				mmIsPermitted.t.Errorf("CoreMock.IsPermitted got unexpected parameter id, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmIsPermitted.IsPermittedMock.defaultExpectation.expectationOrigins.originId, *mm_want_ptrs.id, mm_got.id, minimock.Diff(*mm_want_ptrs.id, mm_got.id))
+			}
+
+			if mm_want_ptrs.directPermissions != nil && !minimock.Equal(*mm_want_ptrs.directPermissions, mm_got.directPermissions) {
+				mmIsPermitted.t.Errorf("CoreMock.IsPermitted got unexpected parameter directPermissions, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmIsPermitted.IsPermittedMock.defaultExpectation.expectationOrigins.originDirectPermissions, *mm_want_ptrs.directPermissions, mm_got.directPermissions, minimock.Diff(*mm_want_ptrs.directPermissions, mm_got.directPermissions))
+			}
+
+			if mm_want_ptrs.withAncestors != nil && !minimock.Equal(*mm_want_ptrs.withAncestors, mm_got.withAncestors) {
+				mmIsPermitted.t.Errorf("CoreMock.IsPermitted got unexpected parameter withAncestors, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmIsPermitted.IsPermittedMock.defaultExpectation.expectationOrigins.originWithAncestors, *mm_want_ptrs.withAncestors, mm_got.withAncestors, minimock.Diff(*mm_want_ptrs.withAncestors, mm_got.withAncestors))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmIsPermitted.t.Errorf("CoreMock.IsPermitted got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmIsPermitted.IsPermittedMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmIsPermitted.IsPermittedMock.defaultExpectation.results
+		if mm_results == nil {
+			mmIsPermitted.t.Fatal("No results are set for the CoreMock.IsPermitted")
+		}
+		return (*mm_results).b1, (*mm_results).err
+	}
+	if mmIsPermitted.funcIsPermitted != nil {
+		return mmIsPermitted.funcIsPermitted(ctx, id, directPermissions, withAncestors)
+	}
+	mmIsPermitted.t.Fatalf("Unexpected call to CoreMock.IsPermitted. %v %v %v %v", ctx, id, directPermissions, withAncestors)
+	return
+}
+
+// IsPermittedAfterCounter returns a count of finished CoreMock.IsPermitted invocations
+func (mmIsPermitted *CoreMock) IsPermittedAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmIsPermitted.afterIsPermittedCounter)
+}
+
+// IsPermittedBeforeCounter returns a count of CoreMock.IsPermitted invocations
+func (mmIsPermitted *CoreMock) IsPermittedBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmIsPermitted.beforeIsPermittedCounter)
+}
+
+// Calls returns a list of arguments used in each call to CoreMock.IsPermitted.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmIsPermitted *mCoreMockIsPermitted) Calls() []*CoreMockIsPermittedParams {
+	mmIsPermitted.mutex.RLock()
+
+	argCopy := make([]*CoreMockIsPermittedParams, len(mmIsPermitted.callArgs))
+	copy(argCopy, mmIsPermitted.callArgs)
+
+	mmIsPermitted.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockIsPermittedDone returns true if the count of the IsPermitted invocations corresponds
+// the number of defined expectations
+func (m *CoreMock) MinimockIsPermittedDone() bool {
+	if m.IsPermittedMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.IsPermittedMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.IsPermittedMock.invocationsDone()
+}
+
+// MinimockIsPermittedInspect logs each unmet expectation
+func (m *CoreMock) MinimockIsPermittedInspect() {
+	for _, e := range m.IsPermittedMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to CoreMock.IsPermitted at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterIsPermittedCounter := mm_atomic.LoadUint64(&m.afterIsPermittedCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.IsPermittedMock.defaultExpectation != nil && afterIsPermittedCounter < 1 {
+		if m.IsPermittedMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to CoreMock.IsPermitted at\n%s", m.IsPermittedMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to CoreMock.IsPermitted at\n%s with params: %#v", m.IsPermittedMock.defaultExpectation.expectationOrigins.origin, *m.IsPermittedMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcIsPermitted != nil && afterIsPermittedCounter < 1 {
+		m.t.Errorf("Expected call to CoreMock.IsPermitted at\n%s", m.funcIsPermittedOrigin)
+	}
+
+	if !m.IsPermittedMock.invocationsDone() && afterIsPermittedCounter > 0 {
+		m.t.Errorf("Expected %d calls to CoreMock.IsPermitted at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.IsPermittedMock.expectedInvocations), m.IsPermittedMock.expectedInvocationsOrigin, afterIsPermittedCounter)
+	}
+}
+
 type mCoreMockPublishDraft struct {
 	optional           bool
 	mock               *CoreMock
@@ -4820,13 +4851,13 @@ func (m *CoreMock) MinimockFinish() {
 
 			m.MinimockGetListItemInspect()
 
-			m.MinimockGetPermittedIDsInspect()
-
 			m.MinimockGetTreeInspect()
 
 			m.MinimockGetVersionInspect()
 
 			m.MinimockGetVersionsListInspect()
+
+			m.MinimockIsPermittedInspect()
 
 			m.MinimockPublishDraftInspect()
 
@@ -4862,10 +4893,10 @@ func (m *CoreMock) minimockDone() bool {
 		m.MinimockGetDone() &&
 		m.MinimockGetDraftDone() &&
 		m.MinimockGetListItemDone() &&
-		m.MinimockGetPermittedIDsDone() &&
 		m.MinimockGetTreeDone() &&
 		m.MinimockGetVersionDone() &&
 		m.MinimockGetVersionsListDone() &&
+		m.MinimockIsPermittedDone() &&
 		m.MinimockPublishDraftDone() &&
 		m.MinimockSaveDraftDone() &&
 		m.MinimockUpdateDone()
