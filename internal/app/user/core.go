@@ -42,7 +42,7 @@ type Config struct {
 	PasswordHashCost int `mapstructure:"password_hash_cost" json:"password_hash_cost"`
 }
 
-type core struct {
+type Core struct {
 	repo           Repository
 	idGenerator    IDGenerator
 	passwordHasher PasswordHasher
@@ -50,7 +50,7 @@ type core struct {
 	cfg            Config
 }
 
-func NewCore(repo Repository, idGenerator IDGenerator, passwordHasher PasswordHasher, validator Validator, cfg Config) (*core, error) {
+func NewCore(repo Repository, idGenerator IDGenerator, passwordHasher PasswordHasher, validator Validator, cfg Config) (*Core, error) {
 	if cfg.PasswordHashCost < bcrypt.MinCost || cfg.PasswordHashCost > bcrypt.MaxCost {
 		return nil, fmt.Errorf("user.NewCore: %w", fmt.Errorf("Config.PasswordHashCost must be between %d and %d", bcrypt.MinCost, bcrypt.MaxCost))
 	}
@@ -58,10 +58,10 @@ func NewCore(repo Repository, idGenerator IDGenerator, passwordHasher PasswordHa
 		return nil, fmt.Errorf("user.NewCore: %w", fmt.Errorf("nil dependency"))
 	}
 
-	return &core{repo: repo, cfg: cfg, idGenerator: idGenerator, passwordHasher: passwordHasher, validator: validator}, nil
+	return &Core{repo: repo, cfg: cfg, idGenerator: idGenerator, passwordHasher: passwordHasher, validator: validator}, nil
 }
 
-func (c *core) CreateUser(ctx context.Context, req CreateUserReq) (uuid.UUID, error) {
+func (c *Core) CreateUser(ctx context.Context, req CreateUserReq) (uuid.UUID, error) {
 	req.Name = c.validator.NormalizeName(req.Name)
 	if err := c.validator.ValidateName(req.Name); err != nil {
 		return uuid.Nil, fmt.Errorf("user.core.CreateUser: %w", err)
@@ -89,7 +89,7 @@ func (c *core) CreateUser(ctx context.Context, req CreateUserReq) (uuid.UUID, er
 	return id, nil
 }
 
-func (c *core) GetUser(ctx context.Context, id uuid.UUID) (User, string, error) {
+func (c *Core) GetUser(ctx context.Context, id uuid.UUID) (User, string, error) {
 	if id == uuid.Nil {
 		return User{}, "", fmt.Errorf("user.core.GetUser: %w", apperr.ErrNilUUID(FieldUserID))
 	}
@@ -102,7 +102,7 @@ func (c *core) GetUser(ctx context.Context, id uuid.UUID) (User, string, error) 
 	return user, passwordHash, nil
 }
 
-func (c *core) GetAllUsers(ctx context.Context) ([]User, error) {
+func (c *Core) GetAllUsers(ctx context.Context) ([]User, error) {
 	users, err := c.repo.GetAllUsers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("user.core.GetAllUsers: %w", err)
@@ -111,7 +111,7 @@ func (c *core) GetAllUsers(ctx context.Context) ([]User, error) {
 	return users, nil
 }
 
-func (c *core) UpdateUser(ctx context.Context, req UpdateUserReq) error {
+func (c *Core) UpdateUser(ctx context.Context, req UpdateUserReq) error {
 	if req.UserID == uuid.Nil {
 		return fmt.Errorf("user.core.UpdateUser: %w", apperr.ErrNilUUID(FieldUserID))
 	}
@@ -131,7 +131,7 @@ func (c *core) UpdateUser(ctx context.Context, req UpdateUserReq) error {
 	return nil
 }
 
-func (c *core) DeleteUser(ctx context.Context, id uuid.UUID) error {
+func (c *Core) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	if err := c.repo.DeleteUser(ctx, id); err != nil {
 		return fmt.Errorf("user.core.DeleteUser: %w", err)
 	}
@@ -139,7 +139,7 @@ func (c *core) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (c *core) ChangePassword(ctx context.Context, id uuid.UUID, newPassword []byte) error {
+func (c *Core) ChangePassword(ctx context.Context, id uuid.UUID, newPassword []byte) error {
 	if id == uuid.Nil {
 		return fmt.Errorf("user.core.ChangePassword: %w", apperr.ErrNilUUID(FieldUserID))
 	}
@@ -157,15 +157,15 @@ func (c *core) ChangePassword(ctx context.Context, id uuid.UUID, newPassword []b
 	return nil
 }
 
-func (c *core) GetUserByEmail(ctx context.Context, email string) (User, string, error) {
+func (c *Core) GetUserByEmail(ctx context.Context, email string) (User, string, error) {
 	email = c.validator.NormalizeEmail(email)
 	if err := c.validator.ValidateEmail(email, false); err != nil {
-		return User{}, "", fmt.Errorf("user.core.GetAuthByEmail: %w", err)
+		return User{}, "", fmt.Errorf("user.core.GetUserByEmail: %w", err)
 	}
 
 	user, passwordHash, err := c.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return User{}, "", fmt.Errorf("user.core.GetAuthByEmail: %w", err)
+		return User{}, "", fmt.Errorf("user.core.GetUserByEmail: %w", err)
 	}
 	return user, passwordHash, nil
 }
@@ -177,11 +177,11 @@ type ValidationConfig struct {
 	MaxPasswordLength int `mapstructure:"max_password_length" json:"max_password_length"`
 }
 
-type validator struct {
+type DefaultValidator struct {
 	cfg ValidationConfig
 }
 
-func NewValidator(cfg ValidationConfig) (Validator, error) {
+func NewValidator(cfg ValidationConfig) (*DefaultValidator, error) {
 	if cfg.MaxEmailLength <= 0 {
 		return nil, fmt.Errorf("NewValidator: %w", fmt.Errorf("ValidationConfig.MaxEmailLength must be > 0"))
 	}
@@ -198,10 +198,10 @@ func NewValidator(cfg ValidationConfig) (Validator, error) {
 		return nil, fmt.Errorf("NewValidator: %w", fmt.Errorf("ValidationConfig.MaxPasswordLength must be > 0 and <= 72"))
 	}
 
-	return &validator{cfg: cfg}, nil
+	return &DefaultValidator{cfg: cfg}, nil
 }
 
-func (v *validator) ValidatePassword(password []byte) error {
+func (v *DefaultValidator) ValidatePassword(password []byte) error {
 	n := utf8.RuneCount(password)
 	if n < v.cfg.MinPasswordLength {
 		return fmt.Errorf("ValidatePassword: %w", ErrPasswordTooShort(v.cfg.MinPasswordLength))
@@ -212,7 +212,7 @@ func (v *validator) ValidatePassword(password []byte) error {
 	return nil
 }
 
-func (v *validator) ValidateEmail(address string, validateLength bool) error {
+func (v *DefaultValidator) ValidateEmail(address string, validateLength bool) error {
 	_, err := mail.ParseAddress(address)
 	if err != nil {
 		return fmt.Errorf("ValidateEmail: %w", ErrInvalidEmail())
@@ -223,7 +223,7 @@ func (v *validator) ValidateEmail(address string, validateLength bool) error {
 	return nil
 }
 
-func (v *validator) ValidateName(name string) error {
+func (v *DefaultValidator) ValidateName(name string) error {
 	if name == "" {
 		return fmt.Errorf("ValidateName: %w", ErrNameEmpty())
 	}
@@ -233,10 +233,10 @@ func (v *validator) ValidateName(name string) error {
 	return nil
 }
 
-func (v *validator) NormalizeName(name string) string {
+func (v *DefaultValidator) NormalizeName(name string) string {
 	return strings.TrimSpace(name)
 }
 
-func (v *validator) NormalizeEmail(address string) string {
+func (v *DefaultValidator) NormalizeEmail(address string) string {
 	return strings.TrimSpace(strings.ToLower(address))
 }

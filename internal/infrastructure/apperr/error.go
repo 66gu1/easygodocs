@@ -20,8 +20,8 @@ const (
 	InternalMsg     = "Internal server error"
 )
 
-func ErrBadRequest() *appError {
-	return &appError{
+func ErrBadRequest() *AppError {
+	return &AppError{
 		Message:  BadRequestMsg,
 		Code:     CodeBadRequest,
 		class:    ClassBadRequest,
@@ -30,8 +30,8 @@ func ErrBadRequest() *appError {
 	}
 }
 
-func ErrUnauthorized() *appError {
-	return &appError{
+func ErrUnauthorized() *AppError {
+	return &AppError{
 		Message:  UnauthorizedMsg,
 		Code:     CodeUnauthorized,
 		class:    ClassUnauthorized,
@@ -40,8 +40,8 @@ func ErrUnauthorized() *appError {
 	}
 }
 
-func ErrForbidden() *appError {
-	return &appError{
+func ErrForbidden() *AppError {
+	return &AppError{
 		Message:  ForbiddenMsg,
 		Code:     CodeForbidden,
 		class:    ClassForbidden,
@@ -50,8 +50,8 @@ func ErrForbidden() *appError {
 	}
 }
 
-func ErrNilUUID(field Field) *appError {
-	return &appError{
+func ErrNilUUID(field Field) *AppError {
+	return &AppError{
 		Message:  ErrBadRequest().Error(),
 		Code:     CodeBadRequest,
 		class:    ClassBadRequest,
@@ -60,9 +60,9 @@ func ErrNilUUID(field Field) *appError {
 	}
 }
 
-// appError is used for all application-level errors that should be shown to the user (e.g. 400, 401, 403).
+// AppError is used for all application-level errors that should be shown to the user (e.g. 400, 401, 403).
 // For internal server errors (500), use fmt.Errorf and handle them separately to avoid exposing internal details to the client.
-type appError struct {
+type AppError struct {
 	Message    string      `json:"message"` // Message for user
 	Code       Code        `json:"code"`
 	Violations []Violation `json:"violations,omitempty"`
@@ -71,8 +71,8 @@ type appError struct {
 	detail     string // detail for logs
 }
 
-func New(message string, code Code, class Class, logLevel LogLevel) *appError {
-	return &appError{
+func New(message string, code Code, class Class, logLevel LogLevel) *AppError {
+	return &AppError{
 		Message:  message,
 		class:    class,
 		logLevel: logLevel,
@@ -81,27 +81,38 @@ func New(message string, code Code, class Class, logLevel LogLevel) *appError {
 	}
 }
 
-func (e *appError) WithUserMessage(message string) *appError {
-	e.Message = message
-	return e
+// The With* methods return a modified copy, so a shared error value is never mutated.
+
+func (e *AppError) WithUserMessage(message string) *AppError {
+	c := e.clone()
+	c.Message = message
+	return c
 }
 
-func (e *appError) WithDetail(detail string) *appError {
-	e.detail = detail
-	return e
+func (e *AppError) WithDetail(detail string) *AppError {
+	c := e.clone()
+	c.detail = detail
+	return c
 }
 
-func (e *appError) WithViolation(v Violation) *appError {
-	e.Violations = append(e.Violations, v)
-	return e
+func (e *AppError) WithViolation(v Violation) *AppError {
+	c := e.clone()
+	c.Violations = append(c.Violations, v)
+	return c
 }
 
-func (e *appError) Error() string {
+func (e *AppError) clone() *AppError {
+	c := *e
+	c.Violations = slices.Clone(e.Violations)
+	return &c
+}
+
+func (e *AppError) Error() string {
 	return e.detail
 }
 
-func (e *appError) Is(target error) bool {
-	if t, ok := target.(*appError); ok {
+func (e *AppError) Is(target error) bool {
+	if t, ok := target.(*AppError); ok {
 		if e.Code != t.Code {
 			return false
 		}
@@ -149,7 +160,7 @@ const (
 )
 
 func ClassOf(err error) Class {
-	var ae *appError
+	var ae *AppError
 	if errors.As(err, &ae) {
 		return ae.class
 	}
@@ -157,7 +168,7 @@ func ClassOf(err error) Class {
 }
 
 func CodeOf(err error) Code {
-	var ae *appError
+	var ae *AppError
 	if errors.As(err, &ae) {
 		return ae.Code
 	}
@@ -165,19 +176,19 @@ func CodeOf(err error) Code {
 }
 
 func LogLevelOf(err error) LogLevel {
-	var ae *appError
+	var ae *AppError
 	if errors.As(err, &ae) {
 		return ae.logLevel
 	}
 	return LogLevelError
 }
 
-func FromError(err error) *appError {
-	var ae *appError
+func FromError(err error) *AppError {
+	var ae *AppError
 	if errors.As(err, &ae) {
 		return ae
 	}
-	return &appError{
+	return &AppError{
 		Message:  "Internal server error",
 		Code:     CodeInternal,
 		class:    ClassInternal,

@@ -27,7 +27,7 @@ type entityCore interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
-func newEntityCore(t *testing.T, repo *gormRepo, gdb *gorm.DB) entityCore {
+func newEntityCore(t *testing.T, repo *Repository, gdb *gorm.DB) entityCore {
 	t.Helper()
 	txManager, err := db.NewTxManager(gdb)
 	require.NoError(t, err)
@@ -188,7 +188,7 @@ func TestConcurrency_CreateChildWhileDeletingParentLeavesNoOrphans(t *testing.T)
 }
 
 // requireNoCycle walks up the parent chain and fails if it returns to the start.
-func requireNoCycle(t *testing.T, repo *gormRepo, start uuid.UUID) {
+func requireNoCycle(t *testing.T, repo *Repository, start uuid.UUID) {
 	t.Helper()
 	current := start
 	for range maxDepth + 1 {

@@ -12,20 +12,20 @@ import (
 	"github.com/google/uuid"
 )
 
-var (
-	ErrNewPasswordSameAsOld = apperr.New("New password must differ from the old one", user.CodeSamePassword, apperr.ClassBadRequest, apperr.LogLevelWarn).
-				WithViolation(apperr.Violation{
-			Field: user.FieldPassword, Rule: apperr.RuleDuplicate,
-		})
-	ErrOldPasswordIncorrect = apperr.New("Old password does not match", user.CodePasswordMismatch, apperr.ClassBadRequest, apperr.LogLevelWarn).
-				WithViolation(apperr.Violation{
-			Field: user.FieldPassword, Rule: apperr.RuleMismatch,
-		})
-	ErrOldPasswordRequired = apperr.New("Old password is required", user.CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-				WithViolation(apperr.Violation{
-			Field: user.FieldPassword, Rule: apperr.RuleRequired,
-		})
-)
+func ErrNewPasswordSameAsOld() error {
+	return apperr.New("New password must differ from the old one", user.CodeSamePassword, apperr.ClassBadRequest, apperr.LogLevelWarn).
+		WithViolation(apperr.Violation{Field: user.FieldPassword, Rule: apperr.RuleDuplicate})
+}
+
+func ErrOldPasswordIncorrect() error {
+	return apperr.New("Old password does not match", user.CodePasswordMismatch, apperr.ClassBadRequest, apperr.LogLevelWarn).
+		WithViolation(apperr.Violation{Field: user.FieldPassword, Rule: apperr.RuleMismatch})
+}
+
+func ErrOldPasswordRequired() error {
+	return apperr.New("Old password is required", user.CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
+		WithViolation(apperr.Violation{Field: user.FieldPassword, Rule: apperr.RuleRequired})
+}
 
 type Core interface {
 	CreateUser(ctx context.Context, req user.CreateUserReq) (uuid.UUID, error)
@@ -55,96 +55,72 @@ type ChangePasswordCmd struct {
 	NewPassword []byte
 }
 
-type service struct {
+type Service struct {
 	core           Core
 	authService    AuthService
 	passwordHasher PasswordHasher
 }
 
-func NewService(core Core, authService AuthService, passwordHasher PasswordHasher) *service {
+func NewService(core Core, authService AuthService, passwordHasher PasswordHasher) *Service {
 	if core == nil || authService == nil || passwordHasher == nil {
 		panic("user.NewService: nil dependency")
 	}
-	return &service{
+	return &Service{
 		core:           core,
 		authService:    authService,
 		passwordHasher: passwordHasher,
 	}
 }
 
-func (s *service) CreateUser(ctx context.Context, req user.CreateUserReq) error {
+func (s *Service) CreateUser(ctx context.Context, req user.CreateUserReq) error {
 	if _, err := s.core.CreateUser(ctx, req); err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldEmail.String(), req.Email).
-			Str(user.FieldName.String(), req.Name).
-			Msg("user.Service.CreateUser: failed to create user")
-		return fmt.Errorf("user.Service.CreateUser: %w", err)
+		return fmt.Errorf("user.service.CreateUser: %w", err)
 	}
 
 	return nil
 }
 
-func (s *service) GetUser(ctx context.Context, id uuid.UUID) (user.User, error) {
+func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (user.User, error) {
 	if err := s.authService.CheckSelfOrAdmin(ctx, id); err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), id.String()).
-			Msg("user.Service.GetUser: failed to check self or admin")
-		return user.User{}, fmt.Errorf("user.Service.GetUser: %w", err)
+		return user.User{}, fmt.Errorf("user.service.GetUser: %w", err)
 	}
 
 	u, _, err := s.core.GetUser(ctx, id)
 	if err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), id.String()).
-			Msg("user.Service.GetUser: failed to get user")
-		return user.User{}, fmt.Errorf("user.Service.GetUser: %w", err)
+		return user.User{}, fmt.Errorf("user.service.GetUser: %w", err)
 	}
 	return u, nil
 }
 
-func (s *service) GetAllUsers(ctx context.Context) ([]user.User, error) {
+func (s *Service) GetAllUsers(ctx context.Context) ([]user.User, error) {
 	if err := s.authService.CheckIsAdmin(ctx); err != nil {
-		logger.Error(ctx, err).Msg("user.Service.GetAllUsers: failed to check admin")
-		return nil, fmt.Errorf("user.Service.GetAllUsers: %w", err)
+		return nil, fmt.Errorf("user.service.GetAllUsers: %w", err)
 	}
 	users, err := s.core.GetAllUsers(ctx)
 	if err != nil {
-		logger.Error(ctx, err).Msg("user.Service.GetAllUsers: failed to get all users")
-		return nil, fmt.Errorf("user.Service.GetAllUsers: %w", err)
+		return nil, fmt.Errorf("user.service.GetAllUsers: %w", err)
 	}
 	return users, nil
 }
 
-func (s *service) UpdateUser(ctx context.Context, req user.UpdateUserReq) error {
+func (s *Service) UpdateUser(ctx context.Context, req user.UpdateUserReq) error {
 	if err := s.authService.CheckSelfOrAdmin(ctx, req.UserID); err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), req).
-			Msg("user.Service.UpdateUser: failed to check self or admin")
-		return fmt.Errorf("user.Service.UpdateUser: %w", err)
+		return fmt.Errorf("user.service.UpdateUser: %w", err)
 	}
 
 	if err := s.core.UpdateUser(ctx, req); err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), req).
-			Msg("user.Service.UpdateUser: failed to update user")
-		return fmt.Errorf("user.Service.UpdateUser: %w", err)
+		return fmt.Errorf("user.service.UpdateUser: %w", err)
 	}
 	return nil
 }
 
-func (s *service) DeleteUser(ctx context.Context, id uuid.UUID) error {
+func (s *Service) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	if err := s.authService.CheckIsAdmin(ctx); err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), id.String()).
-			Msg("user.Service.DeleteUser: failed to check admin")
-		return fmt.Errorf("user.Service.DeleteUser: %w", err)
+		return fmt.Errorf("user.service.DeleteUser: %w", err)
 	}
 
 	if err := s.core.DeleteUser(ctx, id); err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), id.String()).
-			Msg("user.Service.DeleteUser: failed to delete user")
-		return fmt.Errorf("user.Service.DeleteUser: %w", err)
+		return fmt.Errorf("user.service.DeleteUser: %w", err)
 	}
 
 	// Best-effort cleanup: failures are only logged, because a deleted user
@@ -153,84 +129,60 @@ func (s *service) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	if err := s.authService.DeleteSessionsByUserID(cleanupCtx, id); err != nil {
 		logger.Error(ctx, err).
 			Str(user.FieldUserID.String(), id.String()).
-			Msg("user.Service.DeleteUser: failed to delete sessions")
+			Msg("user.service.DeleteUser: failed to delete sessions")
 	}
 	if err := s.authService.DeleteUserRolesByUserID(cleanupCtx, id); err != nil {
 		logger.Error(ctx, err).
 			Str(user.FieldUserID.String(), id.String()).
-			Msg("user.Service.DeleteUser: failed to delete roles")
+			Msg("user.service.DeleteUser: failed to delete roles")
 	}
 	return nil
 }
 
-func (s *service) ChangePassword(ctx context.Context, req ChangePasswordCmd) error {
+func (s *Service) ChangePassword(ctx context.Context, req ChangePasswordCmd) error {
 	isAdmin, err := s.authService.IsAdmin(ctx)
 	if err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), req.ID.String()).
-			Msg("user.Service.ChangePassword: failed to check admin")
-		return fmt.Errorf("user.Service.ChangePassword: %w", err)
+		return fmt.Errorf("user.service.ChangePassword: %w", err)
 	}
 
 	if !isAdmin {
 		if len(req.OldPassword) == 0 {
-			err = ErrOldPasswordRequired
-			logger.Error(ctx, err).
-				Str(user.FieldUserID.String(), req.ID.String()).
-				Msg("user.Service.ChangePassword: old password is required")
-			return fmt.Errorf("user.Service.ChangePassword: %w", err)
+			err = ErrOldPasswordRequired()
+			return fmt.Errorf("user.service.ChangePassword: %w", err)
 		}
 
 		err = s.authService.CheckSelf(ctx, req.ID)
 		if err != nil {
-			logger.Error(ctx, err).
-				Str(user.FieldUserID.String(), req.ID.String()).
-				Msg("user.Service.ChangePassword: failed to check self")
-			return fmt.Errorf("user.Service.ChangePassword: %w", err)
+			return fmt.Errorf("user.service.ChangePassword: %w", err)
 		}
 	}
 
 	_, oldPasswordHash, err := s.core.GetUser(ctx, req.ID)
 	if err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), req.ID.String()).
-			Msg("user.Service.ChangePassword: failed to get user")
-		return fmt.Errorf("user.Service.ChangePassword: %w", err)
+		return fmt.Errorf("user.service.ChangePassword: %w", err)
 	}
 
 	if !isAdmin {
 		if err = s.passwordHasher.CheckPasswordHash([]byte(oldPasswordHash), req.OldPassword); err != nil {
 			if errors.Is(err, secure.ErrMismatchedHashAndPassword) {
-				err = ErrOldPasswordIncorrect
+				err = ErrOldPasswordIncorrect()
 			}
-			logger.Error(ctx, err).
-				Str(user.FieldUserID.String(), req.ID.String()).
-				Msg("user.Service.ChangePassword: old password does not match")
-			return fmt.Errorf("user.Service.ChangePassword: %w", err)
+			return fmt.Errorf("user.service.ChangePassword: %w", err)
 		}
 	}
 
 	err = s.passwordHasher.CheckPasswordHash([]byte(oldPasswordHash), req.NewPassword)
 	if err != nil && !errors.Is(err, secure.ErrMismatchedHashAndPassword) {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), req.ID.String()).
-			Msg("user.Service.ChangePassword: compare failed for new password")
-		return fmt.Errorf("user.Service.ChangePassword: %w", err)
+		return fmt.Errorf("user.service.ChangePassword: %w", err)
 	}
 	if err == nil {
-		err = ErrNewPasswordSameAsOld
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), req.ID.String()).
-			Msg("user.Service.ChangePassword: new password must differ from old one")
-		return fmt.Errorf("user.Service.ChangePassword: %w", err)
+		err = ErrNewPasswordSameAsOld()
+		return fmt.Errorf("user.service.ChangePassword: %w", err)
 	}
 
 	err = s.core.ChangePassword(ctx, req.ID, req.NewPassword)
 	if err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), req.ID.String()).
-			Msg("user.Service.ChangePassword: failed to change password")
-		return fmt.Errorf("user.Service.ChangePassword: %w", err)
+		return fmt.Errorf("user.service.ChangePassword: %w", err)
 	}
 
 	// Best-effort: session cleanup is attempted, but failures are ignored
@@ -239,7 +191,7 @@ func (s *service) ChangePassword(ctx context.Context, req ChangePasswordCmd) err
 	if err = s.authService.DeleteSessionsByUserID(context.WithoutCancel(ctx), req.ID); err != nil {
 		logger.Error(ctx, err).
 			Str(user.FieldUserID.String(), req.ID.String()).
-			Msg("user.Service.ChangePassword: failed to delete sessions")
+			Msg("user.service.ChangePassword: failed to delete sessions")
 	}
 
 	return nil

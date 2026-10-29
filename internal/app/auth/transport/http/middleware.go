@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/contextx"
 	"github.com/66gu1/easygodocs/internal/infrastructure/httpx"
-	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -33,70 +33,50 @@ func AuthMiddleware(codec TokenCodec, sessions SessionValidator) func(http.Handl
 			authHeader := r.Header.Get("Authorization")
 			if !strings.HasPrefix(authHeader, "Bearer ") {
 				err := apperr.ErrUnauthorized().WithDetail("missing or malformed Authorization header")
-				logger.Error(ctx, err).
-					Msg("auth.AuthMiddleware: invalid Authorization header")
-				httpx.ReturnError(ctx, w, err)
+				httpx.ReturnError(ctx, w, fmt.Errorf("auth.AuthMiddleware: invalid Authorization header: %w", err))
 				return
 			}
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 			claims := auth.AccessTokenClaims{}
 			err := codec.ParseToken(tokenStr, &claims)
 			if err != nil {
-				logger.Error(ctx, err).
-					Msg("auth.AuthMiddleware: invalid token")
-				httpx.ReturnError(ctx, w, apperr.ErrUnauthorized())
+				httpx.ReturnError(ctx, w, fmt.Errorf("auth.AuthMiddleware: invalid token: %w", apperr.ErrUnauthorized().WithDetail(err.Error())))
 				return
 			}
 
 			userID, err := uuid.Parse(claims.Subject)
 			if err != nil {
-				logger.Warn(ctx, err).
-					Str("subject", claims.Subject).
-					Msg("auth.AuthMiddleware: invalid token claims.Subject")
-				httpx.ReturnError(ctx, w, apperr.ErrUnauthorized())
+				httpx.ReturnError(ctx, w, fmt.Errorf("auth.AuthMiddleware: invalid token claims.Subject: %w", apperr.ErrUnauthorized().WithDetail(err.Error())))
 				return
 			}
 			if userID == uuid.Nil {
 				err = apperr.ErrUnauthorized().WithDetail("invalid token claims.Subject")
-				logger.Error(ctx, err).
-					Msg("auth.AuthMiddleware: invalid token claims.Subject")
-				httpx.ReturnError(ctx, w, err)
+				httpx.ReturnError(ctx, w, fmt.Errorf("auth.AuthMiddleware: invalid token claims.Subject: %w", err))
 				return
 			}
 			sessionID, err := uuid.Parse(claims.SID)
 			if err != nil {
-				logger.Warn(ctx, err).
-					Str("sid", claims.SID).
-					Msg("auth.AuthMiddleware: invalid token claims.SID")
-				httpx.ReturnError(ctx, w, apperr.ErrUnauthorized())
+				httpx.ReturnError(ctx, w, fmt.Errorf("auth.AuthMiddleware: invalid token claims.SID: %w", apperr.ErrUnauthorized().WithDetail(err.Error())))
 				return
 			}
 			if sessionID == uuid.Nil {
 				err = apperr.ErrUnauthorized().WithDetail("invalid token claims.SID")
-				logger.Error(ctx, err).
-					Msg("auth.AuthMiddleware: invalid token claims.SID")
-				httpx.ReturnError(ctx, w, err)
+				httpx.ReturnError(ctx, w, fmt.Errorf("auth.AuthMiddleware: invalid token claims.SID: %w", err))
 				return
 			}
 
 			if claims.ExpiresAt == nil || !claims.ExpiresAt.After(time.Now().UTC()) {
 				err = apperr.ErrUnauthorized().WithDetail("token is expired")
-				logger.Error(ctx, err).
-					Msg("auth.AuthMiddleware: token is expired")
-				httpx.ReturnError(ctx, w, err)
+				httpx.ReturnError(ctx, w, fmt.Errorf("auth.AuthMiddleware: token is expired: %w", err))
 				return
 			}
 
 			if err = sessions.ValidateSession(ctx, userID, sessionID); err != nil {
-				logger.Error(ctx, err).
-					Str(auth.FieldUserID.String(), userID.String()).
-					Str(auth.FieldSessionID.String(), sessionID.String()).
-					Msg("auth.AuthMiddleware: session is not active")
-				if apperr.ClassOf(err) == apperr.ClassInternal {
-					httpx.ReturnError(ctx, w, err)
-					return
+				if apperr.ClassOf(err) != apperr.ClassInternal {
+					// any client-side reason (not found, expired, ...) is reported as 401
+					err = apperr.ErrUnauthorized().WithDetail(err.Error())
 				}
-				httpx.ReturnError(ctx, w, apperr.ErrUnauthorized())
+				httpx.ReturnError(ctx, w, fmt.Errorf("auth.AuthMiddleware: session %s is not active: %w", sessionID, err))
 				return
 			}
 

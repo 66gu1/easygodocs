@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
@@ -9,7 +10,6 @@ import (
 	user_http "github.com/66gu1/easygodocs/internal/app/user/transport/http"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/httpx"
-	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
 	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -55,7 +55,7 @@ func NewHandler(svc AuthService) *Handler {
 // @Produce      json
 // @Param        user_id query string true "User ID"
 // @Success      200 {array} auth.Session
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /sessions [get]
 func (h *Handler) GetSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -63,10 +63,7 @@ func (h *Handler) GetSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get(user_http.URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(auth.FieldUserID.String(), idStr).
-			Msg("auth.Handler.GetSessionsByUserID: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("auth.Handler.GetSessionsByUserID: invalid user ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -87,7 +84,7 @@ func (h *Handler) GetSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 // @Param        session_id path string true "Session ID"
 // @Param        user_id    query string true "User ID"
 // @Success      204 "No Content"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /sessions/{session_id} [delete]
 func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -95,21 +92,14 @@ func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamSessionID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(auth.FieldSessionID.String(), idStr).
-			Msg("auth.Handler.DeleteSession: invalid session ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("auth.Handler.DeleteSession: invalid session ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
 	userIDStr := r.URL.Query().Get(user_http.URLParamUserID)
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(auth.FieldSessionID.String(), idStr).
-			Str(auth.FieldUserID.String(), userIDStr).
-			Msg("auth.Handler.DeleteSession: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("auth.Handler.DeleteSession: invalid user ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -128,7 +118,7 @@ func (h *Handler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Param        user_id query string true "User ID"
 // @Success      204 "No Content"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /sessions [delete]
 func (h *Handler) DeleteSessionsByUserID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -136,10 +126,7 @@ func (h *Handler) DeleteSessionsByUserID(w http.ResponseWriter, r *http.Request)
 	idStr := r.URL.Query().Get(user_http.URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(auth.FieldUserID.String(), idStr).
-			Msg("auth.Handler.DeleteSessionsByUserID: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("auth.Handler.DeleteSessionsByUserID: invalid user ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -159,15 +146,14 @@ func (h *Handler) DeleteSessionsByUserID(w http.ResponseWriter, r *http.Request)
 // @Accept       json
 // @Param        request body auth.UserRole true "User role payload"
 // @Success      204 "No Content"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /roles [post]
 func (h *Handler) AddUserRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var input auth.UserRole
 	if err := httpx.DecodeJSON(r, &input); err != nil {
-		logger.Error(ctx, err).Msg("auth.Handler.AddUserRole: request json decode failed")
-		httpx.ReturnError(ctx, w, err)
+		httpx.ReturnError(ctx, w, fmt.Errorf("auth.Handler.AddUserRole: invalid request body: %w", err))
 		return
 	}
 
@@ -187,16 +173,14 @@ func (h *Handler) AddUserRole(w http.ResponseWriter, r *http.Request) {
 // @Accept       json
 // @Param        request body auth.UserRole true "User role payload"
 // @Success      204 "No Content"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /roles [delete]
 func (h *Handler) DeleteUserRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var input auth.UserRole
 	if err := httpx.DecodeJSON(r, &input); err != nil {
-		logger.Error(ctx, err).
-			Msg("auth.Handler.DeleteUserRole: request json decode failed")
-		httpx.ReturnError(ctx, w, err)
+		httpx.ReturnError(ctx, w, fmt.Errorf("auth.Handler.DeleteUserRole: invalid request body: %w", err))
 		return
 	}
 
@@ -216,7 +200,7 @@ func (h *Handler) DeleteUserRole(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Param        user_id query string true "User ID"
 // @Success      200 {array} auth.UserRole
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /roles [get]
 func (h *Handler) ListUserRoles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -224,10 +208,7 @@ func (h *Handler) ListUserRoles(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get(user_http.URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(auth.FieldUserID.String(), idStr).
-			Msg("auth.Handler.ListUserRoles: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("auth.Handler.ListUserRoles: invalid user ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -248,15 +229,14 @@ func (h *Handler) ListUserRoles(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Param        request body auth.RefreshToken true "Refresh token payload"
 // @Success      200 {object} auth.Tokens
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /refresh [post]
 func (h *Handler) RefreshTokens(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var input auth.RefreshToken
 	if err := httpx.DecodeJSON(r, &input); err != nil {
-		logger.Error(ctx, err).Msg("auth.Handler.RefreshTokens: request json decode failed")
-		httpx.ReturnError(ctx, w, err)
+		httpx.ReturnError(ctx, w, fmt.Errorf("auth.Handler.RefreshTokens: invalid request body: %w", err))
 		return
 	}
 
@@ -277,15 +257,14 @@ func (h *Handler) RefreshTokens(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Param        request body LoginInput true "credentials"
 // @Success      200 {object} auth.Tokens
-// @Failure      400 {object} apperr.appError
+// @Failure      400 {object} apperr.AppError
 // @Router       /login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var input LoginInput
 	if err := httpx.DecodeJSON(r, &input); err != nil {
-		logger.Error(ctx, err).Msg("auth.Handler.Login: request json decode failed")
-		httpx.ReturnError(ctx, w, err)
+		httpx.ReturnError(ctx, w, fmt.Errorf("auth.Handler.Login: invalid request body: %w", err))
 		return
 	}
 	cmd := usecase.LoginCmd{

@@ -32,6 +32,14 @@ const (
 	CodeRoleDuplicate    apperr.Code = "auth/role_duplicate"
 )
 
+func ErrSessionNotFound() error {
+	return apperr.New("session not found", CodeSessionNotFound, apperr.ClassNotFound, apperr.LogLevelWarn)
+}
+
+func ErrRoleNotFound() error {
+	return apperr.New("role not found", CodeRoleNotFound, apperr.ClassNotFound, apperr.LogLevelWarn)
+}
+
 func ErrDuplicateUserRole() error {
 	return apperr.New("role already assigned to user",
 		CodeRoleDuplicate, apperr.ClassConflict, apperr.LogLevelWarn)
@@ -83,7 +91,7 @@ type Config struct {
 	AccessTokenTTLMinutes int `mapstructure:"access_token_ttl_minutes" json:"access_token_ttl_minutes"`
 }
 
-type core struct {
+type Core struct {
 	repo        Repository
 	codec       TokenCodec
 	generators  generators
@@ -91,7 +99,7 @@ type core struct {
 	cfg         Config
 }
 
-func NewCore(repo Repository, codec TokenCodec, idGenerator UUIDGenerator, rndGenerator RNDGenerator, timeGenerator TimeGenerator, tokenHasher RefreshTokenHasher, cfg Config) (*core, error) {
+func NewCore(repo Repository, codec TokenCodec, idGenerator UUIDGenerator, rndGenerator RNDGenerator, timeGenerator TimeGenerator, tokenHasher RefreshTokenHasher, cfg Config) (*Core, error) {
 	if cfg.SessionTTLMinutes <= 0 || cfg.AccessTokenTTLMinutes <= 0 {
 		return nil, fmt.Errorf("auth.NewCore: %w", fmt.Errorf("config TTL values must be positive"))
 	}
@@ -99,7 +107,7 @@ func NewCore(repo Repository, codec TokenCodec, idGenerator UUIDGenerator, rndGe
 		return nil, fmt.Errorf("auth.NewCore: %w", fmt.Errorf("config values must not be nil"))
 	}
 
-	return &core{
+	return &Core{
 		repo:        repo,
 		codec:       codec,
 		generators:  generators{idGenerator, rndGenerator, timeGenerator},
@@ -108,7 +116,7 @@ func NewCore(repo Repository, codec TokenCodec, idGenerator UUIDGenerator, rndGe
 	}, nil
 }
 
-func (c *core) IssueTokens(ctx context.Context, userID uuid.UUID, sessionVersion int) (Tokens, error) {
+func (c *Core) IssueTokens(ctx context.Context, userID uuid.UUID, sessionVersion int) (Tokens, error) {
 	if userID == uuid.Nil {
 		return Tokens{}, fmt.Errorf("auth.core.IssueTokens: user ID cannot be nil")
 	}
@@ -145,7 +153,7 @@ func (c *core) IssueTokens(ctx context.Context, userID uuid.UUID, sessionVersion
 	}, nil
 }
 
-func (c *core) RefreshTokens(ctx context.Context, session Session, refreshToken, rtHash string) (Tokens, error) {
+func (c *Core) RefreshTokens(ctx context.Context, session Session, refreshToken, rtHash string) (Tokens, error) {
 	if err := c.CheckSessionActive(session); err != nil {
 		return Tokens{}, fmt.Errorf("auth.core.RefreshTokens: %w", err)
 	}
@@ -183,7 +191,7 @@ func (c *core) RefreshTokens(ctx context.Context, session Session, refreshToken,
 }
 
 // CheckSessionActive returns an unauthorized error if the session has expired.
-func (c *core) CheckSessionActive(session Session) error {
+func (c *Core) CheckSessionActive(session Session) error {
 	if !session.ExpiresAt.After(c.generators.timeGenerator.Now()) {
 		return fmt.Errorf("auth.core.CheckSessionActive: %w", apperr.ErrUnauthorized().WithDetail("session has expired"))
 	}
@@ -191,7 +199,7 @@ func (c *core) CheckSessionActive(session Session) error {
 	return nil
 }
 
-func (c *core) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, string, error) {
+func (c *Core) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, string, error) {
 	if id == uuid.Nil {
 		return Session{}, "", fmt.Errorf("auth.core.GetSessionByID: %w", apperr.ErrNilUUID(FieldSessionID))
 	}
@@ -203,7 +211,7 @@ func (c *core) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, strin
 	return session, rtHash, nil
 }
 
-func (c *core) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Session, error) {
+func (c *Core) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Session, error) {
 	sessions, err := c.repo.GetSessionsByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("auth.core.GetSessionsByUserID: %w", err)
@@ -212,7 +220,7 @@ func (c *core) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Ses
 	return sessions, nil
 }
 
-func (c *core) DeleteSession(ctx context.Context, id, userID uuid.UUID) error {
+func (c *Core) DeleteSession(ctx context.Context, id, userID uuid.UUID) error {
 	if err := c.repo.DeleteSessionByIDAndUser(ctx, id, userID); err != nil {
 		return fmt.Errorf("auth.core.DeleteSession: %w", err)
 	}
@@ -220,7 +228,7 @@ func (c *core) DeleteSession(ctx context.Context, id, userID uuid.UUID) error {
 	return nil
 }
 
-func (c *core) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error {
+func (c *Core) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error {
 	if err := c.repo.DeleteSessionsByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("auth.core.DeleteSessionsByUserID: %w", err)
 	}
@@ -228,7 +236,7 @@ func (c *core) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) err
 	return nil
 }
 
-func (c *core) AddUserRole(ctx context.Context, userRole UserRole) error {
+func (c *Core) AddUserRole(ctx context.Context, userRole UserRole) error {
 	if userRole.UserID == uuid.Nil {
 		return fmt.Errorf("auth.core.AddUserRole: %w", apperr.ErrNilUUID(FieldUserID))
 	}
@@ -245,7 +253,7 @@ func (c *core) AddUserRole(ctx context.Context, userRole UserRole) error {
 	return nil
 }
 
-func (c *core) DeleteUserRole(ctx context.Context, role UserRole) error {
+func (c *Core) DeleteUserRole(ctx context.Context, role UserRole) error {
 	if err := c.repo.DeleteUserRole(ctx, role); err != nil {
 		return fmt.Errorf("auth.core.DeleteUserRole: %w", err)
 	}
@@ -253,7 +261,7 @@ func (c *core) DeleteUserRole(ctx context.Context, role UserRole) error {
 	return nil
 }
 
-func (c *core) DeleteUserRolesByUserID(ctx context.Context, userID uuid.UUID) error {
+func (c *Core) DeleteUserRolesByUserID(ctx context.Context, userID uuid.UUID) error {
 	if err := c.repo.DeleteUserRolesByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("auth.core.DeleteUserRolesByUserID: %w", err)
 	}
@@ -263,7 +271,7 @@ func (c *core) DeleteUserRolesByUserID(ctx context.Context, userID uuid.UUID) er
 
 // ListUserRoles returns all roles assigned to the specified user.
 // This method is intended for display purposes only (e.g., in an admin UI).
-func (c *core) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]UserRole, error) {
+func (c *Core) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]UserRole, error) {
 	userRoles, err := c.repo.ListUserRoles(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("auth.core.ListUserRoles: %w", err)
@@ -276,7 +284,7 @@ func (c *core) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]UserRole,
 // These methods are intended for internal authorization logic.
 
 // GetCurrentUserDirectPermissions doesn't return ids if isAdmin is true.
-func (c *core) GetCurrentUserDirectPermissions(ctx context.Context, role Role) (ids []uuid.UUID, isAdmin bool, err error) {
+func (c *Core) GetCurrentUserDirectPermissions(ctx context.Context, role Role) (ids []uuid.UUID, isAdmin bool, err error) {
 	currentUserID, err := contextx.GetUserID(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("auth.core.GetCurrentUserDirectPermissions: %w", err)
@@ -303,10 +311,10 @@ func (c *core) GetCurrentUserDirectPermissions(ctx context.Context, role Role) (
 	return ids, false, nil
 }
 
-func (c *core) CheckSelfOrAdmin(ctx context.Context, targetUserID uuid.UUID) error {
+func (c *Core) CheckSelfOrAdmin(ctx context.Context, targetUserID uuid.UUID) error {
 	self, err := c.IsSelf(ctx, targetUserID)
 	if err != nil {
-		return fmt.Errorf("auth.core.CheckSelfOrAdmin.IsSelf: %w", err)
+		return fmt.Errorf("auth.core.CheckSelfOrAdmin: %w", err)
 	}
 	if self {
 		return nil
@@ -320,7 +328,7 @@ func (c *core) CheckSelfOrAdmin(ctx context.Context, targetUserID uuid.UUID) err
 	return nil
 }
 
-func (c *core) CheckIsAdmin(ctx context.Context) error {
+func (c *Core) CheckIsAdmin(ctx context.Context) error {
 	isAdmin, err := c.IsAdmin(ctx)
 	if err != nil {
 		return fmt.Errorf("auth.core.CheckIsAdmin: %w", err)
@@ -331,7 +339,7 @@ func (c *core) CheckIsAdmin(ctx context.Context) error {
 	return nil
 }
 
-func (c *core) CheckSelf(ctx context.Context, targetUserID uuid.UUID) error {
+func (c *Core) CheckSelf(ctx context.Context, targetUserID uuid.UUID) error {
 	self, err := c.IsSelf(ctx, targetUserID)
 	if err != nil {
 		return fmt.Errorf("auth.core.CheckSelf: %w", err)
@@ -343,7 +351,7 @@ func (c *core) CheckSelf(ctx context.Context, targetUserID uuid.UUID) error {
 	return nil
 }
 
-func (c *core) IsAdmin(ctx context.Context) (bool, error) {
+func (c *Core) IsAdmin(ctx context.Context) (bool, error) {
 	isAdmin, err := c.checkAdminRights(ctx)
 	if err != nil {
 		return false, fmt.Errorf("auth.core.IsAdmin: %w", err)
@@ -352,7 +360,7 @@ func (c *core) IsAdmin(ctx context.Context) (bool, error) {
 	return isAdmin, nil
 }
 
-func (c *core) IsSelf(ctx context.Context, targetUserID uuid.UUID) (bool, error) {
+func (c *Core) IsSelf(ctx context.Context, targetUserID uuid.UUID) (bool, error) {
 	if targetUserID == uuid.Nil {
 		return false, fmt.Errorf("auth.core.IsSelf: %w", apperr.ErrNilUUID(FieldUserID))
 	}
@@ -363,7 +371,7 @@ func (c *core) IsSelf(ctx context.Context, targetUserID uuid.UUID) (bool, error)
 	return currentUserID == targetUserID, nil
 }
 
-func (c *core) checkAdminRights(ctx context.Context) (bool, error) {
+func (c *Core) checkAdminRights(ctx context.Context) (bool, error) {
 	_, isAdmin, err := c.GetCurrentUserDirectPermissions(ctx, RoleAdmin)
 	if err != nil {
 		return false, fmt.Errorf("checkAdminRights: %w", err)
@@ -372,7 +380,7 @@ func (c *core) checkAdminRights(ctx context.Context) (bool, error) {
 	return isAdmin, nil
 }
 
-func (c *core) generateTokens(userID, sessionID uuid.UUID, now time.Time) (string, string, []byte, error) {
+func (c *Core) generateTokens(userID, sessionID uuid.UUID, now time.Time) (string, string, []byte, error) {
 	refreshToken, err := c.generators.rndGenerator.New(32) // 32 bytes = 256 bits of entropy
 	if err != nil {
 		return "", "", nil, fmt.Errorf("generateTokens: %w", err)

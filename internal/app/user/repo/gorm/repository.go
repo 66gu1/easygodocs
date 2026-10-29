@@ -13,18 +13,18 @@ import (
 	"gorm.io/gorm"
 )
 
-type gormRepo struct {
+type Repository struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) (*gormRepo, error) {
+func NewRepository(db *gorm.DB) (*Repository, error) {
 	if db == nil {
-		return nil, fmt.Errorf("gormRepo.NewRepository: %w", fmt.Errorf("nil db"))
+		return nil, fmt.Errorf("user.repo.NewRepository: %w", fmt.Errorf("nil db"))
 	}
-	return &gormRepo{db: db}, nil
+	return &Repository{db: db}, nil
 }
 
-func (r *gormRepo) CreateUser(ctx context.Context, req user.CreateUserReq, id uuid.UUID, passwordHash string) error {
+func (r *Repository) CreateUser(ctx context.Context, req user.CreateUserReq, id uuid.UUID, passwordHash string) error {
 	model := &userModel{
 		ID:           id,
 		Email:        req.Email,
@@ -38,13 +38,13 @@ func (r *gormRepo) CreateUser(ctx context.Context, req user.CreateUserReq, id uu
 		if errors.As(err, &pgErr) && pgErr.Code == db.DuplicateCode {
 			err = user.ErrUserWithEmailAlreadyExists()
 		}
-		return fmt.Errorf("gormRepo.CreateUser: %w", err)
+		return fmt.Errorf("user.repo.CreateUser: %w", err)
 	}
 
 	return nil
 }
 
-func (r *gormRepo) GetUser(ctx context.Context, id uuid.UUID) (user.User, string, error) {
+func (r *Repository) GetUser(ctx context.Context, id uuid.UUID) (user.User, string, error) {
 	model := userModel{}
 
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&model).Error
@@ -52,13 +52,13 @@ func (r *gormRepo) GetUser(ctx context.Context, id uuid.UUID) (user.User, string
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = user.ErrUserNotFound()
 		}
-		return user.User{}, "", fmt.Errorf("gormRepo.GetUser: %w", err)
+		return user.User{}, "", fmt.Errorf("user.repo.GetUser: %w", err)
 	}
 
 	return model.toDTO(), model.PasswordHash, nil
 }
 
-func (r *gormRepo) GetUserByEmail(ctx context.Context, email string) (user.User, string, error) {
+func (r *Repository) GetUserByEmail(ctx context.Context, email string) (user.User, string, error) {
 	model := userModel{}
 
 	err := r.db.WithContext(ctx).Where("email = ?", email).First(&model).Error
@@ -66,26 +66,26 @@ func (r *gormRepo) GetUserByEmail(ctx context.Context, email string) (user.User,
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = user.ErrUserNotFound()
 		}
-		return user.User{}, "", fmt.Errorf("gormRepo.GetUserByEmail: %w", err)
+		return user.User{}, "", fmt.Errorf("user.repo.GetUserByEmail: %w", err)
 	}
 
 	return model.toDTO(), model.PasswordHash, nil
 }
 
-func (r *gormRepo) GetAllUsers(ctx context.Context) ([]user.User, error) {
+func (r *Repository) GetAllUsers(ctx context.Context) ([]user.User, error) {
 	models := make([]userModel, 0)
 
 	err := r.db.WithContext(ctx).
 		Select("id", "email", "name", "created_at", "updated_at", "deleted_at", "session_version").
 		Find(&models).Error
 	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetAllUsers: %w", err)
+		return nil, fmt.Errorf("user.repo.GetAllUsers: %w", err)
 	}
 
 	return lo.Map(models, func(u userModel, _ int) user.User { return u.toDTO() }), nil
 }
 
-func (r *gormRepo) UpdateUser(ctx context.Context, req user.UpdateUserReq) error {
+func (r *Repository) UpdateUser(ctx context.Context, req user.UpdateUserReq) error {
 	model := &userModel{}
 
 	result := r.db.WithContext(ctx).Model(model).Where("id = ?", req.UserID).
@@ -96,28 +96,28 @@ func (r *gormRepo) UpdateUser(ctx context.Context, req user.UpdateUserReq) error
 		if errors.As(err, &pgErr) && pgErr.Code == db.DuplicateCode {
 			err = user.ErrUserWithEmailAlreadyExists()
 		}
-		return fmt.Errorf("gormRepo.UpdateUser: %w", err)
+		return fmt.Errorf("user.repo.UpdateUser: %w", err)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("gormRepo.UpdateUser: %w", user.ErrUserNotFound())
+		return fmt.Errorf("user.repo.UpdateUser: %w", user.ErrUserNotFound())
 	}
 
 	return nil
 }
 
-func (r *gormRepo) DeleteUser(ctx context.Context, id uuid.UUID) error {
+func (r *Repository) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	result := r.db.WithContext(ctx).Delete(&userModel{}, "id = ?", id)
 	if result.Error != nil {
-		return fmt.Errorf("gormRepo.DeleteUser: %w", result.Error)
+		return fmt.Errorf("user.repo.DeleteUser: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("gormRepo.DeleteUser: %w", user.ErrUserNotFound())
+		return fmt.Errorf("user.repo.DeleteUser: %w", user.ErrUserNotFound())
 	}
 
 	return nil
 }
 
-func (r *gormRepo) ChangePassword(ctx context.Context, id uuid.UUID, newPasswordHash string) error {
+func (r *Repository) ChangePassword(ctx context.Context, id uuid.UUID, newPasswordHash string) error {
 	result := r.db.WithContext(ctx).
 		Model(&userModel{}).
 		Where("id = ?", id).
@@ -126,10 +126,10 @@ func (r *gormRepo) ChangePassword(ctx context.Context, id uuid.UUID, newPassword
 			"session_version": gorm.Expr("session_version + 1"),
 		})
 	if result.Error != nil {
-		return fmt.Errorf("gormRepo.ChangePassword: %w", result.Error)
+		return fmt.Errorf("user.repo.ChangePassword: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("gormRepo.ChangePassword: %w", user.ErrUserNotFound())
+		return fmt.Errorf("user.repo.ChangePassword: %w", user.ErrUserNotFound())
 	}
 
 	return nil

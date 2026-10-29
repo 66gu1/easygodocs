@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/66gu1/easygodocs/internal/app/entity/usecase"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/httpx"
-	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -59,7 +59,7 @@ func NewHandler(svc Service) *Handler {
 // @Security     BearerAuth
 // @Produce      json
 // @Success      200 {object} entity.Tree
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /entities [get]
 func (h *Handler) GetTree(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -81,7 +81,7 @@ func (h *Handler) GetTree(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Param        entity_id path string true "Entity ID"
 // @Success      200 {object} entity.Entity
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /entities/{entity_id} [get]
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -89,10 +89,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamEntityID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(entity.FieldEntityID.String(), idStr).
-			Msg("entity.Handler.Get: invalid entity ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.Get: invalid entity ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -114,7 +111,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 // @Param        entity_id path string true "Entity ID"
 // @Param        version   path int    true "Version number"
 // @Success      200 {object} entity.Entity
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /entities/{entity_id}/versions/{version} [get]
 func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -122,21 +119,14 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamEntityID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(entity.FieldEntityID.String(), idStr).
-			Msg("entity.Handler.GetVersion: invalid entity ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.GetVersion: invalid entity ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
 	versionStr := chi.URLParam(r, URLParamVersion)
 	version, err := strconv.Atoi(versionStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(entity.FieldEntityID.String(), idStr).
-			Str(entity.FieldVersion.String(), versionStr).
-			Msg("entity.Handler.GetVersion: invalid version format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.GetVersion: invalid version format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -157,7 +147,7 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Param        entity_id path string true "Entity ID"
 // @Success      200 {array} entity.Entity
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /entities/{entity_id}/versions [get]
 func (h *Handler) GetVersionsList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -165,10 +155,7 @@ func (h *Handler) GetVersionsList(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamEntityID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(entity.FieldEntityID.String(), idStr).
-			Msg("entity.Handler.GetVersionsList: invalid entity ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.GetVersionsList: invalid entity ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -190,16 +177,14 @@ func (h *Handler) GetVersionsList(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Param        request body usecase.CreateEntityCmd true "Create entity payload"
 // @Success      201 {object} CreateEntityResp
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /entities [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var cmd usecase.CreateEntityCmd
 	if err := httpx.DecodeJSON(r, &cmd); err != nil {
-		logger.Error(ctx, err).
-			Msg("entity.Handler.Create.DecodeJSON")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.Create: invalid request body: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -223,7 +208,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 // @Param        entity_id path string true "Entity ID"
 // @Param        request body UpdateEntityInput true "Update entity payload"
 // @Success      204 "No Content"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /entities/{entity_id} [put]
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -231,18 +216,13 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamEntityID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(entity.FieldEntityID.String(), idStr).
-			Msg("entity.Handler.Update: invalid entity ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.Update: invalid entity ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
 	var input UpdateEntityInput
 	if err = httpx.DecodeJSON(r, &input); err != nil {
-		logger.Error(ctx, err).
-			Msg("entity.Handler.Update: failed to decode JSON")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.Update: invalid request body: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -267,7 +247,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Param        entity_id path string true "Entity ID"
 // @Success      204 "No Content"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /entities/{entity_id} [delete]
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -275,10 +255,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamEntityID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(entity.FieldEntityID.String(), idStr).
-			Msg("entity.Handler.Delete: invalid entity ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("entity.Handler.Delete: invalid entity ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 

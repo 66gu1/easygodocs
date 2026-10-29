@@ -9,6 +9,10 @@ import (
 	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
 )
 
+// ReturnError writes the error response and logs the error.
+// This is the only place where request errors are logged: lower layers just wrap them,
+// so every error is logged once, with the full wrap chain and request context
+// (request ID, URL, current user). Client errors are logged as warnings, internal ones as errors.
 func ReturnError(ctx context.Context, w http.ResponseWriter, returningErr error) {
 	appError := apperr.FromError(returningErr)
 	code := toHTTPCode(apperr.ClassOf(appError))
@@ -16,6 +20,7 @@ func ReturnError(ctx context.Context, w http.ResponseWriter, returningErr error)
 		logger.Error(ctx, returningErr).Int("error_code", code).Msg("incorrect error code")
 		code = http.StatusInternalServerError
 	}
+	logger.Error(ctx, returningErr).Int("status", code).Msg("request failed")
 
 	if w.Header().Get("Content-Type") == "" {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

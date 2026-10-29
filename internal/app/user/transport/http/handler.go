@@ -2,13 +2,13 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/66gu1/easygodocs/internal/app/user"
 	"github.com/66gu1/easygodocs/internal/app/user/usecase"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/httpx"
-	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
 	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -63,16 +63,14 @@ func NewHandler(svc Service) *Handler {
 // @Accept       json
 // @Param        request body CreateUserInput true "Create user payload"
 // @Success      201 "Created"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /register [post]
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var in CreateUserInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
-		logger.Error(ctx, err).
-			Msg("user.Handler.CreateUser: request json decode failed")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("user.Handler.CreateUser: invalid request body: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -100,7 +98,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Param        user_id path string true "User ID"
 // @Success      200 {object} user.User
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /users/{user_id} [get]
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -108,9 +106,7 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).Str(user.FieldUserID.String(), idStr).
-			Msg("user.Handler.GetUser: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("user.Handler.GetUser: invalid user ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -130,7 +126,7 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Produce      json
 // @Success      200 {array} user.User
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /users [get]
 func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -152,7 +148,7 @@ func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 // @Param        user_id path string true "User ID"
 // @Param        request body UpdateUserInput true "Update user payload"
 // @Success      204 "No Content"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /users/{user_id} [put]
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -160,19 +156,13 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(user.FieldUserID.String(), idStr).
-			Msg("user.Handler.UpdateUser: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("user.Handler.UpdateUser: invalid user ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
 	var in UpdateUserInput
 	if err = httpx.DecodeJSON(r, &in); err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), idStr).
-			Msg("user.Handler.UpdateUser: request json decode failed")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("user.Handler.UpdateUser: invalid request body: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -197,7 +187,7 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Param        user_id path string true "User ID"
 // @Success      204 "No Content"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /users/{user_id} [delete]
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -205,10 +195,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(user.FieldUserID.String(), idStr).
-			Msg("user.Handler.DeleteUser: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("user.Handler.DeleteUser: invalid user ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
@@ -229,7 +216,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 // @Param        user_id path string true "User ID"
 // @Param        request body ChangePasswordInput true "Change password payload"
 // @Success      204 "No Content"
-// @Failure      default {object} apperr.appError "Error"
+// @Failure      default {object} apperr.AppError "Error"
 // @Router       /users/{user_id}/password [post]
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -237,19 +224,13 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, URLParamUserID)
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Warn(ctx, err).
-			Str(user.FieldUserID.String(), idStr).
-			Msg("user.Handler.ChangePassword: invalid user ID format")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("user.Handler.ChangePassword: invalid user ID format: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 
 	var in ChangePasswordInput
 	if err = httpx.DecodeJSON(r, &in); err != nil {
-		logger.Error(ctx, err).
-			Str(user.FieldUserID.String(), idStr).
-			Msg("user.Handler.ChangePassword: request json decode failed")
-		httpx.ReturnError(ctx, w, apperr.ErrBadRequest())
+		httpx.ReturnError(ctx, w, fmt.Errorf("user.Handler.ChangePassword: invalid request body: %w", apperr.ErrBadRequest().WithDetail(err.Error())))
 		return
 	}
 

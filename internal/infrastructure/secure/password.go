@@ -8,7 +8,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var ErrMismatchedHashAndPassword = fmt.Errorf("mismatched hash and password")
+var ErrMismatchedHashAndPassword = errors.New("mismatched hash and password")
 
 func ZeroBytes(b []byte) {
 	for i := range b {

@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-var ErrNotFound = fmt.Errorf("not found in context")
+var ErrNotFound = errors.New("not found in context")
 
 type contextKey string
 

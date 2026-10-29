@@ -9,7 +9,6 @@ import (
 	"github.com/66gu1/easygodocs/internal/app/entity"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/contextx"
-	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
 	"github.com/google/uuid"
 )
 
@@ -51,112 +50,81 @@ type UpdateEntityCmd struct {
 	IsDraft  bool       `json:"is_draft,omitempty"`
 }
 
-type service struct {
+type Service struct {
 	core Core
 	perm PermissionChecker
 }
 
-func NewService(repo Core, perm PermissionChecker) *service {
+func NewService(repo Core, perm PermissionChecker) *Service {
 	if perm == nil || repo == nil {
 		panic("entity.NewService: nil core or perm")
 	}
-	return &service{core: repo, perm: perm}
+	return &Service{core: repo, perm: perm}
 }
 
-func (s *service) GetTree(ctx context.Context) (entity.Tree, error) {
+func (s *Service) GetTree(ctx context.Context) (entity.Tree, error) {
 	ids, isAdmin, err := s.perm.GetDirectPermissions(ctx, auth.RoleRead)
 	if err != nil {
-		logger.Error(ctx, err).Msg("entity.service.GetTree: getUserPermissions")
 		return entity.Tree{}, fmt.Errorf("entity.service.GetTree: %w", err)
 	}
 	tree, err := s.core.GetTree(ctx, ids, isAdmin)
 	if err != nil {
-		logger.Error(ctx, err).Msg("entity.service.GetTree: GetTree")
 		return entity.Tree{}, fmt.Errorf("entity.service.GetTree: %w", err)
 	}
 
 	return tree, nil
 }
 
-func (s *service) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error) {
+func (s *Service) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error) {
 	if err := s.perm.CheckEntityPermission(ctx, id, auth.RoleRead); err != nil {
-		logger.Error(ctx, err).
-			Str(entity.FieldEntityID.String(), id.String()).
-			Msg("entity.service.Get: checkEntityPermission")
 		return entity.Entity{}, fmt.Errorf("entity.service.Get: %w", err)
 	}
 
 	ent, err := s.core.Get(ctx, id)
 	if err != nil {
-		logger.Error(ctx, err).
-			Str(entity.FieldEntityID.String(), id.String()).
-			Msg("entity.service.Get: Get")
 		return entity.Entity{}, fmt.Errorf("entity.service.Get: %w", err)
 	}
 
 	return ent, nil
 }
 
-func (s *service) GetVersion(ctx context.Context, id uuid.UUID, version int) (entity.Entity, error) {
+func (s *Service) GetVersion(ctx context.Context, id uuid.UUID, version int) (entity.Entity, error) {
 	if err := s.perm.CheckEntityPermission(ctx, id, auth.RoleRead); err != nil {
-		logger.Error(ctx, err).
-			Str(entity.FieldEntityID.String(), id.String()).
-			Int(entity.FieldVersion.String(), version).
-			Msg("entity.service.GetVersion: checkEntityPermission")
 		return entity.Entity{}, fmt.Errorf("entity.service.GetVersion: %w", err)
 	}
 
 	ent, err := s.core.GetVersion(ctx, id, version)
 	if err != nil {
-		logger.Error(ctx, err).
-			Str(entity.FieldEntityID.String(), id.String()).
-			Int(entity.FieldVersion.String(), version).
-			Msg("entity.service.GetVersion: GetVersion")
 		return entity.Entity{}, fmt.Errorf("entity.service.GetVersion: %w", err)
 	}
 
 	return ent, nil
 }
 
-func (s *service) GetVersionsList(ctx context.Context, id uuid.UUID) ([]entity.Entity, error) {
+func (s *Service) GetVersionsList(ctx context.Context, id uuid.UUID) ([]entity.Entity, error) {
 	if err := s.perm.CheckEntityPermission(ctx, id, auth.RoleRead); err != nil {
-		logger.Error(ctx, err).
-			Str(entity.FieldEntityID.String(), id.String()).
-			Msg("entity.service.GetVersionsList: checkEntityPermission")
 		return nil, fmt.Errorf("entity.service.GetVersionsList: %w", err)
 	}
 
 	entities, err := s.core.GetVersionsList(ctx, id)
 	if err != nil {
-		logger.Error(ctx, err).
-			Str(entity.FieldEntityID.String(), id.String()).
-			Msg("entity.service.GetVersionsList: GetVersionsList")
 		return nil, fmt.Errorf("entity.service.GetVersionsList: %w", err)
 	}
 
 	return entities, nil
 }
 
-func (s *service) Create(ctx context.Context, cmd CreateEntityCmd) (uuid.UUID, error) {
+func (s *Service) Create(ctx context.Context, cmd CreateEntityCmd) (uuid.UUID, error) {
 	permissions, err := s.perm.GetEffectivePermissions(ctx, auth.RoleWrite)
 	if err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), cmd).
-			Msg("entity.service.Create: getEffectivePermissions")
 		return uuid.Nil, fmt.Errorf("entity.service.Create: %w", err)
 	}
 	if err = permissions.CheckParentIDs([]*uuid.UUID{cmd.ParentID}); err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), cmd).
-			Msg("entity.service.Create: checkParentIDs")
 		return uuid.Nil, fmt.Errorf("entity.service.Create: %w", err)
 	}
 
 	userID, err := contextx.GetUserID(ctx)
 	if err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), cmd).
-			Msg("entity.service.Create: GetUserID")
 		return uuid.Nil, fmt.Errorf("entity.service.Create: %w", err)
 	}
 	req := entity.CreateEntityReq{
@@ -169,52 +137,34 @@ func (s *service) Create(ctx context.Context, cmd CreateEntityCmd) (uuid.UUID, e
 	}
 	id, err := s.core.Create(ctx, req)
 	if err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), req).
-			Msg("entity.service.Create: Create")
 		return uuid.Nil, fmt.Errorf("entity.service.Create: %w", err)
 	}
 
 	return id, nil
 }
 
-func (s *service) Update(ctx context.Context, cmd UpdateEntityCmd) error {
+func (s *Service) Update(ctx context.Context, cmd UpdateEntityCmd) error {
 	permissions, err := s.perm.GetEffectivePermissions(ctx, auth.RoleWrite)
 	if err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), cmd).
-			Msg("entity.service.Update: getEffectivePermissions")
 		return fmt.Errorf("entity.service.Update: %w", err)
 	}
 	if err = permissions.CheckID(cmd.ID); err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), cmd).
-			Msg("entity.service.Update: checkID")
 		return fmt.Errorf("entity.service.Update: %w", err)
 	}
 
 	oldEntity, err := s.core.GetListItem(ctx, cmd.ID)
 	if err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), cmd).
-			Msg("entity.service.Update: GetListItem")
 		return fmt.Errorf("entity.service.Update: %w", err)
 	}
 	parentChanged := !equalUUIDPtr(oldEntity.ParentID, cmd.ParentID)
 	if parentChanged {
 		if err = permissions.CheckParentIDs([]*uuid.UUID{cmd.ParentID, oldEntity.ParentID}); err != nil {
-			logger.Error(ctx, err).
-				Interface(apperr.FieldRequest.String(), cmd).
-				Msg("entity.service.Update: checkParentIDs")
 			return fmt.Errorf("entity.service.Update: %w", err)
 		}
 	}
 
 	userID, err := contextx.GetUserID(ctx)
 	if err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), cmd).
-			Msg("entity.service.Update: GetUserID")
 		return fmt.Errorf("entity.service.Update: %w", err)
 	}
 
@@ -232,47 +182,38 @@ func (s *service) Update(ctx context.Context, cmd UpdateEntityCmd) error {
 	}
 
 	if err = s.core.Update(ctx, req); err != nil {
-		logger.Error(ctx, err).
-			Interface(apperr.FieldRequest.String(), req).
-			Msg("entity.service.Update: Update")
 		return fmt.Errorf("entity.service.Update: %w", err)
 	}
 
 	return nil
 }
 
-func (s *service) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	err := s.perm.CheckEntityPermission(ctx, id, auth.RoleWrite)
 	if err != nil {
-		logger.Error(ctx, err).
-			Str(entity.FieldEntityID.String(), id.String()).
-			Msg("entity.service.Delete: checkEntityPermission")
 		return fmt.Errorf("entity.service.Delete: %w", err)
 	}
 	err = s.core.Delete(ctx, id)
 	if err != nil {
-		logger.Error(ctx, err).
-			Str(entity.FieldEntityID.String(), id.String()).
-			Msg("entity.service.Delete: Delete")
 		return fmt.Errorf("entity.service.Delete: %w", err)
 	}
 
 	return nil
 }
 
-type permissionChecker struct {
+type DefaultPermissionChecker struct {
 	core     Core
 	authCore AuthCore
 }
 
-func NewPermissionChecker(core Core, authCore AuthCore) *permissionChecker {
+func NewPermissionChecker(core Core, authCore AuthCore) *DefaultPermissionChecker {
 	if core == nil || authCore == nil {
 		panic("NewPermissionChecker: nil core or authCore")
 	}
-	return &permissionChecker{core: core, authCore: authCore}
+	return &DefaultPermissionChecker{core: core, authCore: authCore}
 }
 
-func (p *permissionChecker) CheckEntityPermission(ctx context.Context, id uuid.UUID, role auth.Role) error {
+func (p *DefaultPermissionChecker) CheckEntityPermission(ctx context.Context, id uuid.UUID, role auth.Role) error {
 	permissions, err := p.GetEffectivePermissions(ctx, role)
 	if err != nil {
 		return fmt.Errorf("permissionChecker.CheckEntityPermission: %w", err)
@@ -288,7 +229,7 @@ func (p *permissionChecker) CheckEntityPermission(ctx context.Context, id uuid.U
 
 // GetEffectivePermissions returns all permissions including inherited ones
 // doesn't return ids if isAdmin is true
-func (p *permissionChecker) GetEffectivePermissions(ctx context.Context, role auth.Role) (EffectivePermissions, error) {
+func (p *DefaultPermissionChecker) GetEffectivePermissions(ctx context.Context, role auth.Role) (EffectivePermissions, error) {
 	ids, isAdmin, err := p.authCore.GetCurrentUserDirectPermissions(ctx, role)
 	if err != nil {
 		return EffectivePermissions{}, fmt.Errorf("permissionChecker.GetEffectivePermissions: %w", err)
@@ -309,7 +250,7 @@ func (p *permissionChecker) GetEffectivePermissions(ctx context.Context, role au
 	return EffectivePermissions{IDs: effectiveIDs}, nil
 }
 
-func (p *permissionChecker) GetDirectPermissions(ctx context.Context, role auth.Role) ([]uuid.UUID, bool, error) {
+func (p *DefaultPermissionChecker) GetDirectPermissions(ctx context.Context, role auth.Role) ([]uuid.UUID, bool, error) {
 	ids, isAdmin, err := p.authCore.GetCurrentUserDirectPermissions(ctx, role)
 	if err != nil {
 		return nil, false, fmt.Errorf("permissionChecker.GetDirectPermissions: %w", err)

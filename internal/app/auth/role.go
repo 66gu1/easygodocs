@@ -1,13 +1,14 @@
 package auth
 
 import (
-	"fmt"
-
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/google/uuid"
 )
 
-var ErrInvalidRole = fmt.Errorf("invalid role")
+func ErrInvalidRole() error {
+	return apperr.New("invalid role", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
+		WithViolation(apperr.Violation{Field: FieldRole, Rule: apperr.RuleInvalidFormat})
+}
 
 func ErrRoleRequiresEntity() error {
 	return apperr.New("role entity is required", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
@@ -49,7 +50,7 @@ func (role Role) Validate() error {
 	case RoleAdmin, RoleRead, RoleWrite:
 		return nil
 	default:
-		return ErrInvalidRole
+		return ErrInvalidRole()
 	}
 }
 

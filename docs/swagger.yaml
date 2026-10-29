@@ -1,5 +1,17 @@
 basePath: /api/v1
 definitions:
+  apperr.AppError:
+    properties:
+      code:
+        $ref: '#/definitions/apperr.Code'
+      message:
+        description: Message for user
+        type: string
+      violations:
+        items:
+          $ref: '#/definitions/apperr.Violation'
+        type: array
+    type: object
   apperr.Code:
     enum:
     - core/bad_request
@@ -53,18 +65,6 @@ definitions:
         type: object
       rule:
         $ref: '#/definitions/apperr.Rule'
-    type: object
-  apperr.appError:
-    properties:
-      code:
-        $ref: '#/definitions/apperr.Code'
-      message:
-        description: Message for user
-        type: string
-      violations:
-        items:
-          $ref: '#/definitions/apperr.Violation'
-        type: array
     type: object
   auth.RefreshToken:
     properties:
@@ -255,7 +255,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Get full entity tree
@@ -283,7 +283,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Create entity
@@ -304,7 +304,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Delete entity
@@ -328,7 +328,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Get entity by ID
@@ -357,7 +357,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Update entity
@@ -384,7 +384,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: List entity versions
@@ -414,7 +414,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Get specific entity version
@@ -442,7 +442,7 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       summary: Login
       tags:
       - auth
@@ -468,7 +468,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       summary: Refresh access token
       tags:
       - auth
@@ -490,7 +490,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Create user
@@ -514,7 +514,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Remove role from user
@@ -541,7 +541,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: List roles assigned to a user
@@ -565,7 +565,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Assign role to user
@@ -587,7 +587,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Delete all sessions for user
@@ -614,7 +614,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: List sessions by user ID
@@ -641,7 +641,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Delete session by ID
@@ -662,7 +662,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: List users
@@ -683,7 +683,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Delete user
@@ -707,7 +707,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Get user by ID
@@ -735,7 +735,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Update user
@@ -765,7 +765,7 @@ paths:
         default:
           description: Error
           schema:
-            $ref: '#/definitions/apperr.appError'
+            $ref: '#/definitions/apperr.AppError'
       security:
       - BearerAuth: []
       summary: Change user password

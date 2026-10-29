@@ -43,7 +43,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -86,7 +86,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -126,7 +126,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -170,7 +170,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -202,7 +202,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -245,7 +245,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -292,7 +292,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -332,7 +332,7 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -372,7 +372,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -411,7 +411,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -454,7 +454,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -491,7 +491,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -528,7 +528,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -571,7 +571,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -603,7 +603,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -644,7 +644,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -678,7 +678,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -718,7 +718,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -762,7 +762,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -794,7 +794,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -840,7 +840,7 @@ const docTemplate = `{
                     "default": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/apperr.appError"
+                            "$ref": "#/definitions/apperr.AppError"
                         }
                     }
                 }
@@ -848,6 +848,24 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "apperr.AppError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "$ref": "#/definitions/apperr.Code"
+                },
+                "message": {
+                    "description": "Message for user",
+                    "type": "string"
+                },
+                "violations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/apperr.Violation"
+                    }
+                }
+            }
+        },
         "apperr.Code": {
             "type": "string",
             "enum": [
@@ -913,24 +931,6 @@ const docTemplate = `{
                 },
                 "rule": {
                     "$ref": "#/definitions/apperr.Rule"
-                }
-            }
-        },
-        "apperr.appError": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "$ref": "#/definitions/apperr.Code"
-                },
-                "message": {
-                    "description": "Message for user",
-                    "type": "string"
-                },
-                "violations": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/apperr.Violation"
-                    }
                 }
             }
         },

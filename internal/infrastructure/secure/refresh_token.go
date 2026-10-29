@@ -4,10 +4,11 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 )
 
-var ErrMismatchedRefreshToken = fmt.Errorf("mismatched refresh token")
+var ErrMismatchedRefreshToken = errors.New("mismatched refresh token")
 
 // RefreshTokenHasher hashes refresh tokens with SHA-256.
 // Refresh tokens are high-entropy random values, so a fast hash is enough:

@@ -25,7 +25,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func newRepo(t *testing.T) (*gormRepo, *gorm.DB, func()) {
+func newRepo(t *testing.T) (*Repository, *gorm.DB, func()) {
 	gdb, _, cleanup := shared.CreateIsolatedDB(t)
 	t.Cleanup(cleanup)
 	repo, err := NewRepository(gdb)
@@ -141,14 +141,14 @@ func TestDeleteSessionByIDAndUser(t *testing.T) {
 	// user => NotFound
 	err := repo.DeleteSessionByIDAndUser(t.Context(), sid, userWrong)
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrSessionNotFound)
+	require.ErrorIs(t, err, auth.ErrSessionNotFound())
 
 	// success
 	require.NoError(t, repo.DeleteSessionByIDAndUser(t.Context(), sid, userOK))
 
 	_, _, err = repo.GetSessionByID(t.Context(), sid)
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrSessionNotFound)
+	require.ErrorIs(t, err, auth.ErrSessionNotFound())
 
 	cleanup()
 	err = repo.DeleteSessionByIDAndUser(t.Context(), sid, userOK)
@@ -227,7 +227,7 @@ func TestUpdateRefreshToken(t *testing.T) {
 	}
 	err = repo.UpdateRefreshToken(t.Context(), req2)
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrSessionNotFound)
+	require.ErrorIs(t, err, auth.ErrSessionNotFound())
 
 	cleanup()
 	err = repo.UpdateRefreshToken(t.Context(), req)
@@ -267,7 +267,7 @@ func TestAddListDeleteUserRole_NullEntity(t *testing.T) {
 	// delete again -> not found
 	err = repo.DeleteUserRole(t.Context(), item)
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrRoleNotFound)
+	require.ErrorIs(t, err, auth.ErrRoleNotFound())
 
 	// pool closed -> any op fails
 	cleanup()

@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func newEntityRepo(t *testing.T) (*gormRepo, *gorm.DB, func()) {
+func newEntityRepo(t *testing.T) (*Repository, *gorm.DB, func()) {
 	gdb, _, cleanup := shared.CreateIsolatedDB(t)
 	t.Cleanup(cleanup)
 	repo, err := NewRepository(gdb)

@@ -60,7 +60,7 @@ type Generators struct {
 type Config struct {
 	MaxHierarchyDepth int `mapstructure:"max_hierarchy_depth" json:"max_hierarchy_depth"`
 }
-type core struct {
+type Core struct {
 	repo      Repository
 	tx        TxManager
 	gen       Generators
@@ -68,14 +68,14 @@ type core struct {
 	cfg       Config
 }
 
-func NewCore(repo Repository, tx TxManager, generators Generators, validator Validator, cfg Config) (*core, error) {
+func NewCore(repo Repository, tx TxManager, generators Generators, validator Validator, cfg Config) (*Core, error) {
 	if repo == nil || tx == nil || generators.ID == nil || generators.Time == nil || validator == nil {
 		return nil, fmt.Errorf("entity.NewCore: %w", fmt.Errorf("nil dependency"))
 	}
 	if cfg.MaxHierarchyDepth <= 0 {
 		return nil, fmt.Errorf("entity.NewCore: %w", fmt.Errorf("Config.MaxHierarchyDepth must be positive"))
 	}
-	return &core{
+	return &Core{
 		repo:      repo,
 		tx:        tx,
 		gen:       generators,
@@ -84,7 +84,7 @@ func NewCore(repo Repository, tx TxManager, generators Generators, validator Val
 	}, nil
 }
 
-func (c *core) Get(ctx context.Context, id uuid.UUID) (Entity, error) {
+func (c *Core) Get(ctx context.Context, id uuid.UUID) (Entity, error) {
 	if id == uuid.Nil {
 		return Entity{}, fmt.Errorf("entity.core.Get: %w", apperr.ErrNilUUID(FieldEntityID))
 	}
@@ -96,7 +96,7 @@ func (c *core) Get(ctx context.Context, id uuid.UUID) (Entity, error) {
 	return entity, nil
 }
 
-func (c *core) GetListItem(ctx context.Context, id uuid.UUID) (ListItem, error) {
+func (c *Core) GetListItem(ctx context.Context, id uuid.UUID) (ListItem, error) {
 	if id == uuid.Nil {
 		return ListItem{}, fmt.Errorf("entity.core.GetListItem: %w", apperr.ErrNilUUID(FieldEntityID))
 	}
@@ -108,7 +108,7 @@ func (c *core) GetListItem(ctx context.Context, id uuid.UUID) (ListItem, error) 
 	return item, nil
 }
 
-func (c *core) GetTree(ctx context.Context, permissions []uuid.UUID, isAdmin bool) (Tree, error) {
+func (c *Core) GetTree(ctx context.Context, permissions []uuid.UUID, isAdmin bool) (Tree, error) {
 	var (
 		err       error
 		permitted []ListItem
@@ -122,28 +122,28 @@ func (c *core) GetTree(ctx context.Context, permissions []uuid.UUID, isAdmin boo
 		var userID uuid.UUID
 		userID, err = contextx.GetUserID(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("entity.Service.GetTree: %w", err)
+			return nil, fmt.Errorf("entity.core.GetTree: %w", err)
 		}
 		permitted, err = c.repo.GetHierarchy(ctx, permissions, c.cfg.MaxHierarchyDepth, &userID, HierarchyTypeChildrenAndParents)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("entity.Service.GetTree: %w", err)
+		return nil, fmt.Errorf("entity.core.GetTree: %w", err)
 	}
 
 	return BuildTree(ctx, permitted), nil
 }
 
-func (c *core) GetPermittedIDs(ctx context.Context, directPermissions []uuid.UUID, hType HierarchyType) ([]uuid.UUID, error) {
+func (c *Core) GetPermittedIDs(ctx context.Context, directPermissions []uuid.UUID, hType HierarchyType) ([]uuid.UUID, error) {
 	if len(directPermissions) == 0 {
 		return nil, nil
 	}
 	userID, err := contextx.GetUserID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("entity.Service.GetTree: %w", err)
+		return nil, fmt.Errorf("entity.core.GetPermittedIDs: %w", err)
 	}
 	permitted, err := c.repo.GetHierarchy(ctx, directPermissions, c.cfg.MaxHierarchyDepth, &userID, hType)
 	if err != nil {
-		return nil, fmt.Errorf("entity.core.GetPermittedHierarchy: %w", err)
+		return nil, fmt.Errorf("entity.core.GetPermittedIDs: %w", err)
 	}
 
 	ids := make([]uuid.UUID, len(permitted))
@@ -154,7 +154,7 @@ func (c *core) GetPermittedIDs(ctx context.Context, directPermissions []uuid.UUI
 	return ids, nil
 }
 
-func (c *core) GetVersion(ctx context.Context, id uuid.UUID, version int) (Entity, error) {
+func (c *Core) GetVersion(ctx context.Context, id uuid.UUID, version int) (Entity, error) {
 	if id == uuid.Nil {
 		return Entity{}, fmt.Errorf("entity.core.GetVersion: %w", apperr.ErrNilUUID(FieldEntityID))
 	}
@@ -170,7 +170,7 @@ func (c *core) GetVersion(ctx context.Context, id uuid.UUID, version int) (Entit
 	return entity, nil
 }
 
-func (c *core) GetVersionsList(ctx context.Context, id uuid.UUID) ([]Entity, error) {
+func (c *Core) GetVersionsList(ctx context.Context, id uuid.UUID) ([]Entity, error) {
 	if id == uuid.Nil {
 		return nil, fmt.Errorf("entity.core.GetVersionsList: %w", apperr.ErrNilUUID(FieldEntityID))
 	}
@@ -182,7 +182,7 @@ func (c *core) GetVersionsList(ctx context.Context, id uuid.UUID) ([]Entity, err
 	return entities, nil
 }
 
-func (c *core) Create(ctx context.Context, req CreateEntityReq) (uuid.UUID, error) {
+func (c *Core) Create(ctx context.Context, req CreateEntityReq) (uuid.UUID, error) {
 	if req.UserID == uuid.Nil {
 		return uuid.Nil, fmt.Errorf("entity.core.Create: %w", apperr.ErrNilUUID(FieldUserID))
 	}
@@ -232,7 +232,7 @@ func (c *core) Create(ctx context.Context, req CreateEntityReq) (uuid.UUID, erro
 	return id, nil
 }
 
-func (c *core) validateParentForCreate(ctx context.Context, req CreateEntityReq) error {
+func (c *Core) validateParentForCreate(ctx context.Context, req CreateEntityReq) error {
 	list, err := c.repo.GetHierarchy(ctx, []uuid.UUID{*req.ParentID}, c.cfg.MaxHierarchyDepth+1, nil, HierarchyTypeParentsOnly)
 	if err != nil {
 		return fmt.Errorf("validateParentForCreate: %w", err)
@@ -252,7 +252,7 @@ func (c *core) validateParentForCreate(ctx context.Context, req CreateEntityReq)
 	return fmt.Errorf("validateParentForCreate: %w", ErrParentNotFound())
 }
 
-func (c *core) Update(ctx context.Context, req UpdateEntityReq) error {
+func (c *Core) Update(ctx context.Context, req UpdateEntityReq) error {
 	if req.ID == uuid.Nil {
 		return fmt.Errorf("entity.core.Update: %w", apperr.ErrNilUUID(FieldEntityID))
 	}
@@ -270,7 +270,7 @@ func (c *core) Update(ctx context.Context, req UpdateEntityReq) error {
 	return nil
 }
 
-func (c *core) update(ctx context.Context, req UpdateEntityReq) error {
+func (c *Core) update(ctx context.Context, req UpdateEntityReq) error {
 	// Moving changes the tree structure, and an entity may become a draft only
 	// while it has no children, so both must not interleave with other structural changes.
 	if req.ParentChanged || req.IsDraft {
@@ -324,7 +324,7 @@ func (c *core) update(ctx context.Context, req UpdateEntityReq) error {
 	return nil
 }
 
-func (c *core) Delete(ctx context.Context, id uuid.UUID) error {
+func (c *Core) Delete(ctx context.Context, id uuid.UUID) error {
 	err := c.tx.WithinTx(ctx, func(ctx context.Context) error {
 		// Children must not be added to the subtree while it is being deleted.
 		if err := c.repo.LockHierarchy(ctx); err != nil {
@@ -361,7 +361,7 @@ func (c *core) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (c *core) validateNewParentForUpdate(ctx context.Context, req UpdateEntityReq) (bool, error) {
+func (c *Core) validateNewParentForUpdate(ctx context.Context, req UpdateEntityReq) (bool, error) {
 	if req.ParentID != nil {
 		if *req.ParentID == req.ID {
 			return false, fmt.Errorf("validateNewParentForUpdate: %w", ErrParentCycle())
@@ -430,22 +430,22 @@ type ValidationConfig struct {
 	MaxNameLength int `mapstructure:"max_name_length" json:"max_name_length"`
 }
 
-type validator struct {
+type DefaultValidator struct {
 	cfg ValidationConfig
 }
 
-func NewValidator(cfg ValidationConfig) (*validator, error) {
+func NewValidator(cfg ValidationConfig) (*DefaultValidator, error) {
 	if cfg.MaxNameLength <= 0 {
 		return nil, fmt.Errorf("entity.NewValidator: %w", fmt.Errorf("max name length must be positive"))
 	}
-	return &validator{cfg: cfg}, nil
+	return &DefaultValidator{cfg: cfg}, nil
 }
 
-func (c *validator) NormalizeName(name string) string {
+func (c *DefaultValidator) NormalizeName(name string) string {
 	return strings.TrimSpace(name)
 }
 
-func (c *validator) ValidateName(name string) error {
+func (c *DefaultValidator) ValidateName(name string) error {
 	if name == "" {
 		return fmt.Errorf("validateName: %w", ErrNameRequired())
 	}

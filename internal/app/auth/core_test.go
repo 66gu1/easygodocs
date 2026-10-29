@@ -725,7 +725,7 @@ func TestCore_AddUserRole(t *testing.T) {
 				Role:     "invalid",
 				EntityID: &entityID,
 			},
-			err: auth.ErrInvalidRole,
+			err: auth.ErrInvalidRole(),
 		},
 		{
 			name: "missing entity for role that requires it",
@@ -958,7 +958,7 @@ func TestCore_GetCurrentUserDirectPermissions(t *testing.T) {
 			name: "invalid role",
 			ctx:  ctx,
 			role: "invalid",
-			err:  auth.ErrInvalidRole,
+			err:  auth.ErrInvalidRole(),
 		},
 		{
 			name: "repo error",

@@ -428,7 +428,7 @@ func TestService_ChangePassword(t *testing.T) {
 				mocks.core.GetUserMock.Expect(ctx, userID).Return(user.User{}, hash, nil)
 				mocks.passwordHasher.CheckPasswordHashMock.Expect([]byte(hash), req.NewPassword).Return(nil)
 			},
-			err: usecase.ErrNewPasswordSameAsOld,
+			err: usecase.ErrNewPasswordSameAsOld(),
 		},
 		{
 			name: "new password passwordHasher.CheckPasswordHashMock error",
@@ -466,7 +466,7 @@ func TestService_ChangePassword(t *testing.T) {
 				mocks.core.GetUserMock.Expect(ctx, userID).Return(user.User{}, hash, nil)
 				mocks.passwordHasher.CheckPasswordHashMock.Expect([]byte(hash), req.OldPassword).Return(secure.ErrMismatchedHashAndPassword)
 			},
-			err: usecase.ErrOldPasswordIncorrect,
+			err: usecase.ErrOldPasswordIncorrect(),
 		},
 		{
 			name: "authService.CheckSelf returns error",
@@ -483,7 +483,7 @@ func TestService_ChangePassword(t *testing.T) {
 			setup: func(mocks mock) {
 				mocks.authService.IsAdminMock.Expect(ctx).Return(false, nil)
 			},
-			err: usecase.ErrOldPasswordRequired,
+			err: usecase.ErrOldPasswordRequired(),
 		},
 	}
 	for _, tt := range tests {

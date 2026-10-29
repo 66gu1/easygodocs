@@ -25,35 +25,35 @@ func buildVisibilityFilter(userID *uuid.UUID) (string, []any) {
 	return "(current_version IS NOT NULL OR updated_by = ?)", []any{*userID}
 }
 
-type gormRepo struct {
+type Repository struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) (*gormRepo, error) {
+func NewRepository(db *gorm.DB) (*Repository, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
-	return &gormRepo{db: db}, nil
+	return &Repository{db: db}, nil
 }
 
 // conn returns the transaction from ctx if there is one.
-func (r *gormRepo) conn(ctx context.Context) *gorm.DB {
+func (r *Repository) conn(ctx context.Context) *gorm.DB {
 	return db.Conn(ctx, r.db)
 }
 
 // LockHierarchy takes a transaction-level advisory lock that serializes structural changes
 // (creating children, moving, deleting), so concurrent requests can't create cycles
 // or exceed the depth limit. It must be called inside a transaction.
-func (r *gormRepo) LockHierarchy(ctx context.Context) error {
+func (r *Repository) LockHierarchy(ctx context.Context) error {
 	if err := r.conn(ctx).Exec("SELECT pg_advisory_xact_lock(hashtext(?))", hierarchyLockKey).Error; err != nil {
-		return fmt.Errorf("gormRepo.LockHierarchy: %w", err)
+		return fmt.Errorf("entity.repo.LockHierarchy: %w", err)
 	}
 
 	return nil
 }
 
 // GetListItemForUpdate locks the entity row until the end of the transaction.
-func (r *gormRepo) GetListItemForUpdate(ctx context.Context, id uuid.UUID) (entity.ListItem, error) {
+func (r *Repository) GetListItemForUpdate(ctx context.Context, id uuid.UUID) (entity.ListItem, error) {
 	var model entityListItemModel
 
 	err := r.conn(ctx).Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).
@@ -62,13 +62,13 @@ func (r *gormRepo) GetListItemForUpdate(ctx context.Context, id uuid.UUID) (enti
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = entity.ErrEntityNotFound()
 		}
-		return entity.ListItem{}, fmt.Errorf("gormRepo.GetListItemForUpdate: %w", err)
+		return entity.ListItem{}, fmt.Errorf("entity.repo.GetListItemForUpdate: %w", err)
 	}
 
 	return model.toDTO(), nil
 }
 
-func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error) {
+func (r *Repository) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error) {
 	var model entityModel
 
 	err := r.conn(ctx).Where("id = $1", id).First(&model).Error
@@ -76,13 +76,13 @@ func (r *gormRepo) Get(ctx context.Context, id uuid.UUID) (entity.Entity, error)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = entity.ErrEntityNotFound()
 		}
-		return entity.Entity{}, fmt.Errorf("gormRepo.Get: %w", err)
+		return entity.Entity{}, fmt.Errorf("entity.repo.Get: %w", err)
 	}
 
 	return model.toDTO(), nil
 }
 
-func (r *gormRepo) GetListItem(ctx context.Context, id uuid.UUID) (entity.ListItem, error) {
+func (r *Repository) GetListItem(ctx context.Context, id uuid.UUID) (entity.ListItem, error) {
 	var model entityListItemModel
 
 	err := r.conn(ctx).Where("id = $1", id).First(&model).Error
@@ -90,25 +90,25 @@ func (r *gormRepo) GetListItem(ctx context.Context, id uuid.UUID) (entity.ListIt
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = entity.ErrEntityNotFound()
 		}
-		return entity.ListItem{}, fmt.Errorf("gormRepo.GetListItem: %w", err)
+		return entity.ListItem{}, fmt.Errorf("entity.repo.GetListItem: %w", err)
 	}
 
 	return model.toDTO(), nil
 }
 
-func (r *gormRepo) GetAll(ctx context.Context) ([]entity.ListItem, error) {
+func (r *Repository) GetAll(ctx context.Context) ([]entity.ListItem, error) {
 	var models []entityListItemModel
 
 	err := r.conn(ctx).Find(&models).Error
 	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetAll: %w", err)
+		return nil, fmt.Errorf("entity.repo.GetAll: %w", err)
 	}
 
 	return lo.Map(models, func(m entityListItemModel, _ int) entity.ListItem { return m.toDTO() }), nil
 }
 
 // GetHierarchy if userID is nil, show all entities, otherwise show only published entities and drafts created by the user.
-func (r *gormRepo) GetHierarchy(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType entity.HierarchyType) ([]entity.ListItem, error) {
+func (r *Repository) GetHierarchy(ctx context.Context, ids []uuid.UUID, maxDepth int, userID *uuid.UUID, hType entity.HierarchyType) ([]entity.ListItem, error) {
 	if len(ids) == 0 {
 		return []entity.ListItem{}, nil
 	}
@@ -125,18 +125,18 @@ func (r *gormRepo) GetHierarchy(ctx context.Context, ids []uuid.UUID, maxDepth i
 	case entity.HierarchyTypeChildrenAndParents:
 		recursiveQuery += childrenResult + " UNION " + parentsResult
 	default:
-		return nil, fmt.Errorf("gormRepo.GetHierarchy: %w", fmt.Errorf("invalid hierarchy type: %v", hType))
+		return nil, fmt.Errorf("entity.repo.GetHierarchy: %w", fmt.Errorf("invalid hierarchy type: %v", hType))
 	}
 
 	err := r.conn(ctx).Raw(recursiveQuery, args...).Scan(&models).Error
 	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetHierarchy: %w", err)
+		return nil, fmt.Errorf("entity.repo.GetHierarchy: %w", err)
 	}
 
 	return lo.Map(models, func(m entityListItemModel, _ int) entity.ListItem { return m.toDTO() }), nil
 }
 
-func (r *gormRepo) GetVersion(ctx context.Context, id uuid.UUID, version int) (entity.Entity, error) {
+func (r *Repository) GetVersion(ctx context.Context, id uuid.UUID, version int) (entity.Entity, error) {
 	var model versionModel
 
 	err := r.conn(ctx).Where("entity_id = $1 AND version = $2", id, version).First(&model).Error
@@ -144,24 +144,24 @@ func (r *gormRepo) GetVersion(ctx context.Context, id uuid.UUID, version int) (e
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = entity.ErrEntityNotFound()
 		}
-		return entity.Entity{}, fmt.Errorf("gormRepo.GetVersion: %w", err)
+		return entity.Entity{}, fmt.Errorf("entity.repo.GetVersion: %w", err)
 	}
 
 	return model.toDTO(), nil
 }
 
-func (r *gormRepo) GetVersionsList(ctx context.Context, id uuid.UUID) ([]entity.Entity, error) {
+func (r *Repository) GetVersionsList(ctx context.Context, id uuid.UUID) ([]entity.Entity, error) {
 	var models []versionModel
 
 	err := r.conn(ctx).Where("entity_id = $1", id).Order("version DESC").Find(&models).Error
 	if err != nil {
-		return nil, fmt.Errorf("gormRepo.GetVersionsList: %w", err)
+		return nil, fmt.Errorf("entity.repo.GetVersionsList: %w", err)
 	}
 
 	return lo.Map(models, func(m versionModel, _ int) entity.Entity { return m.toDTO() }), nil
 }
 
-func (r *gormRepo) CreateDraft(ctx context.Context, req entity.CreateEntityReq, id uuid.UUID) error {
+func (r *Repository) CreateDraft(ctx context.Context, req entity.CreateEntityReq, id uuid.UUID) error {
 	model := &entityModel{
 		ID:        id,
 		Type:      req.Type,
@@ -174,13 +174,13 @@ func (r *gormRepo) CreateDraft(ctx context.Context, req entity.CreateEntityReq, 
 
 	err := r.conn(ctx).Create(model).Error
 	if err != nil {
-		return fmt.Errorf("gormRepo.CreateDraft: %w", err)
+		return fmt.Errorf("entity.repo.CreateDraft: %w", err)
 	}
 
 	return nil
 }
 
-func (r *gormRepo) Create(ctx context.Context, req entity.CreateEntityReq, id uuid.UUID, createdAt time.Time) error {
+func (r *Repository) Create(ctx context.Context, req entity.CreateEntityReq, id uuid.UUID, createdAt time.Time) error {
 	const sqlCTE = `
 WITH ins AS (
   INSERT INTO entities (id, type, name, content, parent_id, created_by, updated_by, current_version, created_at, updated_at)
@@ -202,13 +202,13 @@ VALUES ($1, $3, $4, $5, $6, $7, 1)
 		)
 
 	if res.Error != nil {
-		return fmt.Errorf("entity.create: %w", res.Error)
+		return fmt.Errorf("entity.repo.Create: %w", res.Error)
 	}
 
 	return nil
 }
 
-func (r *gormRepo) UpdateDraft(ctx context.Context, req entity.UpdateEntityReq) error {
+func (r *Repository) UpdateDraft(ctx context.Context, req entity.UpdateEntityReq) error {
 	updates := map[string]interface{}{
 		"name":            req.Name,
 		"content":         req.Content,
@@ -218,15 +218,15 @@ func (r *gormRepo) UpdateDraft(ctx context.Context, req entity.UpdateEntityReq) 
 	}
 	result := r.conn(ctx).Model(&entityModel{}).Where("id = ?", req.ID).Updates(&updates)
 	if result.Error != nil {
-		return fmt.Errorf("gormRepo.UpdateDraft: %w", result.Error)
+		return fmt.Errorf("entity.repo.UpdateDraft: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("gormRepo.UpdateDraft: %w", entity.ErrEntityNotFound())
+		return fmt.Errorf("entity.repo.UpdateDraft: %w", entity.ErrEntityNotFound())
 	}
 	return nil
 }
 
-func (r *gormRepo) Update(ctx context.Context, req entity.UpdateEntityReq, updatedAt time.Time) error {
+func (r *Repository) Update(ctx context.Context, req entity.UpdateEntityReq, updatedAt time.Time) error {
 	const sqlCTE = `
 WITH bumped AS (
   UPDATE entities
@@ -264,28 +264,28 @@ FROM bumped;
 			req.ID,
 		)
 	if res.Error != nil {
-		return fmt.Errorf("entity.update: %w", res.Error)
+		return fmt.Errorf("entity.repo.Update: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
-		return fmt.Errorf("entity.update: %w", entity.ErrEntityNotFound())
+		return fmt.Errorf("entity.repo.Update: %w", entity.ErrEntityNotFound())
 	}
 
 	return nil
 }
 
-func (r *gormRepo) Delete(ctx context.Context, ids []uuid.UUID) error {
+func (r *Repository) Delete(ctx context.Context, ids []uuid.UUID) error {
 	resp := r.conn(ctx).Model(&entityModel{}).Where("id IN ?", ids).Delete(&entityModel{})
 	if resp.Error != nil {
-		return fmt.Errorf("gormRepo.Delete: %w", resp.Error)
+		return fmt.Errorf("entity.repo.Delete: %w", resp.Error)
 	}
 	if resp.RowsAffected == 0 {
-		return fmt.Errorf("gormRepo.Delete: %w", entity.ErrEntityNotFound())
+		return fmt.Errorf("entity.repo.Delete: %w", entity.ErrEntityNotFound())
 	}
 
 	return nil
 }
 
-func (r *gormRepo) getRecursiveQuery(hType entity.HierarchyType, maxDepth int, ids []uuid.UUID, userID *uuid.UUID) (string, []any) {
+func (r *Repository) getRecursiveQuery(hType entity.HierarchyType, maxDepth int, ids []uuid.UUID, userID *uuid.UUID) (string, []any) {
 	vFilter, vArgs := buildVisibilityFilter(userID)
 	args := make([]any, 0, 3+len(vArgs)*3)
 
