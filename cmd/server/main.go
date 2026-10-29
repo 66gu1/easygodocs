@@ -133,7 +133,7 @@ func main() {
 	// --- set up chi router
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(httpx.ClientIPMiddleware(cfg.TrustedProxies))
 	r.Use(middleware.Recoverer)
 	r.Use(httpx.Logger)
 	r.Use(httpx.MaxBodyBytes(cfg.MaxBodySize))
@@ -201,7 +201,7 @@ func main() {
 
 		// without auth
 		r.Group(func(r chi.Router) {
-			r.Use(httprate.LimitByIP(cfg.RateLimit.PublicRequestsPerMinute, time.Minute))
+			r.Use(httprate.Limit(cfg.RateLimit.PublicRequestsPerMinute, time.Minute, httprate.WithKeyFuncs(httpx.KeyByClientIP)))
 			r.Post("/login", authHandler.Login)           // POST /login
 			r.Post("/refresh", authHandler.RefreshTokens) // POST /refresh
 			r.Post("/register", userHandler.CreateUser)   // POST /register

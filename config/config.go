@@ -17,6 +17,9 @@ type Config struct {
 	MaxBodySize int64           `mapstructure:"max_body_size" json:"max_body_size"`
 	RateLimit   RateLimitConfig `mapstructure:"rate_limit" json:"rate_limit"`
 	DBPool      DBPoolConfig    `mapstructure:"db_pool" json:"db_pool"`
+	// TrustedProxies are CIDR prefixes of reverse proxies whose X-Forwarded-For entries are trusted.
+	// Empty means the service is reached directly and forwarding headers are ignored.
+	TrustedProxies []string `mapstructure:"trusted_proxies" json:"trusted_proxies"`
 }
 
 type DBPoolConfig struct {

@@ -41,28 +41,28 @@ func ErrNameEmpty() error {
 func ErrNameTooLong(max int) error {
 	return apperr.New("Name is too long", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
 		WithViolation(apperr.Violation{
-			Field: FieldName, Rule: apperr.RuleTooLong, Params: map[string]any{"max": max},
+			Field: FieldName, Rule: apperr.RuleTooLong, Params: map[string]any{apperr.ParamMax: max},
 		})
 }
 
 func ErrEmailTooLong(max int) error {
 	return apperr.New("Email is too long", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
 		WithViolation(apperr.Violation{
-			Field: FieldEmail, Rule: apperr.RuleTooLong, Params: map[string]any{"max": max},
+			Field: FieldEmail, Rule: apperr.RuleTooLong, Params: map[string]any{apperr.ParamMax: max},
 		})
 }
 
 func ErrPasswordTooShort(min int) error {
 	return apperr.New("password is too short", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
 		WithViolation(apperr.Violation{
-			Field: FieldPassword, Rule: apperr.RuleTooShort, Params: map[string]any{"min": min},
+			Field: FieldPassword, Rule: apperr.RuleTooShort, Params: map[string]any{apperr.ParamMin: min},
 		}).WithUserMessage(fmt.Sprintf("Password must be at least %d characters", min))
 }
 
 func ErrPasswordTooLong(max int) error {
 	return apperr.New("password is too long", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
 		WithViolation(apperr.Violation{
-			Field: FieldPassword, Rule: apperr.RuleTooLong, Params: map[string]any{"max": max},
+			Field: FieldPassword, Rule: apperr.RuleTooLong, Params: map[string]any{apperr.ParamMax: max},
 		}).WithUserMessage(fmt.Sprintf("Password must be at most %d characters", max))
 }
 

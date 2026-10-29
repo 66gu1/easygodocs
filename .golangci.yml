@@ -1,92 +1,109 @@
+version: "2"
 run:
-  tests: true
   build-tags:
     - testutil
-  timeout: 5m
-
-output:
-  sort-results: true
-
+  tests: true
 linters:
   enable:
-    - govet
-    - staticcheck
-    - revive
-    - errcheck
-    - errorlint
-    - wrapcheck
-    - gosimple
-    - ineffassign
-    - typecheck
-    - unused
-    - unparam
-    - misspell
-    - dupl
-    - gocyclo
-    - cyclop
-    - goconst
-    - gocritic
-    - prealloc
     - bodyclose
     - containedctx
     - contextcheck
-    - sqlclosecheck
-    - rowserrcheck
-    - gosec
+    - cyclop
+    - dupl
+    - errorlint
     - forbidigo
+    - goconst
+    - gocritic
+    - gocyclo
+    - gosec
+    - misspell
+    - prealloc
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unparam
+    - wrapcheck
+  settings:
+    cyclop:
+      max-complexity: 15
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    forbidigo:
+      forbid:
+        - pattern: fmt\.Print.* # use zerolog instead
+    gocyclo:
+      min-complexity: 15
+    gosec:
+      excludes:
+        - G104 # unchecked errors are covered by errcheck
+    lll:
+      line-length: 120
+      tab-width: 1
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    wrapcheck:
+      # domain errors are created with apperr constructors and returned as is
+      ignore-package-globs:
+        - github.com/66gu1/easygodocs/internal/infrastructure/apperr
+    revive:
+      severity: warning
+      rules:
+        - name: exported
+          disabled: true
+        - name: var-naming
+        - name: receiver-naming
+        - name: package-comments
+          disabled: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - containedctx
+          - dupl
+          - funlen
+          - goconst
+          - gocyclo
+          - lll
+        path: _test\.go
+      - linters:
+          - gosec
+        text: G117 # test fixtures marshal request bodies with passwords
+        path: _test\.go
+      - linters:
+          - dupl # similar SQL blocks
+          - lll # long raw SQL queries
+        path: repo/gorm
+    paths:
+      - .*_mock\.go
+      - .*\.pb\.go
+      - vendor
+      - (^|[\\/])mocks([\\/]|$)
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
     - gofumpt
     - goimports
-
-linters-settings:
-  gofumpt:
-    extra-rules: true
-  gocyclo:
-    min-complexity: 15
-  cyclop:
-    max-complexity: 15
-  lll:
-    line-length: 120
-    tab-width: 1
-  revive:
-    severity: warning
-    rules:
-      - name: exported
-        disabled: true
-      - name: var-naming
-      - name: receiver-naming
-      - name: package-comments
-        disabled: true
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-  forbidigo:
-    forbid:
-      - 'fmt\.Print.*'   # use zerolog instead
-  gosec:
-    excludes:
-      - G104             # unchecked errors are covered by errcheck
-  nolintlint:
-    require-explanation: true
-    require-specific: true
-
-issues:
-  exclude-files:
-    - ".*_mock\\.go"
-    - ".*\\.pb\\.go"
-  exclude-dirs:
-    - vendor
-    - '(^|[\\/])mocks([\\/]|$)'
-
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - funlen
-        - gocyclo
-        - dupl
-        - lll
-        - goconst
-        - containedctx
-    - path: repo/gorm
-      linters:
-        - lll           # long raw SQL queries
-        - dupl          # similar SQL blocks
+  settings:
+    gofumpt:
+      extra:
+        group-params: true
+        clothe-returns: true
+  exclusions:
+    generated: lax
+    paths:
+      - .*_mock\.go
+      - .*\.pb\.go
+      - vendor
+      - (^|[\\/])mocks([\\/]|$)
+      - third_party$
+      - builtin$
+      - examples$

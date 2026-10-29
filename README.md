@@ -159,7 +159,10 @@ Unpublished entities can't have children, otherwise published entities would be 
   for high-entropy secrets) and compared in constant time. Rotation is a compare-and-swap on the old hash,
   so a refresh token can be used only once.
 - Login for an unknown email still runs bcrypt against a dummy hash, so the response time doesn't reveal
-  which emails are registered. Public endpoints are rate limited per IP.
+  which emails are registered.
+- Public endpoints are rate limited per client IP. The IP is taken from the connection; `X-Forwarded-For`
+  is used only behind the reverse proxies listed in `trusted_proxies`, so clients can't bypass the limit
+  by spoofing headers.
 
 ### Errors and logging
 Errors are typed (`apperr`): a class that maps to an HTTP status, a stable code and field violations for the client,
@@ -169,8 +172,6 @@ every failed request is logged exactly once, in `httpx.ReturnError`, with the fu
 ---
 
 ## ⚠️ Known limitations
-- **Rate limiting trusts `X-Forwarded-For`.** `middleware.RealIP` takes the client IP from the request headers,
-  so the per-IP limit can be bypassed unless the service runs behind a proxy that overwrites them.
 - **No refresh token reuse detection.** A reused refresh token is rejected, but the session is not revoked,
   so a stolen token that was used first keeps working.
 - **No graceful shutdown**, health endpoints or `ReadHeaderTimeout`.
@@ -200,7 +201,7 @@ Integration tests are behind the `testutil` build tag (`go test -tags testutil .
 
 ⚠️ The values in `docker-compose.yml` are for the demo only.
 
-Other settings (token TTLs, rate limit, DB pool, validation limits) are in `config/config.yaml`.
+Other settings (token TTLs, rate limit, trusted proxies, DB pool, validation limits) are in `config/config.yaml`.
 
 ### Project layout
 - `cmd/server` – API service

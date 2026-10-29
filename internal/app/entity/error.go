@@ -17,7 +17,7 @@ func ErrMaxHierarchyDepthExceeded(maxDepth int) error {
 	return apperr.New("Maximum hierarchy depth exceeded", CodeMaxDepthExceeded, apperr.ClassBadRequest, apperr.LogLevelWarn).
 		WithViolation(apperr.Violation{
 			Field: FieldParentID, Rule: apperr.RuleMaxHierarchy,
-			Params: map[string]any{"max_depth": maxDepth},
+			Params: map[string]any{apperr.ParamMaxDepth: maxDepth},
 		})
 }
 
@@ -64,7 +64,7 @@ func ErrNameRequired() error {
 
 func ErrNameTooLong(max int) error {
 	return apperr.New("name is too long", CodeValidationFailed, apperr.ClassBadRequest, apperr.LogLevelWarn).
-		WithViolation(apperr.Violation{Field: FieldName, Rule: apperr.RuleTooLong, Params: map[string]any{"max": max}})
+		WithViolation(apperr.Violation{Field: FieldName, Rule: apperr.RuleTooLong, Params: map[string]any{apperr.ParamMax: max}})
 }
 
 func ErrParentRequired() error {

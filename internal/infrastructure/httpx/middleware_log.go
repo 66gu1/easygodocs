@@ -1,7 +1,6 @@
 package httpx
 
 import (
-	"net"
 	"net/http"
 	"time"
 
@@ -15,18 +14,13 @@ func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Start time
 		start := time.Now()
-		// Extract real IP
-		remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			remoteIP = r.RemoteAddr
-		}
-		// Get request ID and IP from context
+		// Get request ID from context
 		reqID := middleware.GetReqID(r.Context())
 
 		// Create request-scoped logger
 		l := zerolog.With().
 			Str("request_id", reqID).
-			Str("remote_ip", remoteIP).
+			Str("remote_ip", ClientIP(r)).
 			Str("method", r.Method).
 			Str("url", r.URL.Path).
 			Logger()

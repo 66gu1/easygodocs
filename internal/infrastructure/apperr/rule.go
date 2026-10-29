@@ -15,3 +15,10 @@ const (
 	RuleInvalidState  Rule = "invalid_state"
 	RuleNotFound      Rule = "not_found"
 )
+
+// Violation parameter names, part of the API contract.
+const (
+	ParamMax      = "max"
+	ParamMin      = "min"
+	ParamMaxDepth = "max_depth"
+)

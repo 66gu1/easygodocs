@@ -3,6 +3,9 @@ port: 8080
 log_level: info
 rate_limit:
   public_requests_per_minute: 20
+# CIDR prefixes of reverse proxies allowed to set X-Forwarded-For, e.g. ["10.0.0.0/8"].
+# Empty: the client IP is the IP of the connection.
+trusted_proxies: []
 db_pool:
   max_open_conns: 20
   max_idle_conns: 20

@@ -55,7 +55,7 @@ generate:
 tools:
 	go install mvdan.cc/gofumpt@latest
 	go install golang.org/x/tools/cmd/goimports@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 
 clean:
