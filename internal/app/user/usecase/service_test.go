@@ -19,6 +19,7 @@ import (
 type mock struct {
 	core           *mocks.CoreMock
 	authService    *mocks.AuthServiceMock
+	tokenRevoker   *mocks.TokenRevokerMock
 	passwordHasher *mocks.PasswordHasherMock
 }
 
@@ -27,6 +28,7 @@ func getMocks(t *testing.T) mock {
 	return mock{
 		core:           mocks.NewCoreMock(t),
 		authService:    mocks.NewAuthServiceMock(t),
+		tokenRevoker:   mocks.NewTokenRevokerMock(t),
 		passwordHasher: mocks.NewPasswordHasherMock(t),
 	}
 }
@@ -72,7 +74,7 @@ func TestService_CreateUser(t *testing.T) {
 				tt.setup(mocks)
 			}
 
-			svc := usecase.NewService(mocks.core, mocks.authService, mocks.passwordHasher)
+			svc := usecase.NewService(mocks.core, mocks.authService, mocks.tokenRevoker, mocks.passwordHasher)
 			err := svc.CreateUser(ctx, req)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -137,7 +139,7 @@ func TestService_GetUser(t *testing.T) {
 				tt.setup(mocks)
 			}
 
-			svc := usecase.NewService(mocks.core, mocks.authService, mocks.passwordHasher)
+			svc := usecase.NewService(mocks.core, mocks.authService, mocks.tokenRevoker, mocks.passwordHasher)
 			resp, err := svc.GetUser(ctx, userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -212,7 +214,7 @@ func TestService_GetAllUsers(t *testing.T) {
 				tt.setup(mocks)
 			}
 
-			svc := usecase.NewService(mocks.core, mocks.authService, mocks.passwordHasher)
+			svc := usecase.NewService(mocks.core, mocks.authService, mocks.tokenRevoker, mocks.passwordHasher)
 			resp, err := svc.GetAllUsers(ctx)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -274,7 +276,7 @@ func TestService_UpdateUser(t *testing.T) {
 				tt.setup(mocks)
 			}
 
-			svc := usecase.NewService(mocks.core, mocks.authService, mocks.passwordHasher)
+			svc := usecase.NewService(mocks.core, mocks.authService, mocks.tokenRevoker, mocks.passwordHasher)
 			err := svc.UpdateUser(ctx, req)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -303,6 +305,7 @@ func TestService_DeleteUser(t *testing.T) {
 			name: "ok",
 			setup: func(mocks mock) {
 				mocks.authService.CheckIsAdminMock.Expect(ctx).Return(nil)
+				mocks.tokenRevoker.RevokeUserMock.Expect(ctx, userID).Return(nil)
 				mocks.core.DeleteUserMock.Expect(ctx, userID).Return(nil)
 				mocks.authService.DeleteSessionsByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(nil)
 				mocks.authService.DeleteUserRolesByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(nil)
@@ -312,6 +315,7 @@ func TestService_DeleteUser(t *testing.T) {
 			name: "cleanup errors are ignored",
 			setup: func(mocks mock) {
 				mocks.authService.CheckIsAdminMock.Expect(ctx).Return(nil)
+				mocks.tokenRevoker.RevokeUserMock.Expect(ctx, userID).Return(nil)
 				mocks.core.DeleteUserMock.Expect(ctx, userID).Return(nil)
 				mocks.authService.DeleteSessionsByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(expErr)
 				mocks.authService.DeleteUserRolesByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(expErr)
@@ -325,9 +329,18 @@ func TestService_DeleteUser(t *testing.T) {
 			err: expErr,
 		},
 		{
+			name: "tokenRevoker.RevokeUser returns error: the user isn't deleted",
+			setup: func(mocks mock) {
+				mocks.authService.CheckIsAdminMock.Expect(ctx).Return(nil)
+				mocks.tokenRevoker.RevokeUserMock.Expect(ctx, userID).Return(expErr)
+			},
+			err: expErr,
+		},
+		{
 			name: "core.DeleteUser returns error",
 			setup: func(mocks mock) {
 				mocks.authService.CheckIsAdminMock.Expect(ctx).Return(nil)
+				mocks.tokenRevoker.RevokeUserMock.Expect(ctx, userID).Return(nil)
 				mocks.core.DeleteUserMock.Expect(ctx, userID).Return(expErr)
 			},
 			err: expErr,
@@ -342,7 +355,7 @@ func TestService_DeleteUser(t *testing.T) {
 				tt.setup(mocks)
 			}
 
-			svc := usecase.NewService(mocks.core, mocks.authService, mocks.passwordHasher)
+			svc := usecase.NewService(mocks.core, mocks.authService, mocks.tokenRevoker, mocks.passwordHasher)
 			err := svc.DeleteUser(ctx, userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -381,6 +394,7 @@ func TestService_ChangePassword(t *testing.T) {
 				mocks.authService.IsAdminMock.Expect(ctx).Return(true, nil)
 				mocks.core.GetUserMock.Expect(ctx, userID).Return(user.User{}, hash, nil)
 				mocks.passwordHasher.CheckPasswordHashMock.Expect([]byte(hash), req.NewPassword).Return(secure.ErrMismatchedHashAndPassword)
+				mocks.tokenRevoker.RevokeUserMock.Expect(ctx, userID).Return(nil)
 				mocks.core.ChangePasswordMock.Expect(ctx, userID, req.NewPassword).Return(nil)
 				mocks.authService.DeleteSessionsByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(nil)
 			},
@@ -394,6 +408,7 @@ func TestService_ChangePassword(t *testing.T) {
 				mocks.passwordHasher.CheckPasswordHashMock.When([]byte(hash), req.OldPassword).Then(nil)
 				mocks.core.GetUserMock.Expect(ctx, userID).Return(user.User{}, hash, nil)
 				mocks.passwordHasher.CheckPasswordHashMock.When([]byte(hash), req.NewPassword).Then(secure.ErrMismatchedHashAndPassword)
+				mocks.tokenRevoker.RevokeUserMock.Expect(ctx, userID).Return(nil)
 				mocks.core.ChangePasswordMock.Expect(ctx, userID, req.NewPassword).Return(nil)
 				mocks.authService.DeleteSessionsByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(nil)
 			},
@@ -405,6 +420,7 @@ func TestService_ChangePassword(t *testing.T) {
 				mocks.authService.IsAdminMock.Expect(ctx).Return(true, nil)
 				mocks.core.GetUserMock.Expect(ctx, userID).Return(user.User{}, hash, nil)
 				mocks.passwordHasher.CheckPasswordHashMock.Expect([]byte(hash), req.NewPassword).Return(secure.ErrMismatchedHashAndPassword)
+				mocks.tokenRevoker.RevokeUserMock.Expect(ctx, userID).Return(nil)
 				mocks.core.ChangePasswordMock.Expect(ctx, userID, req.NewPassword).Return(nil)
 				mocks.authService.DeleteSessionsByUserIDMock.Expect(context.WithoutCancel(ctx), userID).Return(expErr)
 			},
@@ -416,7 +432,19 @@ func TestService_ChangePassword(t *testing.T) {
 				mocks.authService.IsAdminMock.Expect(ctx).Return(true, nil)
 				mocks.core.GetUserMock.Expect(ctx, userID).Return(user.User{}, hash, nil)
 				mocks.passwordHasher.CheckPasswordHashMock.Expect([]byte(hash), req.NewPassword).Return(secure.ErrMismatchedHashAndPassword)
+				mocks.tokenRevoker.RevokeUserMock.Expect(ctx, userID).Return(nil)
 				mocks.core.ChangePasswordMock.Expect(ctx, userID, req.NewPassword).Return(expErr)
+			},
+			err: expErr,
+		},
+		{
+			name: "tokenRevoker.RevokeUser returns error: the password isn't changed",
+			req:  req,
+			setup: func(mocks mock) {
+				mocks.authService.IsAdminMock.Expect(ctx).Return(true, nil)
+				mocks.core.GetUserMock.Expect(ctx, userID).Return(user.User{}, hash, nil)
+				mocks.passwordHasher.CheckPasswordHashMock.Expect([]byte(hash), req.NewPassword).Return(secure.ErrMismatchedHashAndPassword)
+				mocks.tokenRevoker.RevokeUserMock.Expect(ctx, userID).Return(expErr)
 			},
 			err: expErr,
 		},
@@ -495,7 +523,7 @@ func TestService_ChangePassword(t *testing.T) {
 				tt.setup(mocks)
 			}
 
-			svc := usecase.NewService(mocks.core, mocks.authService, mocks.passwordHasher)
+			svc := usecase.NewService(mocks.core, mocks.authService, mocks.tokenRevoker, mocks.passwordHasher)
 			err := svc.ChangePassword(ctx, tt.req)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)

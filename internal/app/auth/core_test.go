@@ -58,7 +58,8 @@ func TestCore_IssueTokens(t *testing.T) {
 		refreshToken   = "refresh.token.value"
 		rtHash         = []byte("refresh.token.hashed")
 		claims         = auth.AccessTokenClaims{
-			SID: sessID.String(),
+			SID:        sessID.String(),
+			IssuedAtMs: now.UnixMilli(),
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
 				Subject:   userID.String(),
@@ -199,7 +200,8 @@ func TestCore_RefreshTokens(t *testing.T) {
 		rtHash          = "refresh.token.hashed"
 		newRTHash       = "new.refresh.token.hashed"
 		claims          = auth.AccessTokenClaims{
-			SID: sessID.String(),
+			SID:        sessID.String(),
+			IssuedAtMs: now.UnixMilli(),
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
 				Subject:   userID.String(),

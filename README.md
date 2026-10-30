@@ -15,10 +15,11 @@ hierarchical role-based access control and JWT authentication with server-side s
 - Entity tree with depth limit and cycle prevention that stays consistent under concurrent requests
 - Versioning of every change and personal drafts with conflict detection on publish
 - Hierarchical RBAC: permissions are granted on a subtree
-- JWT access tokens + server-side sessions: logout, password change and user deletion take effect immediately
+- JWT access tokens + server-side sessions: logout, password change and user deletion take effect immediately,
+  checked against a revocation list in Redis instead of the database on every request
 - Rate limiting of public endpoints shared by all app instances: a sliding window in Redis checked by one atomic Lua script
 - Password guessing protection that doesn't let an attacker lock out the account owner
-- Unit tests with mocks, integration tests on a real PostgreSQL and Redis (testcontainers), race tests (coverage: **~82%**)
+- Unit tests with mocks, integration tests on a real PostgreSQL and Redis (testcontainers), race tests (coverage: **~88%**)
 - CI: lint, tests with `-race`, govulncheck
 
 ---
@@ -127,7 +128,8 @@ Moving an entity under one of its descendants is rejected.
 - **repo** is SQL only.
 
 Interfaces are declared by the consumer, so every layer is tested with generated mocks (minimock),
-and the repositories are tested against a real PostgreSQL.
+the repositories are tested against a real PostgreSQL and the Redis-backed components against a real Redis.
+`cmd/server` builds the whole application in `newHandler`, so end-to-end tests run the real routes and middleware.
 
 ### Tree consistency under concurrency
 Validating a move ("the new parent is not my descendant", "the depth stays within the limit") and applying it
@@ -155,8 +157,11 @@ Unpublished entities can't have children, otherwise published entities would be 
 ### Authentication
 - Short-lived JWT access tokens (15 minutes, HS256 only, `exp`, `iss` and `iat` are checked) plus a server-side session
   with a rotating refresh token.
-- The session is checked on every request. This costs one query per request, but logout, session revocation,
-  password change and user deletion take effect immediately instead of after the token expires.
+- Every request checks that its token wasn't revoked, so logout, session revocation, password change
+  and user deletion take effect immediately instead of after the token expires.
+  The check is a lookup in Redis, see [Token revocation](#token-revocation).
+- Refresh answers every rejection of a well-formed request (invalid or already used token, deleted, expired
+  or revoked session, deleted user) with the same 401, so the response doesn't reveal whether a session existed.
 - Refresh tokens are random 256-bit values, so they are stored as SHA-256 hashes (a slow hash like bcrypt adds nothing
   for high-entropy secrets) and compared in constant time. Rotation is a compare-and-swap on the old hash,
   so a refresh token can be used only once.
@@ -164,6 +169,52 @@ Unpublished entities can't have children, otherwise published entities would be 
   which emails are registered.
 - Public endpoints are rate limited per client IP, see [Rate limiting](#rate-limiting),
   and login attempts are limited per account, see [Login attempts](#login-attempts).
+
+### Token revocation
+Checking the session in PostgreSQL on every request took two queries (the session and the user).
+Instead, revocations are recorded in Redis and each request does one `MGET`:
+- **Session** (logout): `revocation:{user}:session:{id}` rejects that session's tokens.
+- **User** (logout everywhere, password change, user deletion): `revocation:{user}:user` holds the time before
+  which all the user's tokens and sessions are rejected. One entry covers every session, so mass revocation
+  doesn't need to list them. It only moves forward, so concurrent revocations can't shrink it.
+- **Issue time in milliseconds.** The token's `iat` has a precision of seconds, too coarse to tell a token
+  issued just before a revocation from one issued just after it. Tokens carry `iat_ms`, and a token issued
+  in the same millisecond as the revocation counts as revoked. Times come from the clocks of the instances
+  that issue and revoke, so their skew (kept small by NTP) is the remaining window.
+
+The order of writes:
+- **Redis first, then PostgreSQL**, which stays the source of truth. If the Redis write fails, nothing has changed
+  and the operation returns an error.
+- **If PostgreSQL then fails**, the session stays in the database, and its refresh token could issue access tokens
+  newer than the revocation. So refresh checks the revocation too. For that the entries live as long as a session
+  can (`session_ttl_minutes`), not only as long as an access token: otherwise the refresh token would work again
+  once the entry expired.
+- **Every path is covered by an integration test** that runs the real handler on PostgreSQL and Redis
+  (`cmd/server/revocation_test.go`): removing the revocation from any of them fails its test.
+- Logout checks the session's owner before writing, so random session IDs leave no entries in Redis.
+  Keys are scoped to the user anyway, so a session can't be revoked for another user.
+
+If Redis is unavailable:
+- **Requests fall back to PostgreSQL.** The middleware checks the session in the database, as before:
+  slower, but every completed revocation is in the database too, so revoked tokens are still rejected and valid
+  ones accepted, and a Redis outage doesn't take the API down. Failing closed (503) was the alternative.
+- **Revocations fail** with an error and change nothing, see the order above.
+- **Refresh doesn't check the revocation** and relies on the database, which has been checked already.
+- **Double failure.** If a revocation was written to Redis, its database step failed, and then Redis goes down,
+  the fallback sees the session alive in the database and lets its tokens through. This needs two failures
+  in a row and the client was told the revocation failed; it is an accepted trade-off.
+
+**Losing the data** would bring revoked tokens back: entries lost in a restart without persistence, or evicted
+under memory pressure, would let revoked access tokens work until they expire. So Redis runs with AOF persistence
+(`appendfsync everysec`) and `maxmemory-policy noeviction`. A crash can still lose about the last second of
+revocations: the refresh tokens of those sessions stay rejected by the database (the session is deleted or its
+version changed), but their access tokens work until they expire, at most `access_token_ttl_minutes`.
+With `noeviction`, when memory is full, writes fail, and revocations fail safely instead of being dropped.
+The rate limit counters share the instance, so filling the memory also makes the rate limits fail open;
+a dedicated Redis for revocations would separate the two.
+
+**Memory.** An entry lives `session_ttl_minutes` (100 hours by default), so Redis holds one small key per logout
+in that period, plus one per user revoked with "logout everywhere", a password change or a deletion.
 
 ### Rate limiting
 `/login`, `/refresh` and `/register` allow `rate_limit.public_requests_per_minute` requests per client IP
@@ -193,9 +244,9 @@ in any 60-second window. Over the limit the API returns `429` with `Retry-After`
 The per-IP limit doesn't stop guessing the password of one account from many IPs. Locking the account
 after N failures would, but then anyone could lock out the owner by entering wrong passwords on purpose.
 So there are two counters per window (`rate_limit.login_window_minutes`, 15 by default):
-- **email + IP, strict** (`login_attempts_per_email_ip`, 5): a client that guesses gets locked out,
+- **email + IP, strict** (`rate_limit.login_attempts_per_email_ip`, 5): a client that guesses gets locked out,
   the owner logging in from another IP isn't affected;
-- **email, soft** (`login_attempts_per_email`, 100): bounds the total guesses for the account
+- **email, soft** (`rate_limit.login_attempts_per_email`, 100): bounds the total guesses for the account
   in a distributed attack.
 
 Over a limit the API returns `429` with `Retry-After` right away. There is no server-side delay:
@@ -223,6 +274,8 @@ a sleeping request holds a connection and a goroutine, which is itself a way to 
 Errors are typed (`apperr`): a class that maps to an HTTP status, a stable code and field violations for the client,
 and internal details that are never sent to the client. Lower layers only wrap errors with context;
 every failed request is logged exactly once, in `httpx.ReturnError`, with the full error chain, request ID and user ID.
+Redis errors that are tolerated (a limiter failing open, the fallback to PostgreSQL) are logged where they happen,
+since the request doesn't fail.
 
 ---
 
@@ -233,6 +286,8 @@ every failed request is logged exactly once, in `httpx.ReturnError`, with the fu
 - **No pagination:** the tree and version lists are returned in full.
 - An outdated draft can't be merged: it has to be discarded and started again from the current version.
 - Soft-deleted entities and expired sessions are never purged.
+- Revocations made outside the application (e.g. deleting a session row by hand) aren't seen by the Redis check
+  and take effect when the access token expires.
 - The rate limit key is the full client IP. An IPv6 client usually controls a whole /64
   and can rotate addresses within it.
 
@@ -241,32 +296,38 @@ every failed request is logged exactly once, in `httpx.ReturnError`, with the fu
 ## 🛠️ Development
 
 ```bash
+make deps        # start PostgreSQL (with migrations) and Redis in Docker, on localhost:55432 and :56379
+make run         # run the server on the host (needs DATABASE_DSN, REDIS_URL and JWT_SECRET, see .env.example)
 make tools       # install gofumpt, goimports, golangci-lint, govulncheck
 make lint        # golangci-lint
-make test        # all tests with -race; integration tests start PostgreSQL in Docker
+make test        # all tests with -race; integration tests start PostgreSQL and Redis in Docker
 make cover       # tests with coverage
 make generate    # mocks and Swagger docs
-make run         # run the server locally (needs DATABASE_DSN, REDIS_URL and JWT_SECRET, see .env.example)
 ```
+
+To run the server on the host: `cp .env.example .env`, set `JWT_SECRET`, then `make deps` and `make run`.
+The ports are bound to `127.0.0.1` only and are non-default, so they don't clash with a local PostgreSQL or Redis.
 
 Integration tests are behind the `testutil` build tag (`go test -tags testutil ./...`) and need Docker
 (they start PostgreSQL and Redis containers).
 
 ### Environment
 - `DATABASE_DSN` – PostgreSQL connection string
-- `REDIS_URL` – Redis connection URL, e.g. `redis://localhost:6379/0`
+- `REDIS_URL` – Redis connection URL, e.g. `redis://localhost:56379/0` (the `make deps` Redis)
 - `JWT_SECRET` – key for signing JWT tokens, at least 32 bytes (the server refuses to start otherwise)
 - `ADMIN_EMAIL`, `ADMIN_PASSWORD` – credentials of the initial admin created by `cmd/seedadmin`
 
 ⚠️ The values in `docker-compose.yml` are for the demo only.
 
-Other settings (token TTLs, rate limit, trusted proxies, DB pool, validation limits) are in `config/config.yaml`.
+Other settings (token TTLs, rate and login attempt limits, Redis timeout, trusted proxies, DB pool, validation limits)
+are in `config/config.yaml`.
 
 ### Project layout
-- `cmd/server` – API service
+- `cmd/server` – API service: startup in `main.go`, wiring and routes in `app.go`, end-to-end tests
 - `cmd/seedadmin` – creates the initial admin user
 - `internal/app/{auth,user,entity}` – domains: `core`, `usecase`, `transport/http`, `repo/gorm`
-- `internal/infrastructure` – errors, HTTP helpers, logging, DB transactions, crypto
+- `internal/infrastructure` – errors, HTTP helpers, logging, DB transactions, crypto,
+  rate limiting (`ratelimit`), token revocation (`revocation`)
 - `migrations/` – goose migrations
 - `config/` – configuration
 

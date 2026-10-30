@@ -41,5 +41,8 @@ type Tokens struct {
 
 type AccessTokenClaims struct {
 	SID string `json:"sid"` // session_id
+	// IssuedAtMs is the issue time in milliseconds. "iat" has a precision of seconds, too coarse
+	// to tell a token issued just before a revocation from one issued just after it.
+	IssuedAtMs int64 `json:"iat_ms"`
 	jwt.RegisteredClaims
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	"github.com/66gu1/easygodocs/internal/app/user"
@@ -60,6 +61,17 @@ type LoginAttempts interface {
 	Refund(ctx context.Context, email, ip string) error
 }
 
+// Revocations records revoked sessions and users, see revocation.Store.
+type Revocations interface {
+	RevokeSession(ctx context.Context, userID, sessionID uuid.UUID) error
+	RevokeUser(ctx context.Context, userID uuid.UUID, at time.Time) error
+	IsRevoked(ctx context.Context, userID, sessionID uuid.UUID, issuedAt time.Time) (bool, error)
+}
+
+type TimeGenerator interface {
+	Now() time.Time
+}
+
 type LoginCmd struct {
 	Email    string
 	Password []byte `json:"-"`
@@ -71,26 +83,38 @@ type Service struct {
 	userCore          UserCore
 	passwordHasher    PasswordHasher
 	loginAttempts     LoginAttempts
+	revocations       Revocations
+	timeGenerator     TimeGenerator
 	dummyPasswordHash []byte
+}
+
+type Deps struct {
+	Core           Core
+	UserCore       UserCore
+	PasswordHasher PasswordHasher
+	LoginAttempts  LoginAttempts
+	Revocations    Revocations
+	TimeGenerator  TimeGenerator
 }
 
 // NewService creates the auth service. dummyPasswordHash must be a hash produced with the same
 // cost as real password hashes: Login checks it when the email is unknown, so that response time
 // doesn't reveal whether a user exists.
-func NewService(core Core, userCore UserCore, passwordHasher PasswordHasher, loginAttempts LoginAttempts,
-	dummyPasswordHash []byte,
-) *Service {
-	if core == nil || userCore == nil || passwordHasher == nil || loginAttempts == nil {
+func NewService(deps Deps, dummyPasswordHash []byte) *Service {
+	if deps.Core == nil || deps.UserCore == nil || deps.PasswordHasher == nil || deps.LoginAttempts == nil ||
+		deps.Revocations == nil || deps.TimeGenerator == nil {
 		panic("nil dependency")
 	}
 	if len(dummyPasswordHash) == 0 {
 		panic("empty dummy password hash")
 	}
 	return &Service{
-		core:              core,
-		userCore:          userCore,
-		passwordHasher:    passwordHasher,
-		loginAttempts:     loginAttempts,
+		core:              deps.Core,
+		userCore:          deps.UserCore,
+		passwordHasher:    deps.PasswordHasher,
+		loginAttempts:     deps.LoginAttempts,
+		revocations:       deps.Revocations,
+		timeGenerator:     deps.TimeGenerator,
 		dummyPasswordHash: dummyPasswordHash,
 	}
 }
@@ -108,24 +132,55 @@ func (s *Service) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]
 	return sessions, nil
 }
 
+// DeleteSession revokes a session (logout).
+//
+// Revocation writes Redis before PostgreSQL. If Redis fails, nothing has changed and the error is returned.
+// If PostgreSQL fails, the access tokens are already rejected, and the session left in the database
+// can't be refreshed either: RefreshTokens checks the revocation too.
 func (s *Service) DeleteSession(ctx context.Context, userID, id uuid.UUID) error {
 	if err := s.core.CheckSelfOrAdmin(ctx, userID); err != nil {
 		return fmt.Errorf("auth.service.DeleteSession: %w", err)
 	}
 
-	if err := s.core.DeleteSession(ctx, id, userID); err != nil {
+	// Check the owner before writing the revocation, so random IDs don't fill Redis with entries.
+	session, _, err := s.core.GetSessionByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("auth.service.DeleteSession: %w", err)
+	}
+	if session.UserID != userID {
+		return fmt.Errorf("auth.service.DeleteSession: %w", auth.ErrSessionNotFound())
+	}
+
+	if err = s.revocations.RevokeSession(ctx, userID, id); err != nil {
+		return fmt.Errorf("auth.service.DeleteSession: %w", err)
+	}
+	if err = s.core.DeleteSession(ctx, id, userID); err != nil {
 		return fmt.Errorf("auth.service.DeleteSession: %w", err)
 	}
 	return nil
 }
 
+// DeleteSessionsByUserID revokes all sessions of the user (logout everywhere). See DeleteSession for the order.
 func (s *Service) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error {
 	if err := s.core.CheckSelfOrAdmin(ctx, userID); err != nil {
 		return fmt.Errorf("auth.service.DeleteSessionsByUserID: %w", err)
 	}
 
+	if err := s.RevokeUser(ctx, userID); err != nil {
+		return fmt.Errorf("auth.service.DeleteSessionsByUserID: %w", err)
+	}
 	if err := s.core.DeleteSessionsByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("auth.service.DeleteSessionsByUserID: %w", err)
+	}
+	return nil
+}
+
+// RevokeUser rejects all tokens and sessions of the user issued until now. It doesn't check permissions:
+// it is called by operations that have checked them, before they change the database
+// (password change, user deletion), so that a failure leaves nothing changed.
+func (s *Service) RevokeUser(ctx context.Context, userID uuid.UUID) error {
+	if err := s.revocations.RevokeUser(ctx, userID, s.timeGenerator.Now()); err != nil {
+		return fmt.Errorf("auth.service.RevokeUser: %w", err)
 	}
 	return nil
 }
@@ -172,16 +227,21 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken auth.RefreshTo
 
 	session, rtHash, err := s.core.GetSessionByID(ctx, refreshToken.SessionID)
 	if err != nil {
-		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", err)
+		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", notFoundAsUnauthorized(err))
 	}
 
 	if err = s.checkSessionUser(ctx, session); err != nil {
+		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", notFoundAsUnauthorized(err))
+	}
+	if err = s.checkSessionNotRevoked(ctx, session); err != nil {
 		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", err)
 	}
 
+	// The rotation is a compare-and-swap: a refresh token already used by a concurrent request
+	// fails it with "not found".
 	tokens, err := s.core.RefreshTokens(ctx, session, refreshToken.Token, rtHash)
 	if err != nil {
-		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", err)
+		return auth.Tokens{}, fmt.Errorf("auth.service.RefreshTokens: %w", notFoundAsUnauthorized(err))
 	}
 
 	return tokens, nil
@@ -285,6 +345,33 @@ func (s *Service) ValidateSession(ctx context.Context, userID, sessionID uuid.UU
 		return fmt.Errorf("auth.service.ValidateSession: %w", err)
 	}
 
+	return nil
+}
+
+// notFoundAsUnauthorized hides why a refresh was rejected: a missing session or user gets the same 401
+// as an invalid token, so the response doesn't reveal whether a session existed.
+// The reason stays in the error detail for the logs.
+func notFoundAsUnauthorized(err error) error {
+	if apperr.ClassOf(err) == apperr.ClassNotFound {
+		return apperr.ErrUnauthorized().WithDetail(err.Error())
+	}
+	return err
+}
+
+// checkSessionNotRevoked catches a session that was revoked in Redis, but whose deletion
+// in the database failed: without it, its refresh token would issue access tokens newer than the revocation.
+//
+// It fails open: the database is the source of truth and has already been checked, the revocation entry
+// only matters when the database step of a revocation has failed.
+func (s *Service) checkSessionNotRevoked(ctx context.Context, session auth.Session) error {
+	revoked, err := s.revocations.IsRevoked(ctx, session.UserID, session.ID, session.CreatedAt)
+	if err != nil {
+		logger.Error(ctx, err).Msg("auth.service.RefreshTokens: revocations are unavailable, refresh is allowed")
+		return nil
+	}
+	if revoked {
+		return fmt.Errorf("checkSessionNotRevoked: %w", apperr.ErrUnauthorized().WithDetail("session is revoked"))
+	}
 	return nil
 }
 

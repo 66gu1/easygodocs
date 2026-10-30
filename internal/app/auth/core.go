@@ -388,7 +388,8 @@ func (c *Core) generateTokens(userID, sessionID uuid.UUID, now time.Time) (strin
 	rtHash := c.tokenHasher.HashRefreshToken([]byte(refreshToken))
 
 	accessToken, err := c.codec.GenerateToken(AccessTokenClaims{
-		SID: sessionID.String(),
+		SID:        sessionID.String(),
+		IssuedAtMs: now.UnixMilli(),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    TokenIssuer,
 			Subject:   userID.String(),

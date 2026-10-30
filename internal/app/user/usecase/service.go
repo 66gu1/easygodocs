@@ -45,6 +45,11 @@ type AuthService interface {
 	IsAdmin(ctx context.Context) (bool, error)
 }
 
+// TokenRevoker rejects all tokens and sessions of a user issued until now.
+type TokenRevoker interface {
+	RevokeUser(ctx context.Context, userID uuid.UUID) error
+}
+
 type PasswordHasher interface {
 	CheckPasswordHash(hash, password []byte) error
 }
@@ -58,16 +63,18 @@ type ChangePasswordCmd struct {
 type Service struct {
 	core           Core
 	authService    AuthService
+	tokenRevoker   TokenRevoker
 	passwordHasher PasswordHasher
 }
 
-func NewService(core Core, authService AuthService, passwordHasher PasswordHasher) *Service {
-	if core == nil || authService == nil || passwordHasher == nil {
+func NewService(core Core, authService AuthService, tokenRevoker TokenRevoker, passwordHasher PasswordHasher) *Service {
+	if core == nil || authService == nil || tokenRevoker == nil || passwordHasher == nil {
 		panic("user.NewService: nil dependency")
 	}
 	return &Service{
 		core:           core,
 		authService:    authService,
+		tokenRevoker:   tokenRevoker,
 		passwordHasher: passwordHasher,
 	}
 }
@@ -119,12 +126,17 @@ func (s *Service) DeleteUser(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("user.service.DeleteUser: %w", err)
 	}
 
+	// Revoke the user's tokens before deleting: if it fails, nothing has changed.
+	// After the deletion, refresh is rejected anyway, because the user doesn't exist.
+	if err := s.tokenRevoker.RevokeUser(ctx, id); err != nil {
+		return fmt.Errorf("user.service.DeleteUser: %w", err)
+	}
 	if err := s.core.DeleteUser(ctx, id); err != nil {
 		return fmt.Errorf("user.service.DeleteUser: %w", err)
 	}
 
 	// Best-effort cleanup: failures are only logged, because a deleted user
-	// can't authenticate anyway (the auth middleware checks that the user exists).
+	// can't authenticate anyway: the tokens are revoked and refresh checks that the user exists.
 	cleanupCtx := context.WithoutCancel(ctx)
 	if err := s.authService.DeleteSessionsByUserID(cleanupCtx, id); err != nil {
 		logger.Error(ctx, err).
@@ -180,13 +192,18 @@ func (s *Service) ChangePassword(ctx context.Context, req ChangePasswordCmd) err
 		return fmt.Errorf("user.service.ChangePassword: %w", err)
 	}
 
+	// Revoke the user's tokens before changing the password: if it fails, nothing has changed.
+	// After the change, refresh is rejected anyway, because the session version no longer matches.
+	if err = s.tokenRevoker.RevokeUser(ctx, req.ID); err != nil {
+		return fmt.Errorf("user.service.ChangePassword: %w", err)
+	}
 	err = s.core.ChangePassword(ctx, req.ID, req.NewPassword)
 	if err != nil {
 		return fmt.Errorf("user.service.ChangePassword: %w", err)
 	}
 
 	// Best-effort: session cleanup is attempted, but failures are ignored
-	// since session_version already invalidates old tokens and the user
+	// since the tokens are revoked, session_version prevents refresh, and the user
 	// should not see an error if this step fails.
 	if err = s.authService.DeleteSessionsByUserID(context.WithoutCancel(ctx), req.ID); err != nil {
 		logger.Error(ctx, err).

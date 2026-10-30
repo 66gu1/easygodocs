@@ -5,6 +5,10 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: pass
       POSTGRES_DB: easy_go_docs
+    # For `make run`, which runs the server on the host. Bound to localhost only, on a non-default port
+    # to avoid clashing with a local PostgreSQL.
+    ports:
+      - "127.0.0.1:55432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +19,14 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Revocations must survive a restart and must not be evicted, see "Token revocation" in README.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    # For `make run`, which runs the server on the host. Bound to localhost only, on a non-default port
+    # to avoid clashing with a local Redis.
+    ports:
+      - "127.0.0.1:56379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -60,3 +72,4 @@ services:
 
 volumes:
   pgdata:
+  redisdata:

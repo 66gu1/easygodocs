@@ -10,7 +10,11 @@ PKGS     := $(filter-out %/mocks %/mocks/% %/mock %/mock/% %/minimock %/minimock
 COVERPKG := $(shell printf "%s\n" $(PKGS) | paste -sd, -)
 
 # -------- Targets --------
-.PHONY: build run seed-admin fmt vet lint test cover cover-html generate clean tools vuln print-pkgs
+.PHONY: deps build run seed-admin fmt vet lint test cover cover-html generate clean tools vuln print-pkgs
+
+# PostgreSQL (with migrations applied) and Redis in Docker, on localhost for `make run`
+deps:
+	docker compose up -d db redis migrations
 
 build:
 	mkdir -p $(BIN_DIR)

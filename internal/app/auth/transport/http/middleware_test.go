@@ -13,6 +13,7 @@ import (
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/contextx"
 	"github.com/go-chi/chi/v5"
+	"github.com/gojuno/minimock/v3"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,7 @@ func TestAuthMiddleware(t *testing.T) {
 	userID := uuid.New()
 	SID := uuid.New()
 	token := "token"
+	issuedAt := time.UnixMilli(time.Now().UnixMilli())
 	validClaims := func(mock *mocks.TokenCodecMock) {
 		mock.ParseTokenMock.Set(func(tokenStr string, claims jwt.Claims) error {
 			c, ok := claims.(*auth.AccessTokenClaims)
@@ -32,6 +34,7 @@ func TestAuthMiddleware(t *testing.T) {
 			}
 			c.Subject = userID.String()
 			c.SID = SID.String()
+			c.IssuedAtMs = issuedAt.UnixMilli()
 			c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
 			return nil
 		})
@@ -40,6 +43,7 @@ func TestAuthMiddleware(t *testing.T) {
 		name          string
 		header        string
 		setup         func(mock *mocks.TokenCodecMock)
+		revokedSetup  func(mock *mocks.RevocationCheckerMock)
 		sessionsSetup func(mock *mocks.SessionValidatorMock)
 		wantStatus    int
 	}{
@@ -159,9 +163,42 @@ func TestAuthMiddleware(t *testing.T) {
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
-			name:   "session revoked -> 401",
+			name:   "token revoked -> 401 without a database query",
 			header: "Bearer token",
 			setup:  validClaims,
+			revokedSetup: func(mock *mocks.RevocationCheckerMock) {
+				mock.IsRevokedMock.Expect(minimock.AnyContext, userID, SID, issuedAt).Return(true, nil)
+			},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:   "ok -> next called without a database query, context has user_id & session_id",
+			header: "Bearer token",
+			setup:  validClaims,
+			revokedSetup: func(mock *mocks.RevocationCheckerMock) {
+				mock.IsRevokedMock.Expect(minimock.AnyContext, userID, SID, issuedAt).Return(false, nil)
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:   "revocations unavailable, session active in the database -> 200",
+			header: "Bearer token",
+			setup:  validClaims,
+			revokedSetup: func(mock *mocks.RevocationCheckerMock) {
+				mock.IsRevokedMock.Return(false, fmt.Errorf("redis is down"))
+			},
+			sessionsSetup: func(mock *mocks.SessionValidatorMock) {
+				mock.ValidateSessionMock.ExpectUserIDParam2(userID).ExpectSessionIDParam3(SID).Return(nil)
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:   "revocations unavailable, session deleted in the database -> 401",
+			header: "Bearer token",
+			setup:  validClaims,
+			revokedSetup: func(mock *mocks.RevocationCheckerMock) {
+				mock.IsRevokedMock.Return(false, fmt.Errorf("redis is down"))
+			},
 			sessionsSetup: func(mock *mocks.SessionValidatorMock) {
 				mock.ValidateSessionMock.ExpectUserIDParam2(userID).ExpectSessionIDParam3(SID).
 					Return(apperr.New("session not found", auth.CodeSessionNotFound, apperr.ClassNotFound, apperr.LogLevelWarn))
@@ -169,23 +206,17 @@ func TestAuthMiddleware(t *testing.T) {
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
-			name:   "session check internal error -> 500",
+			name:   "revocations and database unavailable -> 500",
 			header: "Bearer token",
 			setup:  validClaims,
+			revokedSetup: func(mock *mocks.RevocationCheckerMock) {
+				mock.IsRevokedMock.Return(false, fmt.Errorf("redis is down"))
+			},
 			sessionsSetup: func(mock *mocks.SessionValidatorMock) {
 				mock.ValidateSessionMock.ExpectUserIDParam2(userID).ExpectSessionIDParam3(SID).
 					Return(fmt.Errorf("db is down"))
 			},
 			wantStatus: http.StatusInternalServerError,
-		},
-		{
-			name:   "ok -> next called, context has user_id & session_id",
-			header: "Bearer token",
-			setup:  validClaims,
-			sessionsSetup: func(mock *mocks.SessionValidatorMock) {
-				mock.ValidateSessionMock.ExpectUserIDParam2(userID).ExpectSessionIDParam3(SID).Return(nil)
-			},
-			wantStatus: http.StatusOK,
 		},
 	}
 
@@ -207,12 +238,16 @@ func TestAuthMiddleware(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(mock)
 			}
+			revocations := mocks.NewRevocationCheckerMock(t)
+			if tc.revokedSetup != nil {
+				tc.revokedSetup(revocations)
+			}
 			sessions := mocks.NewSessionValidatorMock(t)
 			if tc.sessionsSetup != nil {
 				tc.sessionsSetup(sessions)
 			}
 			r := chi.NewRouter()
-			r.Use(AuthMiddleware(mock, sessions))
+			r.Use(AuthMiddleware(mock, revocations, sessions))
 			r.Get("/protected", next)
 
 			req := httptest.NewRequest(http.MethodGet, "/protected", nil)

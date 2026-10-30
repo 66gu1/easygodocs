@@ -26,6 +26,8 @@ type mock struct {
 	userCore       *mocks.UserCoreMock
 	passwordHasher *mocks.PasswordHasherMock
 	loginAttempts  *mocks.LoginAttemptsMock
+	revocations    *mocks.RevocationsMock
+	timeGenerator  *mocks.TimeGeneratorMock
 }
 
 func newMock(t *testing.T) *mock {
@@ -35,11 +37,20 @@ func newMock(t *testing.T) *mock {
 		userCore:       mocks.NewUserCoreMock(t),
 		passwordHasher: mocks.NewPasswordHasherMock(t),
 		loginAttempts:  mocks.NewLoginAttemptsMock(t),
+		revocations:    mocks.NewRevocationsMock(t),
+		timeGenerator:  mocks.NewTimeGeneratorMock(t),
 	}
 }
 
 func (m *mock) newService() *usecase.Service {
-	return usecase.NewService(m.core, m.userCore, m.passwordHasher, m.loginAttempts, dummyHash)
+	return usecase.NewService(usecase.Deps{
+		Core:           m.core,
+		UserCore:       m.userCore,
+		PasswordHasher: m.passwordHasher,
+		LoginAttempts:  m.loginAttempts,
+		Revocations:    m.revocations,
+		TimeGenerator:  m.timeGenerator,
+	}, dummyHash)
 }
 
 func TestService_GetSessionsByUserID(t *testing.T) {
@@ -116,10 +127,11 @@ func TestService_GetSessionsByUserID(t *testing.T) {
 func TestService_DeleteSession(t *testing.T) {
 	t.Parallel()
 	var (
-		ctx    = t.Context()
-		userID = uuid.New()
-		id     = uuid.New()
-		errExp = fmt.Errorf("expired")
+		ctx     = t.Context()
+		userID  = uuid.New()
+		id      = uuid.New()
+		session = auth.Session{ID: id, UserID: userID}
+		errExp  = fmt.Errorf("expired")
 	)
 	tests := []struct {
 		name  string
@@ -127,9 +139,11 @@ func TestService_DeleteSession(t *testing.T) {
 		err   error
 	}{
 		{
-			name: "ok",
+			name: "ok: revoked in Redis, then deleted in the database",
 			setup: func(m mock) {
 				m.core.CheckSelfOrAdminMock.Expect(ctx, userID).Return(nil)
+				m.core.GetSessionByIDMock.Expect(ctx, id).Return(session, "", nil)
+				m.revocations.RevokeSessionMock.Expect(ctx, userID, id).Return(nil)
 				m.core.DeleteSessionMock.Expect(ctx, id, userID).Return(nil)
 			},
 		},
@@ -141,9 +155,36 @@ func TestService_DeleteSession(t *testing.T) {
 			err: errExp,
 		},
 		{
+			name: "error - core.GetSessionByID",
+			setup: func(m mock) {
+				m.core.CheckSelfOrAdminMock.Expect(ctx, userID).Return(nil)
+				m.core.GetSessionByIDMock.Expect(ctx, id).Return(auth.Session{}, "", errExp)
+			},
+			err: errExp,
+		},
+		{
+			name: "session of another user: not found, nothing is revoked",
+			setup: func(m mock) {
+				m.core.CheckSelfOrAdminMock.Expect(ctx, userID).Return(nil)
+				m.core.GetSessionByIDMock.Expect(ctx, id).Return(auth.Session{ID: id, UserID: uuid.New()}, "", nil)
+			},
+			err: auth.ErrSessionNotFound(),
+		},
+		{
+			name: "error - revocations.RevokeSession: the session isn't deleted",
+			setup: func(m mock) {
+				m.core.CheckSelfOrAdminMock.Expect(ctx, userID).Return(nil)
+				m.core.GetSessionByIDMock.Expect(ctx, id).Return(session, "", nil)
+				m.revocations.RevokeSessionMock.Expect(ctx, userID, id).Return(errExp)
+			},
+			err: errExp,
+		},
+		{
 			name: "error - core.DeleteSession",
 			setup: func(m mock) {
 				m.core.CheckSelfOrAdminMock.Expect(ctx, userID).Return(nil)
+				m.core.GetSessionByIDMock.Expect(ctx, id).Return(session, "", nil)
+				m.revocations.RevokeSessionMock.Expect(ctx, userID, id).Return(nil)
 				m.core.DeleteSessionMock.Expect(ctx, id, userID).Return(errExp)
 			},
 			err: errExp,
@@ -173,6 +214,7 @@ func TestService_DeleteSessionsByUserID(t *testing.T) {
 	var (
 		ctx    = t.Context()
 		userID = uuid.New()
+		now    = time.Now()
 		errExp = fmt.Errorf("expired")
 	)
 	tests := []struct {
@@ -181,11 +223,22 @@ func TestService_DeleteSessionsByUserID(t *testing.T) {
 		err   error
 	}{
 		{
-			name: "ok",
+			name: "ok: revoked in Redis, then deleted in the database",
 			setup: func(m mock) {
 				m.core.CheckSelfOrAdminMock.Expect(ctx, userID).Return(nil)
+				m.timeGenerator.NowMock.Return(now)
+				m.revocations.RevokeUserMock.Expect(ctx, userID, now).Return(nil)
 				m.core.DeleteSessionsByUserIDMock.Expect(ctx, userID).Return(nil)
 			},
+		},
+		{
+			name: "error - revocations.RevokeUser: the sessions aren't deleted",
+			setup: func(m mock) {
+				m.core.CheckSelfOrAdminMock.Expect(ctx, userID).Return(nil)
+				m.timeGenerator.NowMock.Return(now)
+				m.revocations.RevokeUserMock.Expect(ctx, userID, now).Return(errExp)
+			},
+			err: errExp,
 		},
 		{
 			name: "error - core.CheckSelfOrAdmin",
@@ -198,6 +251,8 @@ func TestService_DeleteSessionsByUserID(t *testing.T) {
 			name: "error - core.DeleteSessionsByUserID",
 			setup: func(m mock) {
 				m.core.CheckSelfOrAdminMock.Expect(ctx, userID).Return(nil)
+				m.timeGenerator.NowMock.Return(now)
+				m.revocations.RevokeUserMock.Expect(ctx, userID, now).Return(nil)
 				m.core.DeleteSessionsByUserIDMock.Expect(ctx, userID).Return(errExp)
 			},
 			err: errExp,
@@ -444,6 +499,7 @@ func TestService_RefreshTokens(t *testing.T) {
 			setup: func(m mock) {
 				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, rtHash, nil)
 				m.userCore.GetUserMock.Expect(ctx, userID).Return(usr, "", nil)
+				m.revocations.IsRevokedMock.Expect(ctx, userID, sessionID, session.CreatedAt).Return(false, nil)
 				m.core.RefreshTokensMock.Expect(ctx, session, refreshToken.Token, rtHash).Return(tokensExp, nil)
 			},
 		},
@@ -453,9 +509,32 @@ func TestService_RefreshTokens(t *testing.T) {
 			setup: func(m mock) {
 				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, rtHash, nil)
 				m.userCore.GetUserMock.Expect(ctx, userID).Return(usr, "", nil)
+				m.revocations.IsRevokedMock.Expect(ctx, userID, sessionID, session.CreatedAt).Return(false, nil)
 				m.core.RefreshTokensMock.Expect(ctx, session, refreshToken.Token, rtHash).Return(auth.Tokens{}, errExp)
 			},
 			err: errExp,
+		},
+		{
+			name: "ok: revocations unavailable, fails open",
+			req:  refreshToken,
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, rtHash, nil)
+				m.userCore.GetUserMock.Expect(ctx, userID).Return(usr, "", nil)
+				m.revocations.IsRevokedMock.Expect(ctx, userID, sessionID, session.CreatedAt).Return(false, errExp)
+				m.core.RefreshTokensMock.Expect(ctx, session, refreshToken.Token, rtHash).Return(tokensExp, nil)
+			},
+		},
+		{
+			// The revocation was written, but deleting the session in the database failed:
+			// the session is still there and must not issue new access tokens.
+			name: "session revoked in Redis but left in the database",
+			req:  refreshToken,
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, rtHash, nil)
+				m.userCore.GetUserMock.Expect(ctx, userID).Return(usr, "", nil)
+				m.revocations.IsRevokedMock.Expect(ctx, userID, sessionID, session.CreatedAt).Return(true, nil)
+			},
+			err: apperr.ErrUnauthorized(),
 		},
 		{
 			name: "session version mismatch",
@@ -482,6 +561,35 @@ func TestService_RefreshTokens(t *testing.T) {
 				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(auth.Session{}, "", errExp)
 			},
 			err: errExp,
+		},
+		{
+			name: "refresh token already used by a concurrent request: 401, not 404",
+			req:  refreshToken,
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, rtHash, nil)
+				m.userCore.GetUserMock.Expect(ctx, userID).Return(usr, "", nil)
+				m.revocations.IsRevokedMock.Expect(ctx, userID, sessionID, session.CreatedAt).Return(false, nil)
+				m.core.RefreshTokensMock.Expect(ctx, session, refreshToken.Token, rtHash).
+					Return(auth.Tokens{}, auth.ErrSessionNotFound())
+			},
+			err: apperr.ErrUnauthorized(),
+		},
+		{
+			name: "session not found: 401, not 404",
+			req:  refreshToken,
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(auth.Session{}, "", auth.ErrSessionNotFound())
+			},
+			err: apperr.ErrUnauthorized(),
+		},
+		{
+			name: "user not found: 401, not 404",
+			req:  refreshToken,
+			setup: func(m mock) {
+				m.core.GetSessionByIDMock.Expect(ctx, sessionID).Return(session, rtHash, nil)
+				m.userCore.GetUserMock.Expect(ctx, userID).Return(user.User{}, "", user.ErrUserNotFound())
+			},
+			err: apperr.ErrUnauthorized(),
 		},
 		{
 			name: "error - empty refresh token",

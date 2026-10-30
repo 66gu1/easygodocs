@@ -24,9 +24,12 @@ import (
 )
 
 func main() {
-	err := godotenv.Overload(".env")
+	// Load doesn't override variables that are already set: the environment wins over the file,
+	// so a setting can be overridden at launch (REDIS_URL=... make run) and a stray .env can't
+	// silently replace the values a container is given.
+	err := godotenv.Load(".env")
 	if err != nil {
-		log.Debug().Err(err).Msg("failed to load .env.local file, using environment variables")
+		log.Debug().Err(err).Msg("failed to load .env file, using environment variables")
 	}
 	dsn := os.Getenv("DATABASE_DSN")
 	email := os.Getenv("ADMIN_EMAIL")
