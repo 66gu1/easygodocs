@@ -33,6 +33,11 @@ type RateLimitConfig struct {
 	PublicRequestsPerMinute int `mapstructure:"public_requests_per_minute" json:"public_requests_per_minute"`
 	// TimeoutMilliseconds bounds a single check in Redis. On timeout the request is let through.
 	TimeoutMilliseconds int `mapstructure:"timeout_milliseconds" json:"timeout_milliseconds"`
+	// LoginAttemptsPerEmailAndIP limits login attempts for one email from one client IP per window.
+	LoginAttemptsPerEmailAndIP int `mapstructure:"login_attempts_per_email_ip" json:"login_attempts_per_email_ip"`
+	// LoginAttemptsPerEmail limits login attempts for one email from all IPs per window.
+	LoginAttemptsPerEmail int `mapstructure:"login_attempts_per_email" json:"login_attempts_per_email"`
+	LoginWindowMinutes    int `mapstructure:"login_window_minutes" json:"login_window_minutes"`
 }
 
 func LoadConfig() Config {
@@ -42,6 +47,9 @@ func LoadConfig() Config {
 	viper.AddConfigPath(".")
 	viper.SetDefault("rate_limit.public_requests_per_minute", 20)
 	viper.SetDefault("rate_limit.timeout_milliseconds", 100)
+	viper.SetDefault("rate_limit.login_attempts_per_email_ip", 5)
+	viper.SetDefault("rate_limit.login_attempts_per_email", 100)
+	viper.SetDefault("rate_limit.login_window_minutes", 15)
 	viper.SetDefault("db_pool.max_open_conns", 20)
 	viper.SetDefault("db_pool.max_idle_conns", 20)
 	viper.SetDefault("db_pool.conn_max_lifetime_minutes", 5)

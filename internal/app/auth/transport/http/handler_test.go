@@ -526,6 +526,7 @@ func TestHandler_Login(t *testing.T) {
 	req := usecase.LoginCmd{
 		Email:    input.Email,
 		Password: []byte(input.Password),
+		ClientIP: "192.0.2.1", // httptest.NewRequest sets RemoteAddr to 192.0.2.1:1234
 	}
 	resp := auth.Tokens{
 		AccessToken: "new-access",

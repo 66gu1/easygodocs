@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 )
 
 const (
@@ -80,7 +81,8 @@ type AppError struct {
 	Violations []Violation `json:"violations,omitempty"`
 	class      Class
 	logLevel   LogLevel
-	detail     string // detail for logs
+	detail     string        // detail for logs
+	retryAfter time.Duration // sent as the Retry-After header
 }
 
 func New(message string, code Code, class Class, logLevel LogLevel) *AppError {
@@ -111,6 +113,17 @@ func (e *AppError) WithViolation(v Violation) *AppError {
 	c := e.clone()
 	c.Violations = append(c.Violations, v)
 	return c
+}
+
+// WithRetryAfter tells the client when to retry, e.g. after a rate limit.
+func (e *AppError) WithRetryAfter(d time.Duration) *AppError {
+	c := e.clone()
+	c.retryAfter = d
+	return c
+}
+
+func (e *AppError) RetryAfter() time.Duration {
+	return e.retryAfter
 }
 
 func (e *AppError) clone() *AppError {

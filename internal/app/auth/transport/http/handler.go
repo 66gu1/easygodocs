@@ -258,6 +258,8 @@ func (h *Handler) RefreshTokens(w http.ResponseWriter, r *http.Request) {
 // @Param        request body LoginInput true "credentials"
 // @Success      200 {object} auth.Tokens
 // @Failure      400 {object} apperr.AppError
+// @Failure      401 {object} apperr.AppError "Invalid email or password"
+// @Failure      429 {object} apperr.AppError "Too many login attempts, see the Retry-After header"
 // @Router       /login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -270,6 +272,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	cmd := usecase.LoginCmd{
 		Email:    input.Email,
 		Password: []byte(input.Password),
+		ClientIP: httpx.ClientIP(r),
 	}
 	defer secure.ZeroBytes(cmd.Password)
 	input.Password = ""

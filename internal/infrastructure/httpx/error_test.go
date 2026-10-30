@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/httpx"
@@ -66,6 +67,38 @@ func TestReturnError(t *testing.T) {
 			require.Equal(t, tt.wantLevel, entry["level"])
 			require.Equal(t, tt.err.Error(), entry["error"], "the log keeps the full wrap chain")
 			require.EqualValues(t, tt.wantStatus, entry["status"])
+		})
+	}
+}
+
+func TestReturnError_RetryAfter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "rounded up to whole seconds",
+			err:  fmt.Errorf("service: %w", apperr.ErrRateLimited().WithRetryAfter(1500*time.Millisecond)),
+			want: "2",
+		},
+		{
+			name: "not set without a retry time",
+			err:  apperr.ErrRateLimited(),
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rr := httptest.NewRecorder()
+			httpx.ReturnError(t.Context(), rr, tt.err)
+
+			require.Equal(t, http.StatusTooManyRequests, rr.Code)
+			require.Equal(t, tt.want, rr.Header().Get("Retry-After"))
 		})
 	}
 }

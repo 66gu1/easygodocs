@@ -4,6 +4,10 @@ log_level: info
 rate_limit:
   public_requests_per_minute: 20
   timeout_milliseconds: 100
+  # Login attempts per window: from one IP for an email, and for an email from all IPs.
+  login_attempts_per_email_ip: 5
+  login_attempts_per_email: 100
+  login_window_minutes: 15
 # CIDR prefixes of reverse proxies allowed to set X-Forwarded-For, e.g. ["10.0.0.0/8"].
 # Empty: the client IP is the IP of the connection.
 trusted_proxies: []

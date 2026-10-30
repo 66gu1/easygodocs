@@ -73,7 +73,9 @@ func main() {
 	if !ok {
 		panic("REDIS_URL environment variable is required")
 	}
-	publicLimiter := mustPublicLimiter(mustOpenRedis(redisURL), cfg.RateLimit)
+	redisClient := mustOpenRedis(redisURL)
+	publicLimiter := mustPublicLimiter(redisClient, cfg.RateLimit)
+	loginAttempts := mustLoginAttempts(redisClient, cfg.RateLimit)
 
 	jwtCodec := secure.NewTokenCodec(mustJWTSecret(), auth.TokenIssuer)
 
@@ -131,7 +133,7 @@ func main() {
 	userHandler := userhttp.NewHandler(userService)
 
 	dummyPasswordHash := mustDummyPasswordHash(passwordHasher, userCfg.PasswordHashCost)
-	authService := authusecase.NewService(authCore, userCore, passwordHasher, dummyPasswordHash)
+	authService := authusecase.NewService(authCore, userCore, passwordHasher, loginAttempts, dummyPasswordHash)
 	authHandler := authhttp.NewHandler(authService)
 
 	entityService := entityusecase.NewService(entityCore, entityusecase.NewPermissionChecker(entityCore, authCore))
@@ -288,6 +290,20 @@ func mustPublicLimiter(client *redis.Client, cfg config.RateLimitConfig) *rateli
 		log.Fatal().Err(err).Msg("failed to create rate limiter")
 	}
 	return limiter
+}
+
+// mustLoginAttempts limits password guesses per account.
+func mustLoginAttempts(client *redis.Client, cfg config.RateLimitConfig) *ratelimit.LoginAttempts {
+	attempts, err := ratelimit.NewLoginAttempts(client, ratelimit.LoginAttemptsConfig{
+		PerEmailAndIP: cfg.LoginAttemptsPerEmailAndIP,
+		PerEmail:      cfg.LoginAttemptsPerEmail,
+		Window:        time.Duration(cfg.LoginWindowMinutes) * time.Minute,
+		Timeout:       time.Duration(cfg.TimeoutMilliseconds) * time.Millisecond,
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create login attempts limiter")
+	}
+	return attempts
 }
 
 func mustOpenDB(dsn string, pool config.DBPoolConfig) *gorm.DB {

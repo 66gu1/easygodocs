@@ -8,14 +8,24 @@ import (
 	"github.com/66gu1/easygodocs/internal/app/auth"
 	"github.com/66gu1/easygodocs/internal/app/user"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
+	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
+	"github.com/66gu1/easygodocs/internal/infrastructure/ratelimit"
 	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
 	"github.com/google/uuid"
 )
 
-const CodeInvalidCredentials apperr.Code = "user/invalid_credentials" //nolint:gosec
+const (
+	CodeInvalidCredentials   apperr.Code = "user/invalid_credentials" //nolint:gosec
+	CodeTooManyLoginAttempts apperr.Code = "auth/too_many_login_attempts"
+)
 
 func ErrInvalidPasswordOrEmail() error {
 	return apperr.New("invalid password or email", CodeInvalidCredentials, apperr.ClassUnauthorized, apperr.LogLevelWarn)
+}
+
+func ErrTooManyLoginAttempts() *apperr.AppError {
+	return apperr.New("too many login attempts, try again later", CodeTooManyLoginAttempts,
+		apperr.ClassTooManyRequests, apperr.LogLevelWarn)
 }
 
 type Core interface {
@@ -43,23 +53,34 @@ type UserCore interface {
 	GetUserByEmail(ctx context.Context, email string) (user.User, string, error)
 }
 
+// LoginAttempts limits password guesses per account, see ratelimit.LoginAttempts.
+type LoginAttempts interface {
+	Reserve(ctx context.Context, email, ip string) (ratelimit.AttemptResult, error)
+	Release(ctx context.Context, email, ip string) error
+	Refund(ctx context.Context, email, ip string) error
+}
+
 type LoginCmd struct {
 	Email    string
 	Password []byte `json:"-"`
+	ClientIP string
 }
 
 type Service struct {
 	core              Core
 	userCore          UserCore
 	passwordHasher    PasswordHasher
+	loginAttempts     LoginAttempts
 	dummyPasswordHash []byte
 }
 
 // NewService creates the auth service. dummyPasswordHash must be a hash produced with the same
 // cost as real password hashes: Login checks it when the email is unknown, so that response time
 // doesn't reveal whether a user exists.
-func NewService(core Core, userCore UserCore, passwordHasher PasswordHasher, dummyPasswordHash []byte) *Service {
-	if core == nil || userCore == nil || passwordHasher == nil {
+func NewService(core Core, userCore UserCore, passwordHasher PasswordHasher, loginAttempts LoginAttempts,
+	dummyPasswordHash []byte,
+) *Service {
+	if core == nil || userCore == nil || passwordHasher == nil || loginAttempts == nil {
 		panic("nil dependency")
 	}
 	if len(dummyPasswordHash) == 0 {
@@ -69,6 +90,7 @@ func NewService(core Core, userCore UserCore, passwordHasher PasswordHasher, dum
 		core:              core,
 		userCore:          userCore,
 		passwordHasher:    passwordHasher,
+		loginAttempts:     loginAttempts,
 		dummyPasswordHash: dummyPasswordHash,
 	}
 }
@@ -165,9 +187,61 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken auth.RefreshTo
 	return tokens, nil
 }
 
+// Login checks the credentials and issues tokens. The attempt is reserved before the user is looked up,
+// so it is counted the same way for unknown emails and the limit doesn't reveal which emails exist.
+// A locked out client gets 429 without the password being checked.
+//
+// The attempt is spent only on a wrong password or an unknown email. If the login fails before
+// the password is checked (a database error, a timeout), the attempt is refunded, so server errors
+// don't lock users out.
 func (s *Service) Login(ctx context.Context, req LoginCmd) (auth.Tokens, error) {
 	defer secure.ZeroBytes(req.Password)
 
+	reserved, err := s.reserveLoginAttempt(ctx, req)
+	if err != nil {
+		return auth.Tokens{}, fmt.Errorf("auth.service.Login: %w", err)
+	}
+
+	tokens, err := s.authenticate(ctx, req)
+	if err != nil {
+		if reserved && !errors.Is(err, ErrInvalidPasswordOrEmail()) {
+			s.finishLoginAttempt(ctx, req, s.loginAttempts.Refund)
+		}
+		return auth.Tokens{}, fmt.Errorf("auth.service.Login: %w", err)
+	}
+
+	if reserved {
+		s.finishLoginAttempt(ctx, req, s.loginAttempts.Release)
+	}
+
+	return tokens, nil
+}
+
+// reserveLoginAttempt fails open: if Redis is unavailable, the attempt is allowed without being reserved
+// and the error is logged, so a Redis outage doesn't stop everyone from logging in. The per-IP limit
+// of public endpoints is in Redis too and fails open as well, so during an outage guessing is bounded
+// only by the cost of bcrypt.
+func (s *Service) reserveLoginAttempt(ctx context.Context, req LoginCmd) (reserved bool, err error) {
+	res, err := s.loginAttempts.Reserve(ctx, req.Email, req.ClientIP)
+	if err != nil {
+		logger.Error(ctx, err).Msg("auth.service.Login: login attempts limiter is unavailable, attempt is allowed")
+		return false, nil
+	}
+	if !res.Allowed {
+		return false, ErrTooManyLoginAttempts().WithRetryAfter(res.RetryAfter)
+	}
+	return true, nil
+}
+
+// finishLoginAttempt releases or refunds a reserved attempt. Its failure is only logged:
+// it must not change the result of the login.
+func (s *Service) finishLoginAttempt(ctx context.Context, req LoginCmd, finish func(ctx context.Context, email, ip string) error) {
+	if err := finish(context.WithoutCancel(ctx), req.Email, req.ClientIP); err != nil {
+		logger.Error(ctx, err).Msg("auth.service.Login: failed to finish login attempt")
+	}
+}
+
+func (s *Service) authenticate(ctx context.Context, req LoginCmd) (auth.Tokens, error) {
 	usr, passwordHash, err := s.userCore.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, user.ErrUserNotFound()) {
@@ -175,19 +249,19 @@ func (s *Service) Login(ctx context.Context, req LoginCmd) (auth.Tokens, error) 
 			_ = s.passwordHasher.CheckPasswordHash(s.dummyPasswordHash, req.Password) //nolint:errcheck
 			err = ErrInvalidPasswordOrEmail()
 		}
-		return auth.Tokens{}, fmt.Errorf("auth.service.Login: %w", err)
+		return auth.Tokens{}, fmt.Errorf("authenticate: %w", err)
 	}
 
 	if err = s.passwordHasher.CheckPasswordHash([]byte(passwordHash), req.Password); err != nil {
 		if errors.Is(err, secure.ErrMismatchedHashAndPassword) {
 			err = ErrInvalidPasswordOrEmail()
 		}
-		return auth.Tokens{}, fmt.Errorf("auth.service.Login: %w", err)
+		return auth.Tokens{}, fmt.Errorf("authenticate: %w", err)
 	}
 
 	tokens, err := s.core.IssueTokens(ctx, usr.ID, usr.SessionVersion)
 	if err != nil {
-		return auth.Tokens{}, fmt.Errorf("auth.service.Login: %w", err)
+		return auth.Tokens{}, fmt.Errorf("authenticate: %w", err)
 	}
 
 	return tokens, nil

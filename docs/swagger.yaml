@@ -18,12 +18,14 @@ definitions:
     - core/unauthorized
     - core/forbidden
     - core/internal_error
+    - core/rate_limited
     type: string
     x-enum-varnames:
     - CodeBadRequest
     - CodeUnauthorized
     - CodeForbidden
     - CodeInternal
+    - CodeRateLimited
   apperr.Field:
     enum:
     - request
@@ -566,6 +568,14 @@ paths:
             $ref: '#/definitions/auth.Tokens'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/apperr.AppError'
+        "401":
+          description: Invalid email or password
+          schema:
+            $ref: '#/definitions/apperr.AppError'
+        "429":
+          description: Too many login attempts, see the Retry-After header
           schema:
             $ref: '#/definitions/apperr.AppError'
       summary: Login

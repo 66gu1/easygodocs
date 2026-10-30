@@ -3,7 +3,6 @@ package httpx
 import (
 	"context"
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 
@@ -42,9 +41,7 @@ func RateLimit(limiter RateLimiter, keyFunc func(r *http.Request) (string, error
 			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(res.Limit))
 			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(res.Remaining))
 			if !res.Allowed {
-				// Retry-After is in whole seconds, round up so the client doesn't retry too early.
-				w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(res.RetryAfter.Seconds()))))
-				ReturnError(ctx, w, fmt.Errorf("httpx.RateLimit: %w", apperr.ErrRateLimited()))
+				ReturnError(ctx, w, fmt.Errorf("httpx.RateLimit: %w", apperr.ErrRateLimited().WithRetryAfter(res.RetryAfter)))
 				return
 			}
 

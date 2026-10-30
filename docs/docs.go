@@ -484,6 +484,18 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/apperr.AppError"
                         }
+                    },
+                    "401": {
+                        "description": "Invalid email or password",
+                        "schema": {
+                            "$ref": "#/definitions/apperr.AppError"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many login attempts, see the Retry-After header",
+                        "schema": {
+                            "$ref": "#/definitions/apperr.AppError"
+                        }
                     }
                 }
             }
@@ -1022,13 +1034,15 @@ const docTemplate = `{
                 "core/bad_request",
                 "core/unauthorized",
                 "core/forbidden",
-                "core/internal_error"
+                "core/internal_error",
+                "core/rate_limited"
             ],
             "x-enum-varnames": [
                 "CodeBadRequest",
                 "CodeUnauthorized",
                 "CodeForbidden",
-                "CodeInternal"
+                "CodeInternal",
+                "CodeRateLimited"
             ]
         },
         "apperr.Field": {

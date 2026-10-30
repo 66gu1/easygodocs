@@ -10,7 +10,9 @@ import (
 	"github.com/66gu1/easygodocs/internal/app/auth/usecase/mocks"
 	"github.com/66gu1/easygodocs/internal/app/user"
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
+	"github.com/66gu1/easygodocs/internal/infrastructure/ratelimit"
 	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
+	"github.com/gojuno/minimock/v3"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -23,6 +25,7 @@ type mock struct {
 	core           *mocks.CoreMock
 	userCore       *mocks.UserCoreMock
 	passwordHasher *mocks.PasswordHasherMock
+	loginAttempts  *mocks.LoginAttemptsMock
 }
 
 func newMock(t *testing.T) *mock {
@@ -31,7 +34,12 @@ func newMock(t *testing.T) *mock {
 		core:           mocks.NewCoreMock(t),
 		userCore:       mocks.NewUserCoreMock(t),
 		passwordHasher: mocks.NewPasswordHasherMock(t),
+		loginAttempts:  mocks.NewLoginAttemptsMock(t),
 	}
+}
+
+func (m *mock) newService() *usecase.Service {
+	return usecase.NewService(m.core, m.userCore, m.passwordHasher, m.loginAttempts, dummyHash)
 }
 
 func TestService_GetSessionsByUserID(t *testing.T) {
@@ -93,7 +101,7 @@ func TestService_GetSessionsByUserID(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
+			s := m.newService()
 			got, err := s.GetSessionsByUserID(ctx, userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -149,7 +157,7 @@ func TestService_DeleteSession(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
+			s := m.newService()
 			err := s.DeleteSession(ctx, userID, id)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -203,7 +211,7 @@ func TestService_DeleteSessionsByUserID(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
+			s := m.newService()
 			err := s.DeleteSessionsByUserID(ctx, userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -260,7 +268,7 @@ func TestService_AddUserRole(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
+			s := m.newService()
 			err := s.AddUserRole(ctx, userRole)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -317,7 +325,7 @@ func TestService_DeleteUserRole(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
+			s := m.newService()
 			err := s.DeleteUserRole(ctx, userRole)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -381,7 +389,7 @@ func TestService_ListUserRoles(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
+			s := m.newService()
 			got, err := s.ListUserRoles(ctx, userID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -488,7 +496,7 @@ func TestService_RefreshTokens(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
+			s := m.newService()
 			got, err := s.RefreshTokens(ctx, tt.req)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -505,6 +513,7 @@ func TestService_Login(t *testing.T) {
 	var (
 		ctx            = t.Context()
 		email          = "mail"
+		ip             = "198.51.100.1"
 		password       = "password"
 		hashedPassword = "hashed_password"
 		userID         = uuid.New()
@@ -522,56 +531,114 @@ func TestService_Login(t *testing.T) {
 				Token:     "refresh_token",
 			},
 		}
-		errExp = fmt.Errorf("expired")
+		errExp  = fmt.Errorf("expired")
+		allowed = ratelimit.AttemptResult{Allowed: true}
 	)
 	tests := []struct {
-		name  string
-		setup func(m mock)
-		err   error
+		name           string
+		setup          func(m mock)
+		err            error
+		wantRetryAfter time.Duration
 	}{
 		{
-			name: "ok",
+			name: "ok: the attempt is released",
 			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(allowed, nil)
+				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
+				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(nil)
+				m.core.IssueTokensMock.Expect(ctx, userID, sessionVersion).Return(tokensExp, nil)
+				m.loginAttempts.ReleaseMock.Expect(minimock.AnyContext, email, ip).Return(nil)
+			},
+		},
+		{
+			name: "ok: a release error doesn't fail the login",
+			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(allowed, nil)
+				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
+				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(nil)
+				m.core.IssueTokensMock.Expect(ctx, userID, sessionVersion).Return(tokensExp, nil)
+				m.loginAttempts.ReleaseMock.Expect(minimock.AnyContext, email, ip).Return(errExp)
+			},
+		},
+		{
+			name: "ok: limiter unavailable, fails open and nothing is released",
+			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(ratelimit.AttemptResult{}, errExp)
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
 				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(nil)
 				m.core.IssueTokensMock.Expect(ctx, userID, sessionVersion).Return(tokensExp, nil)
 			},
 		},
 		{
-			name: "error - core.IssueTokens",
+			name: "limiter unavailable and the login fails: nothing is refunded",
 			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(ratelimit.AttemptResult{}, errExp)
+				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(user.User{}, "", errExp)
+			},
+			err: errExp,
+		},
+		{
+			name: "too many attempts: the user isn't looked up and the password isn't checked",
+			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).
+					Return(ratelimit.AttemptResult{RetryAfter: 90 * time.Second}, nil)
+			},
+			err:            usecase.ErrTooManyLoginAttempts(),
+			wantRetryAfter: 90 * time.Second,
+		},
+		{
+			name: "error - core.IssueTokens: the attempt is refunded",
+			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(allowed, nil)
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
 				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(nil)
 				m.core.IssueTokensMock.Expect(ctx, userID, sessionVersion).Return(auth.Tokens{}, errExp)
+				m.loginAttempts.RefundMock.Expect(minimock.AnyContext, email, ip).Return(nil)
 			},
 			err: errExp,
 		},
 		{
-			name: "error - passwordHasher.CheckPasswordHash",
+			name: "error - passwordHasher.CheckPasswordHash: the attempt is refunded",
 			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(allowed, nil)
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
 				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(errExp)
+				m.loginAttempts.RefundMock.Expect(minimock.AnyContext, email, ip).Return(nil)
 			},
 			err: errExp,
 		},
 		{
-			name: "wrong password",
+			name: "wrong password: the attempt is spent",
 			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(allowed, nil)
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(usr, hashedPassword, nil)
 				m.passwordHasher.CheckPasswordHashMock.Expect([]byte(hashedPassword), []byte(password)).Return(secure.ErrMismatchedHashAndPassword)
 			},
 			err: usecase.ErrInvalidPasswordOrEmail(),
 		},
 		{
-			name: "error - userCore.GetUserByEmail",
+			name: "error - userCore.GetUserByEmail: the attempt is refunded",
 			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(allowed, nil)
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(user.User{}, "", errExp)
+				m.loginAttempts.RefundMock.Expect(minimock.AnyContext, email, ip).Return(nil)
 			},
 			err: errExp,
 		},
 		{
-			name: "error - userCore.GetUserByEmail user not found",
+			name: "error - a refund error doesn't change the result",
 			setup: func(m mock) {
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(allowed, nil)
+				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(user.User{}, "", errExp)
+				m.loginAttempts.RefundMock.Expect(minimock.AnyContext, email, ip).Return(fmt.Errorf("redis is down"))
+			},
+			err: errExp,
+		},
+		{
+			name: "error - userCore.GetUserByEmail user not found: the attempt is spent",
+			setup: func(m mock) {
+				// the attempt is counted for unknown emails too, so the limit doesn't reveal which emails exist
+				m.loginAttempts.ReserveMock.Expect(ctx, email, ip).Return(allowed, nil)
 				m.userCore.GetUserByEmailMock.Expect(ctx, email).Return(user.User{}, "", user.ErrUserNotFound())
 				// the dummy hash is still checked to keep response time constant
 				m.passwordHasher.CheckPasswordHashMock.Expect(dummyHash, []byte(password)).Return(secure.ErrMismatchedHashAndPassword)
@@ -586,13 +653,14 @@ func TestService_Login(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(*m)
 			}
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
-			got, err := s.Login(ctx, usecase.LoginCmd{
+			got, err := m.newService().Login(ctx, usecase.LoginCmd{
 				Email:    email,
 				Password: []byte(password),
+				ClientIP: ip,
 			})
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
+				require.Equal(t, tt.wantRetryAfter, apperr.FromError(err).RetryAfter())
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tokensExp, got)
@@ -678,7 +746,7 @@ func TestService_ValidateSession(t *testing.T) {
 			t.Parallel()
 			m := newMock(t)
 			tt.setup(*m)
-			s := usecase.NewService(m.core, m.userCore, m.passwordHasher, dummyHash)
+			s := m.newService()
 			err := s.ValidateSession(ctx, userID, sessionID)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)

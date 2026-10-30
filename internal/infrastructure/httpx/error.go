@@ -3,7 +3,9 @@ package httpx
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
+	"strconv"
 
 	"github.com/66gu1/easygodocs/internal/infrastructure/apperr"
 	"github.com/66gu1/easygodocs/internal/infrastructure/logger"
@@ -22,6 +24,10 @@ func ReturnError(ctx context.Context, w http.ResponseWriter, returningErr error)
 	}
 	logger.Error(ctx, returningErr).Int("status", code).Msg("request failed")
 
+	if d := appError.RetryAfter(); d > 0 {
+		// Retry-After is in whole seconds, round up so the client doesn't retry too early.
+		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(d.Seconds()))))
+	}
 	if w.Header().Get("Content-Type") == "" {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}

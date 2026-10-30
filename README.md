@@ -17,6 +17,7 @@ hierarchical role-based access control and JWT authentication with server-side s
 - Hierarchical RBAC: permissions are granted on a subtree
 - JWT access tokens + server-side sessions: logout, password change and user deletion take effect immediately
 - Rate limiting of public endpoints shared by all app instances: a sliding window in Redis checked by one atomic Lua script
+- Password guessing protection that doesn't let an attacker lock out the account owner
 - Unit tests with mocks, integration tests on a real PostgreSQL and Redis (testcontainers), race tests (coverage: **~82%**)
 - CI: lint, tests with `-race`, govulncheck
 
@@ -161,7 +162,8 @@ Unpublished entities can't have children, otherwise published entities would be 
   so a refresh token can be used only once.
 - Login for an unknown email still runs bcrypt against a dummy hash, so the response time doesn't reveal
   which emails are registered.
-- Public endpoints are rate limited per client IP, see [Rate limiting](#rate-limiting).
+- Public endpoints are rate limited per client IP, see [Rate limiting](#rate-limiting),
+  and login attempts are limited per account, see [Login attempts](#login-attempts).
 
 ### Rate limiting
 `/login`, `/refresh` and `/register` allow `rate_limit.public_requests_per_minute` requests per client IP
@@ -180,11 +182,42 @@ in any 60-second window. Over the limit the API returns `429` with `Retry-After`
 - **Redis time.** The script uses Redis `TIME`, so instances with skewed clocks share one window.
 - **Fails open.** If Redis is unavailable or slower than `rate_limit.timeout_milliseconds`, the request
   is let through and the error is logged: the limit protects against abuse, it isn't an access check, so a Redis
-  outage shouldn't take login down. Brute force is still slowed by bcrypt. The server does refuse to start
+  outage shouldn't take login down. The [login attempts](#login-attempts) limit is in Redis too, so during
+  an outage both limits are disabled and brute force is bounded only by the cost of bcrypt. The server does refuse to start
   if Redis is unreachable, so a misconfigured address doesn't silently disable the limit.
   Losing the counters (a Redis restart) only resets the limits, so Redis needs no persistence for this.
 - **Client IP.** The IP is taken from the connection; `X-Forwarded-For` is used only behind the reverse proxies
   listed in `trusted_proxies`, so clients can't bypass the limit by spoofing headers.
+
+### Login attempts
+The per-IP limit doesn't stop guessing the password of one account from many IPs. Locking the account
+after N failures would, but then anyone could lock out the owner by entering wrong passwords on purpose.
+So there are two counters per window (`rate_limit.login_window_minutes`, 15 by default):
+- **email + IP, strict** (`login_attempts_per_email_ip`, 5): a client that guesses gets locked out,
+  the owner logging in from another IP isn't affected;
+- **email, soft** (`login_attempts_per_email`, 100): bounds the total guesses for the account
+  in a distributed attack.
+
+Over a limit the API returns `429` with `Retry-After` right away. There is no server-side delay:
+a sleeping request holds a connection and a goroutine, which is itself a way to exhaust the server.
+- **Counted before the check.** An attempt is reserved atomically (one Lua script for both counters)
+  before the password is checked, and a successful login gives it back and clears the email+IP counter.
+  Counting failures after the check would let concurrent requests all pass it: an integration test sends
+  100 attempts at once and expects exactly the limit to pass; with a separate read and increment 53 of them did.
+- **Only wrong guesses are spent.** The attempt is spent on a wrong password or an unknown email.
+  If the login fails before the password is checked (a database error, a timeout), the attempt is refunded,
+  so server errors don't lock users out. A refund gives back only that attempt and keeps the earlier failures:
+  clearing them, as on success, would let a client reset its counter by making its own attempt fail.
+- **No user enumeration.** The attempt is reserved before the user is looked up, so unknown emails
+  are counted and answered the same way as existing ones.
+- **Keys.** The email is normalized and hashed: the key length doesn't depend on the input, and Redis doesn't
+  hold users' addresses. The hash is a Redis Cluster hash tag, so both keys of the script are in one slot.
+- **Fails open**, like the per-IP limit: if Redis is unavailable, the attempt is allowed. Both limits are disabled
+  then, and brute force is bounded only by the cost of bcrypt. The alternative, failing closed, would make
+  a Redis outage stop everyone from logging in.
+- **Trade-off.** The soft limit can still be used to lock the account for everyone, but that takes
+  `login_attempts_per_email / login_attempts_per_email_ip` IPs (20 by default) per window. Removing it
+  needs a second factor that the attacker doesn't have, e.g. a "known device" cookie or a CAPTCHA.
 
 ### Errors and logging
 Errors are typed (`apperr`): a class that maps to an HTTP status, a stable code and field violations for the client,
