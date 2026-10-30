@@ -11,6 +11,7 @@ const (
 	CodeUnauthorized Code = "core/unauthorized"
 	CodeForbidden    Code = "core/forbidden"
 	CodeInternal     Code = "core/internal_error"
+	CodeRateLimited  Code = "core/rate_limited"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 	UnauthorizedMsg = "Unauthorized"
 	ForbiddenMsg    = "Forbidden"
 	InternalMsg     = "Internal server error"
+	RateLimitedMsg  = "Too many requests"
 )
 
 func ErrBadRequest() *AppError {
@@ -47,6 +49,16 @@ func ErrForbidden() *AppError {
 		class:    ClassForbidden,
 		logLevel: LogLevelWarn,
 		detail:   ForbiddenMsg,
+	}
+}
+
+func ErrRateLimited() *AppError {
+	return &AppError{
+		Message:  RateLimitedMsg,
+		Code:     CodeRateLimited,
+		class:    ClassTooManyRequests,
+		logLevel: LogLevelWarn,
+		detail:   RateLimitedMsg,
 	}
 }
 
@@ -144,12 +156,13 @@ type Code string
 type Class uint8
 
 const (
-	ClassInternal     Class = 1
-	ClassBadRequest   Class = 2
-	ClassNotFound     Class = 3
-	ClassUnauthorized Class = 4
-	ClassForbidden    Class = 5
-	ClassConflict     Class = 6
+	ClassInternal        Class = 1
+	ClassBadRequest      Class = 2
+	ClassNotFound        Class = 3
+	ClassUnauthorized    Class = 4
+	ClassForbidden       Class = 5
+	ClassConflict        Class = 6
+	ClassTooManyRequests Class = 7
 )
 
 type LogLevel int

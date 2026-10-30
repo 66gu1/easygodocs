@@ -31,6 +31,8 @@ type DBPoolConfig struct {
 type RateLimitConfig struct {
 	// PublicRequestsPerMinute limits unauthenticated endpoints (login, refresh, register) per client IP.
 	PublicRequestsPerMinute int `mapstructure:"public_requests_per_minute" json:"public_requests_per_minute"`
+	// TimeoutMilliseconds bounds a single check in Redis. On timeout the request is let through.
+	TimeoutMilliseconds int `mapstructure:"timeout_milliseconds" json:"timeout_milliseconds"`
 }
 
 func LoadConfig() Config {
@@ -39,6 +41,7 @@ func LoadConfig() Config {
 	viper.AddConfigPath("config")
 	viper.AddConfigPath(".")
 	viper.SetDefault("rate_limit.public_requests_per_minute", 20)
+	viper.SetDefault("rate_limit.timeout_milliseconds", 100)
 	viper.SetDefault("db_pool.max_open_conns", 20)
 	viper.SetDefault("db_pool.max_idle_conns", 20)
 	viper.SetDefault("db_pool.conn_max_lifetime_minutes", 5)

@@ -13,6 +13,14 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   migrations:
     image: ghcr.io/kukymbr/goose-docker:3.24.3
     environment:
@@ -41,8 +49,11 @@ services:
     depends_on:
       migrations:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     environment:
       DATABASE_DSN: "postgres://app:pass@db:5432/easy_go_docs?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
       JWT_SECRET: "l5VwxuCXfmJ3G8vn2rzEo+UHar86kIb4CLW7mUqMlvM="
     ports:
       - "8080:8080"

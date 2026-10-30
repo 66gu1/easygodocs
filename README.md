@@ -11,12 +11,13 @@ hierarchical role-based access control and JWT authentication with server-side s
 ---
 
 ## ✨ Features
-- Go, PostgreSQL, chi, GORM, goose migrations, Swagger
+- Go, PostgreSQL, Redis, chi, GORM, goose migrations, Swagger
 - Entity tree with depth limit and cycle prevention that stays consistent under concurrent requests
 - Versioning of every change and personal drafts with conflict detection on publish
 - Hierarchical RBAC: permissions are granted on a subtree
 - JWT access tokens + server-side sessions: logout, password change and user deletion take effect immediately
-- Unit tests with mocks, integration tests on a real PostgreSQL (testcontainers), race tests (coverage: **~82%**)
+- Rate limiting of public endpoints shared by all app instances: a sliding window in Redis checked by one atomic Lua script
+- Unit tests with mocks, integration tests on a real PostgreSQL and Redis (testcontainers), race tests (coverage: **~82%**)
 - CI: lint, tests with `-race`, govulncheck
 
 ---
@@ -29,7 +30,7 @@ Requirements: Docker and Docker Compose.
 docker compose up --build
 ```
 
-This starts PostgreSQL, applies the migrations, creates the admin user (`admin@example.com` / `changeme`)
+This starts PostgreSQL and Redis, applies the migrations, creates the admin user (`admin@example.com` / `changeme`)
 and starts the API on `http://localhost:8080/api/v1`.
 Swagger UI: http://localhost:8080/api/v1/swagger/index.html
 
@@ -160,9 +161,30 @@ Unpublished entities can't have children, otherwise published entities would be 
   so a refresh token can be used only once.
 - Login for an unknown email still runs bcrypt against a dummy hash, so the response time doesn't reveal
   which emails are registered.
-- Public endpoints are rate limited per client IP. The IP is taken from the connection; `X-Forwarded-For`
-  is used only behind the reverse proxies listed in `trusted_proxies`, so clients can't bypass the limit
-  by spoofing headers.
+- Public endpoints are rate limited per client IP, see [Rate limiting](#rate-limiting).
+
+### Rate limiting
+`/login`, `/refresh` and `/register` allow `rate_limit.public_requests_per_minute` requests per client IP
+in any 60-second window. Over the limit the API returns `429` with `Retry-After`.
+- **Shared state.** The counters live in Redis, so the limit holds for the whole deployment.
+  An in-memory limiter counts per process: with three instances behind a load balancer a client would get
+  three times the limit.
+- **Atomic check.** Checking the count and recording the request is one Lua script. With a separate
+  "get count" and "increment" (or a counter behind a process-local mutex), concurrent requests from different
+  instances all see a count below the limit and all pass. An integration test sends 200 requests through
+  4 independent clients at once and expects exactly `limit` of them to pass; with the check and the write
+  split into two commands it lets through about 2.5 times the limit.
+- **Sliding window log.** Every allowed request is a member of a sorted set scored by its time.
+  Unlike a fixed window, it doesn't allow a burst of twice the limit around the window boundary.
+  Rejected requests aren't recorded, so a key holds at most `limit` members, and it expires after the window.
+- **Redis time.** The script uses Redis `TIME`, so instances with skewed clocks share one window.
+- **Fails open.** If Redis is unavailable or slower than `rate_limit.timeout_milliseconds`, the request
+  is let through and the error is logged: the limit protects against abuse, it isn't an access check, so a Redis
+  outage shouldn't take login down. Brute force is still slowed by bcrypt. The server does refuse to start
+  if Redis is unreachable, so a misconfigured address doesn't silently disable the limit.
+  Losing the counters (a Redis restart) only resets the limits, so Redis needs no persistence for this.
+- **Client IP.** The IP is taken from the connection; `X-Forwarded-For` is used only behind the reverse proxies
+  listed in `trusted_proxies`, so clients can't bypass the limit by spoofing headers.
 
 ### Errors and logging
 Errors are typed (`apperr`): a class that maps to an HTTP status, a stable code and field violations for the client,
@@ -178,6 +200,8 @@ every failed request is logged exactly once, in `httpx.ReturnError`, with the fu
 - **No pagination:** the tree and version lists are returned in full.
 - An outdated draft can't be merged: it has to be discarded and started again from the current version.
 - Soft-deleted entities and expired sessions are never purged.
+- The rate limit key is the full client IP. An IPv6 client usually controls a whole /64
+  and can rotate addresses within it.
 
 ---
 
@@ -189,13 +213,15 @@ make lint        # golangci-lint
 make test        # all tests with -race; integration tests start PostgreSQL in Docker
 make cover       # tests with coverage
 make generate    # mocks and Swagger docs
-make run         # run the server locally (needs DATABASE_DSN and JWT_SECRET, see .env.example)
+make run         # run the server locally (needs DATABASE_DSN, REDIS_URL and JWT_SECRET, see .env.example)
 ```
 
-Integration tests are behind the `testutil` build tag (`go test -tags testutil ./...`) and need Docker.
+Integration tests are behind the `testutil` build tag (`go test -tags testutil ./...`) and need Docker
+(they start PostgreSQL and Redis containers).
 
 ### Environment
 - `DATABASE_DSN` – PostgreSQL connection string
+- `REDIS_URL` – Redis connection URL, e.g. `redis://localhost:6379/0`
 - `JWT_SECRET` – key for signing JWT tokens, at least 32 bytes (the server refuses to start otherwise)
 - `ADMIN_EMAIL`, `ADMIN_PASSWORD` – credentials of the initial admin created by `cmd/seedadmin`
 

@@ -47,6 +47,8 @@ func toHTTPCode(code apperr.Class) int {
 		return http.StatusInternalServerError
 	case apperr.ClassConflict:
 		return http.StatusConflict
+	case apperr.ClassTooManyRequests:
+		return http.StatusTooManyRequests
 	}
 
 	return 0

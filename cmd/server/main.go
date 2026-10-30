@@ -12,6 +12,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -35,12 +36,13 @@ import (
 	userusecase "github.com/66gu1/easygodocs/internal/app/user/usecase"
 	dbinfra "github.com/66gu1/easygodocs/internal/infrastructure/db"
 	"github.com/66gu1/easygodocs/internal/infrastructure/httpx"
+	"github.com/66gu1/easygodocs/internal/infrastructure/ratelimit"
 	"github.com/66gu1/easygodocs/internal/infrastructure/secure"
 	"github.com/66gu1/easygodocs/internal/infrastructure/system"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/httprate"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -66,6 +68,12 @@ func main() {
 		panic("DATABASE_DSN environment variable is required")
 	}
 	db := mustOpenDB(dsn, cfg.DBPool)
+
+	redisURL, ok := os.LookupEnv("REDIS_URL")
+	if !ok {
+		panic("REDIS_URL environment variable is required")
+	}
+	publicLimiter := mustPublicLimiter(mustOpenRedis(redisURL), cfg.RateLimit)
 
 	jwtCodec := secure.NewTokenCodec(mustJWTSecret(), auth.TokenIssuer)
 
@@ -201,7 +209,7 @@ func main() {
 
 		// without auth
 		r.Group(func(r chi.Router) {
-			r.Use(httprate.Limit(cfg.RateLimit.PublicRequestsPerMinute, time.Minute, httprate.WithKeyFuncs(httpx.KeyByClientIP)))
+			r.Use(httpx.RateLimit(publicLimiter, httpx.KeyByClientIP))
 			r.Post("/login", authHandler.Login)           // POST /login
 			r.Post("/refresh", authHandler.RefreshTokens) // POST /refresh
 			r.Post("/register", userHandler.CreateUser)   // POST /register
@@ -246,6 +254,40 @@ func mustDummyPasswordHash(hasher *secure.PasswordHasher, cost int) []byte {
 		log.Fatal().Err(err).Msg("failed to create dummy password hash")
 	}
 	return hash
+}
+
+// mustOpenRedis connects to Redis and fails fast if it isn't reachable at startup,
+// so a misconfigured address is noticed immediately rather than hidden by the rate limiter failing open.
+func mustOpenRedis(url string) *redis.Client {
+	opts, err := redis.ParseURL(url)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to parse REDIS_URL")
+	}
+	// Without it go-redis ignores context deadlines for network I/O, and the limiter timeout wouldn't apply.
+	opts.ContextTimeoutEnabled = true
+
+	client := redis.NewClient(opts)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	err = client.Ping(ctx).Err()
+	cancel()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to redis")
+	}
+	return client
+}
+
+// mustPublicLimiter limits unauthenticated endpoints per client IP.
+func mustPublicLimiter(client *redis.Client, cfg config.RateLimitConfig) *ratelimit.Limiter {
+	limiter, err := ratelimit.NewLimiter(client, ratelimit.Config{
+		Prefix:  "ratelimit:public:",
+		Limit:   cfg.PublicRequestsPerMinute,
+		Window:  time.Minute,
+		Timeout: time.Duration(cfg.TimeoutMilliseconds) * time.Millisecond,
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create rate limiter")
+	}
+	return limiter
 }
 
 func mustOpenDB(dsn string, pool config.DBPoolConfig) *gorm.DB {
